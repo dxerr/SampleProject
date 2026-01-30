@@ -40,14 +40,6 @@
 		{
 			"Name": "Chooser",
 			"Enabled": true
-		},
-		{
-			"Name": "CharacterTrajectory",
-			"Enabled": true
-		},
-		{
-			"Name": "MotionMatching",
-			"Enabled": true
 		}
 	]
 }
