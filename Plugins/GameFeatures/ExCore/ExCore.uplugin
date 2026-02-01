@@ -26,6 +26,10 @@
 	],
 	"Plugins": [
 		{
+			"Name": "GameFeatures",
+			"Enabled": true
+		},
+		{
 			"Name": "ModularGameplay",
 			"Enabled": true
 		},
@@ -42,4 +46,5 @@
 			"Enabled": true
 		}
 	]
+
 }

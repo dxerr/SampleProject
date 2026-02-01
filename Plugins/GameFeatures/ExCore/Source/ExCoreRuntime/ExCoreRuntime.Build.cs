@@ -16,9 +16,13 @@ public class ExCoreRuntime : ModuleRules
 
 		PrivateIncludePaths.AddRange(
 			new string[] {
-				// ... add other private include paths required here ...
+				"ExCoreRuntime",
+				"ExCoreRuntime/GameModes",
+				"ExCoreRuntime/Data",
+				"ExCoreRuntime/Components",
 			}
 			);
+
 
 		PublicDependencyModuleNames.AddRange(
 			new string[]
