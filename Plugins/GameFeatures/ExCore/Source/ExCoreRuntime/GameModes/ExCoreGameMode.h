@@ -7,6 +7,8 @@
 #include "ExCoreGameMode.generated.h"
 
 class UExCoreSpawnDataAsset;
+class AExFloorChunk;
+class UExChunkSpawner;
 
 /**
  * AExCoreGameMode
@@ -69,4 +71,63 @@ private:
 	 */
 	UPROPERTY()
 	TMap<APawn*, AActor*> SpawnedVisualActors;
+
+	/**
+	 * 청크 스포너 컴포넌트
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UExChunkSpawner* ChunkSpawner;
+
+	// ========== 러너 게임 시스템 ==========
+public:
+	/**
+	 * 러너 게임 기본 속도 (cm/s)
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Runner")
+	float BaseGameSpeed = 600.f;
+
+	/**
+	 * 초당 속도 가속률 (cm/s²)
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Runner")
+	float SpeedAcceleration = 10.f;
+
+	/**
+	 * 현재 게임 속도 (런타임)
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Runner")
+	float CurrentGameSpeed = 0.f;
+
+	/**
+	 * 총 이동 거리 (점수/거리 매칭용)
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Runner")
+	float TotalDistance = 0.f;
+
+	/**
+	 * 러너 모드 활성화 여부
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Runner")
+	bool bRunnerModeEnabled = false;
+
+	/**
+	 * 현재 게임 속도 반환 (다른 액터에서 사용)
+	 */
+	UFUNCTION(BlueprintPure, Category = "Runner")
+	float GetCurrentGameSpeed() const { return CurrentGameSpeed; }
+
+	/**
+	 * 러너 게임 시작
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Runner")
+	void StartRunnerGame();
+
+	/**
+	 * 러너 게임 중지
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Runner")
+	void StopRunnerGame();
+
+protected:
+	virtual void Tick(float DeltaTime) override;
 };

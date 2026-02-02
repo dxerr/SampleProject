@@ -20,6 +20,7 @@ public class ExCoreRuntime : ModuleRules
 				"ExCoreRuntime/GameModes",
 				"ExCoreRuntime/Data",
 				"ExCoreRuntime/Components",
+				"ExCoreRuntime/Actors",
 			}
 			);
 
