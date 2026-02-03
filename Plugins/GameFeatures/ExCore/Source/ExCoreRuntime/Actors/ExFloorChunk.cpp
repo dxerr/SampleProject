@@ -61,11 +61,10 @@ void AExFloorChunk::Tick(float DeltaTime)
 		return;
 	}
 
-	// -X 방향으로 이동 (트레드밀)
-	// 프레임 드랍(Lag Spike) 시 과도한 이동 방지를 위해 DeltaTime 클램핑
-	float ClampedDeltaTime = FMath::Min(DeltaTime, 0.1f);
-	FVector Offset(-GameSpeed * ClampedDeltaTime, 0.f, 0.f);
-	AddActorWorldOffset(Offset, false, nullptr, ETeleportType::None);
+	// World Shift 방식으로 변경됨에 따라, 더 이상 FloorChunk 스스로 이동하지 않음
+	// float ClampedDeltaTime = FMath::Min(DeltaTime, 0.1f);
+	// FVector Offset(-GameSpeed * ClampedDeltaTime, 0.f, 0.f);
+	// AddActorWorldOffset(Offset, false, nullptr, ETeleportType::None);
 
 	// KillZ 도달 체크
 	if (GetActorLocation().X < KillZ)

@@ -76,6 +76,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Spawner")
 	void ClearAllChunks();
 
+	/**
+	 * 모든 활성 청크를 X축으로 이동 (World Shift)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Spawner")
+	void ShiftWorld(float DeltaX);
+
 protected:
 	virtual void BeginPlay() override;
 

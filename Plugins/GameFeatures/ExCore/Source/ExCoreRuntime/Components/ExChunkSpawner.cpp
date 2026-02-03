@@ -237,6 +237,21 @@ void UExChunkSpawner::ClearAllChunks()
 	UE_LOG(LogExChunkSpawner, Log, TEXT("All chunks cleared"));
 }
 
+void UExChunkSpawner::ShiftWorld(float DeltaX)
+{
+	// 모든 활성 청크를 DeltaX만큼 이동
+	for (AExFloorChunk* Chunk : ActiveChunks)
+	{
+		if (IsValid(Chunk))
+		{
+			Chunk->AddActorWorldOffset(FVector(DeltaX, 0.f, 0.f), false, nullptr, ETeleportType::None);
+		}
+	}
+
+	// NextSpawnX도 같이 이동해야 스폰 위치가 유지됨
+	NextSpawnX += DeltaX;
+}
+
 void UExChunkSpawner::OnChunkReachedKillZ(AExFloorChunk* Chunk)
 {
 	if (!Chunk) return;
