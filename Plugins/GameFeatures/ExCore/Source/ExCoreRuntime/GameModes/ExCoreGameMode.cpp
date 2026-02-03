@@ -199,9 +199,10 @@ AActor* AExCoreGameMode::ApplyVisualOverride(APawn* ContainerPawn, TSubclassOf<A
 
 			// Visual의 AnimClass를 컨테이너에 적용
 			TSubclassOf<UAnimInstance> VisualAnimClass = VisualMesh->GetAnimClass();
+			// Apply Animation
 			if (VisualAnimClass)
 			{
-				ContainerMesh->SetAnimClass(VisualAnimClass);
+				ContainerMesh->SetAnimInstanceClass(VisualAnimClass);
 			}
 
 			UE_LOG(LogExCoreGameMode, Log, TEXT("Animation copied from Visual: Mesh=%s, AnimClass=%s"),

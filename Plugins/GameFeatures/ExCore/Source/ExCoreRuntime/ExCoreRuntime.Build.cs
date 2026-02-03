@@ -34,6 +34,8 @@ public class ExCoreRuntime : ModuleRules
 				"ModularGameplay",
 				"GameFeatures",
 				"GameplayAbilities",
+				"EnhancedInput",
+				"Mover",
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
