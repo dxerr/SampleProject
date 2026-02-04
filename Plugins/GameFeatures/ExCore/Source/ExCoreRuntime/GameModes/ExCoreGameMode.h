@@ -78,6 +78,12 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	UExChunkSpawner* ChunkSpawner;
 
+	/**
+	 * 장애물 매니저 컴포넌트 (Refactored from ChunkSpawner)
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	class UExObstacleManager* ObstacleManager;
+
 	// ========== 러너 게임 시스템 ==========
 public:
 	/**

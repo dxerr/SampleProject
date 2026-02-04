@@ -8,6 +8,7 @@
 #include "Engine/World.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "../Components/ExChunkSpawner.h"
+#include "../Components/ExObstacleManager.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExCoreGameMode, Log, All);
 
@@ -18,6 +19,7 @@ AExCoreGameMode::AExCoreGameMode()
 
 	// 청크 스포너 컴포넌트 생성
 	ChunkSpawner = CreateDefaultSubobject<UExChunkSpawner>(TEXT("ChunkSpawner"));
+	ObstacleManager = CreateDefaultSubobject<UExObstacleManager>(TEXT("ObstacleManager"));
 }
 
 void AExCoreGameMode::BeginPlay()
@@ -274,6 +276,12 @@ void AExCoreGameMode::Tick(float DeltaTime)
 	// 이동 거리 누적 (Distance Matching용)
 	TotalDistance += CurrentGameSpeed * DeltaTime;
 
+	// [World Shift] 청크들을 뒤로 이동 (Treadmill)
+	if (ChunkSpawner)
+	{
+		ChunkSpawner->ShiftWorld(-CurrentGameSpeed * DeltaTime);
+	}
+
 	UE_LOG(LogExCoreGameMode, Verbose, TEXT("Runner Tick - Speed: %.2f, Distance: %.2f"), 
 		CurrentGameSpeed, TotalDistance);
 }
@@ -289,6 +297,11 @@ void AExCoreGameMode::StartRunnerGame()
 	// 스포너 초기화
 	if (ChunkSpawner)
 	{
+		if (ObstacleManager)
+		{
+			ObstacleManager->BindToSpawner(ChunkSpawner);
+		}
+
 		ChunkSpawner->InitializeSpawner();
 		UE_LOG(LogExCoreGameMode, Log, TEXT("ExChunkSpawner initialized."));
 	}

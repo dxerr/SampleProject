@@ -60,4 +60,27 @@ private:
 	// 내부 상태 변수
 	int32 CurrentLaneIndex = 0;
 	float CurrentLaneYOffset = 0.0f;
+
+	// --- Climb/Obstacle Interaction Sync ---
+public:
+	/** 
+	 * 상호작용(Climb/Vault)할 타겟 설정. 
+	 * 이를 호출하면 매 틱마다 MotionWarping Target을 강제로 갱신하여 
+	 * World Shift로 밀려나는 오브젝트를 정확히 추적하게 만듭니다.
+	 * @param TargetComponent : 잡을 지점 (SceneComponent 등)
+	 * @param WarpTargetName : 몽타주에 정의된 WarpName (예: "ClimbPoint")
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Runner|Interaction")
+	void SetInteractionTarget(USceneComponent* TargetComponent, FName WarpTargetName = FName("ClimbPoint"));
+
+	/** 상호작용 종료 (Warping 갱신 중단) */
+	UFUNCTION(BlueprintCallable, Category = "Runner|Interaction")
+	void ClearInteractionTarget();
+
+protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner|Interaction")
+	TObjectPtr<USceneComponent> CurrentInteractionTarget;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner|Interaction")
+	FName CurrentWarpTargetName;
 };

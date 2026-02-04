@@ -20,6 +20,15 @@ AExFloorChunk::AExFloorChunk()
 	FloorMesh->SetCollisionProfileName(TEXT("BlockAll"));
 }
 
+FBox AExFloorChunk::GetFloorBounds() const
+{
+	if (FloorMesh)
+	{
+		return FloorMesh->Bounds.GetBox();
+	}
+	return FBox(FVector(-500,-500,-10), FVector(500,500,10));
+}
+
 void AExFloorChunk::BeginPlay()
 {
 	Super::BeginPlay();
@@ -72,10 +81,16 @@ void AExFloorChunk::Tick(float DeltaTime)
 		UE_LOG(LogExFloorChunk, Verbose, TEXT("Chunk %s reached KillZ"), *GetName());
 		
 		// 델리게이트 브로드캐스트 (스포너에서 처리)
-		OnChunkReachedKillZ.Broadcast(this);
-		
-		// 풀로 반환
-		ReturnToPool();
+		// 스포너가 ReturnChunkToPool을 호출하므로, 여기서 중복 호출하지 않음
+		if (OnChunkReachedKillZ.IsBound())
+		{
+			OnChunkReachedKillZ.Broadcast(this);
+		}
+		else
+		{
+			// 바인딩된 스포너가 없는 경우에만 스스로 처리 (안전장치)
+			ReturnToPool();
+		}
 	}
 }
 
@@ -96,10 +111,16 @@ void AExFloorChunk::ActivateChunk(const FVector& SpawnLocation)
 	SetActorEnableCollision(true);
 	SetActorTickEnabled(true);
 	
-	// 렌더 상태 강제 갱신 (한 프레임 내 변경 시 씹힘 방지)
+	// 렌더 상태 강제 갱신
 	MarkComponentsRenderStateDirty();
 
-	UE_LOG(LogExFloorChunk, Log, TEXT("[%s] Chunk activated at %s"), *GetName(), *SpawnLocation.ToString());
+	UE_LOG(LogExFloorChunk, Warning, TEXT("[%s] ActivateChunk Called. Loc: %s, IsHidden: %d"), 
+		*GetName(), *SpawnLocation.ToString(), IsHidden());
+	if (FloorMesh)
+	{
+		UE_LOG(LogExFloorChunk, Warning, TEXT("  - Mesh HiddenInGame: %d, Visible: %d"), 
+			FloorMesh->bHiddenInGame, FloorMesh->GetVisibleFlag());
+	}
 }
 
 void AExFloorChunk::DeactivateChunk()

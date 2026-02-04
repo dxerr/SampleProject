@@ -36,6 +36,7 @@ public class ExCoreRuntime : ModuleRules
 				"GameplayAbilities",
 				"EnhancedInput",
 				"Mover",
+				"MotionWarping", // Centralized Warp Logic
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

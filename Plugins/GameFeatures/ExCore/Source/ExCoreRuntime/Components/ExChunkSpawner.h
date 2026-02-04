@@ -82,14 +82,32 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Spawner")
 	void ShiftWorld(float DeltaX);
 
+	/**
+	 * 청크 생성 시 이벤트 (장애물 매니저 등 외부 시스템 연동용)
+	 */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnChunkEvent, AExFloorChunk*, Chunk);
+	
+	UPROPERTY(BlueprintAssignable, Category = "Spawner")
+	FOnChunkEvent OnChunkSpawned;
+
+	UPROPERTY(BlueprintAssignable, Category = "Spawner")
+	FOnChunkEvent OnChunkDespawned;
+
 protected:
 	virtual void BeginPlay() override;
+
+	// --- 장애물 시스템 제거됨 (ExObstacleManager로 이관) ---
 
 	/**
 	 * 청크가 KillZ 도달 시 콜백
 	 */
 	UFUNCTION()
 	void OnChunkReachedKillZ(AExFloorChunk* Chunk);
+
+	// 논리적 배치 검사 (더 이상 사용 안함, ObstacleManager로 이동)
+	// bool CheckFeasibility(float CurrentSpawnX, float& OutNextSafeX);
+
+
 
 private:
 	/**

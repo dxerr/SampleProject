@@ -1,10 +1,10 @@
 #include "ExRunnerMovementComponent.h"
-#include "ExChunkSpawner.h" 
 #include "GameFramework/PawnMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "../GameModes/ExCoreGameMode.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "MoverDataModelTypes.h" // FCharacterDefaultInputs
+#include "MotionWarpingComponent.h" 
+#include "MoverDataModelTypes.h"
 
 UExRunnerMovementComponent::UExRunnerMovementComponent()
 {
@@ -38,10 +38,6 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 
 		// DirectionalIntent로 이동 입력 설정 (크기 1.0)
 		Inputs->SetMoveInput(EMoveInputType::DirectionalIntent, ForwardDir);
-
-		// 2. 점프 등 다른 입력 처리 (필요시 추가)
-		// 예: bool bJumpPressed = ...;
-		// Inputs->bIsJumpPressed = bJumpPressed;
 	}
 }
 
@@ -130,8 +126,10 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 	}
 
 	// 3. 강제 전진 (Forward Vector)
-	// CMC가 있으면 AddMovementInput (관성/충돌 처리 위임)
-	// 없으면 직접 이동 (강제 전진)
+	// [Treadmill Mode] 플레이어는 X축 고정, 월드(Floor)가 뒤로 이동함.
+	// 따라서 전진 이동 로직은 비활성화합니다.
+	
+	/*
 	if (bHasCMC)
 	{
 		TargetPawn->AddMovementInput(TargetPawn->GetActorForwardVector());
@@ -142,39 +140,12 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 		FVector DeltaMove = TargetPawn->GetActorForwardVector() * RunnerSpeed * DeltaTime;
 		TargetPawn->AddActorWorldOffset(DeltaMove, true);
 	}
+	*/
 
 	// 4. 레인 변경 처리
 	UpdateLanePosition(DeltaTime);
 
-	// 5. World Shift (Treadmill V2)
-	// 캐릭터가 이동한 만큼 세상(바닥)을 반대로 밀고, 캐릭터를 원점으로 복귀
-	if (TargetPawn)
-	{
-		// 5.1. 현재 위치 파악 (X축 이동량)
-		FVector CurrentLoc = TargetPawn->GetActorLocation();
-		float DeltaX = CurrentLoc.X; 
-
-		// 특정 임계치(예: 100단위) 이상 이동했을 때만 모아서 처리할 수도 있지만,
-		// 매 프레임 처리해야 가장 부드러움 (Jittering 방지)
-		if (FMath::Abs(DeltaX) > 1.0f) // KINDA_SMALL_NUMBER 대신 1.0f 정도면 충분
-		{
-			// 5.2. Spawner에게 세상 밀기 요청
-			// GM 변수가 상단에 선언되어 있으나(91행), 안전하게 다시 가져오거나 이름 변경하여 사용
-			if (AExCoreGameMode* CurrentGM = Cast<AExCoreGameMode>(UGameplayStatics::GetGameMode(this)))
-			{
-				// GameMode > ChunkSpawner 접근 권한 문제 해결 필요 (Getter 추가 or Friend)
-				// 일단 FindComponent로 접근 (임시)
-				if (UExChunkSpawner* Spawner = CurrentGM->FindComponentByClass<UExChunkSpawner>())
-				{
-					Spawner->ShiftWorld(-DeltaX);
-				}
-			}
-
-			// 5.3. 캐릭터 원위치 (X=0)
-			CurrentLoc.X = 0.f;
-			TargetPawn->SetActorLocation(CurrentLoc);
-		}
-	}
+	// [Debug] 상태 모니터링 코드 제거(불필요)
 }
 
 void UExRunnerMovementComponent::MoveLeft()
@@ -213,4 +184,20 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
 		FVector RightDir = TargetPawn->GetActorRightVector();
 		TargetPawn->AddActorWorldOffset(RightDir * DeltaY, true);
 	}
+}
+
+void UExRunnerMovementComponent::SetInteractionTarget(USceneComponent* TargetComponent, FName WarpTargetName)
+{
+	CurrentInteractionTarget = TargetComponent;
+	CurrentWarpTargetName = WarpTargetName;
+	
+	UE_LOG(LogTemp, Log, TEXT("ExRunnerMovement: Interaction Target Set to %s (Warp: %s)"), 
+		TargetComponent ? *TargetComponent->GetName() : TEXT("None"), 
+		*WarpTargetName.ToString());
+}
+
+void UExRunnerMovementComponent::ClearInteractionTarget()
+{
+	CurrentInteractionTarget = nullptr;
+	CurrentWarpTargetName = NAME_None;
 }

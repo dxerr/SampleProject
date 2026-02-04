@@ -48,20 +48,23 @@ public:
 	/**
 	 * 청크 활성화 (풀에서 꺼낼 때)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Runner")
+	UFUNCTION(BlueprintCallable, Category = "Floor")
 	void ActivateChunk(const FVector& SpawnLocation);
 
 	/**
 	 * 청크 비활성화 (풀로 반환)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Runner")
+	UFUNCTION(BlueprintCallable, Category = "Floor")
 	void DeactivateChunk();
 
 	/**
 	 * 풀로 반환 (게임모드에 알림)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Runner")
+	UFUNCTION(BlueprintCallable, Category = "Floor")
 	void ReturnToPool();
+
+	UFUNCTION(BlueprintPure, Category = "Floor")
+	FBox GetFloorBounds() const;
 
 	/**
 	 * 청크가 KillZ에 도달했을 때 호출되는 델리게이트

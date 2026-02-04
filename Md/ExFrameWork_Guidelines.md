@@ -82,6 +82,27 @@
       #include "ExMyClass.generated.h" // 반드시 마지막!
       ```
 
+### 1.10 생성자 및 초기화 규칙 (Constructors & Initialization)
+- **생성자 내 NewObject 금지**: 클래스 생성자(`Constructor`) 내부에서는 `NewObject<>`를 호출하거나 물리/렌더링 상태를 갱신하는 함수(`SetBoxExtent` 등)를 호출하면 안 됩니다.
+    - 대신 `CreateDefaultSubobject<>`를 사용하거나, 값만 설정하는 `Init...` 계열 함수(`InitBoxExtent` 등)를 사용해야 합니다.
+    - **이유**: 생성자 단계에서 불완전한 객체가 엔진 시스템(Physics 등)과 상호작용하려 하면 `NewObject with empty name` 등의 치명적 크래시가 발생합니다.
+
+
 ## 2. 문서 관리
+
+
+### 2.1 문서 폴더 구조 (Folder Structure)
+- **Architecture/**: 시스템 아키텍처, 분석 보고서, 설계 문서 등을 보관합니다.
+    - 예: `ExRunner_System_Architecture.md`, `Mover_System_Analysis.md`
+- **Guides/**: 사용 가이드, 튜토리얼, 셋업 가이드 등을 보관합니다.
+    - 예: `PythonBridge_Documentation.md`, `MotionMatching_Guide_KR.md`
+- **Bug/**: 개발 중 발생한 크리티컬 이슈와 해결 방법을 기록합니다.
+    - 파일명: `[이슈키워드]_[원인].md` (예: `Constructor_Crash_NewObject.md`)
+    - 비슷한 이슈 발생 시 우선 검색하여 해결책을 찾습니다.
+- **Legacy/**: 오래된 보고서, 더 이상 유효하지 않지만 참고용으로 남겨둔 문서들을 보관합니다.
+    - 예: `Legacy_Spawner_Implementation_Report.md`
+- **Root**: `ExFrameWork_Guidelines.md`와 같은 프로젝트 전반에 걸친 핵심 기준 문서는 루트에 위치합니다.
+
+### 2.2 관리 규칙
 - 이 파일(`ExFrameWork_Guidelines.md`)은 프로젝트의 살아있는 규칙 문서로 관리됩니다.
 - 새로운 규칙이나 변경 사항이 발생하면 즉시 이 문서를 업데이트해야 합니다.

@@ -1,4 +1,8 @@
-# 무한 러너 청크 스포너 구현 상세 보고서 (Infinite Runner Chunk Spawner Implementation Report)
+# [Legacy] 무한 러너 청크 스포너 구현 상세 보고서 (Infinite Runner Chunk Spawner Implementation Report)
+
+> **주의**: 이 문서는 2026-02-02 기준의 초기 구현 보고서입니다. 
+> 현재 시스템(World Shift, Obstacle Component 등)과 다른 내용이 포함되어 있을 수 있습니다. 
+> 최신 아키텍처는 **[ExRunner_System_Architecture.md](ExRunner_System_Architecture.md)** 문서를 참고하세요.
 
 **작성일**: 2026-02-02
 **작성자**: Antigravity (Assistant)
