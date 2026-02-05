@@ -277,7 +277,8 @@ void AExCoreGameMode::Tick(float DeltaTime)
 	TotalDistance += CurrentGameSpeed * DeltaTime;
 
 	// [World Shift] 청크들을 뒤로 이동 (Treadmill)
-	if (ChunkSpawner)
+	// 일시 정지 상태(등반 중)가 아닐 때만 이동
+	if (ChunkSpawner && !bTreadmillPaused)
 	{
 		ChunkSpawner->ShiftWorld(-CurrentGameSpeed * DeltaTime);
 	}
@@ -330,6 +331,17 @@ void AExCoreGameMode::StopRunnerGame()
 	
 	SetActorTickEnabled(false);
 
+	SetActorTickEnabled(false);
+
 	UE_LOG(LogExCoreGameMode, Log, TEXT("Runner Game Stopped - TotalDistance: %.2f"), TotalDistance);
+}
+
+void AExCoreGameMode::SetTreadmillPaused(bool bPaused)
+{
+	if (bTreadmillPaused != bPaused)
+	{
+		bTreadmillPaused = bPaused;
+		UE_LOG(LogExCoreGameMode, Log, TEXT("Treadmill Paused: %s (Climbing/Interaction)"), bPaused ? TEXT("True") : TEXT("False"));
+	}
 }
 

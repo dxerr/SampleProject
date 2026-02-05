@@ -72,6 +72,9 @@ void UExObstacleInteractionComponent::OnOverlapEnd(UPrimitiveComponent* Overlapp
 	if (!OtherActor || OtherActor == GetOwner()) return;
 
 	UExRunnerMovementComponent* RunnerMov = OtherActor->FindComponentByClass<UExRunnerMovementComponent>();
+	// [Revert: Premature Overlap Fix]
+	// Treadmill Pause 전략을 사용하므로, 장애물이 도망가지 않아 정상적으로 Overlap이 종료될 것임.
+	// 따라서 기존 로직대로 overlap end 시 타겟을 해제함.
 	if (RunnerMov)
 	{
 		RunnerMov->ClearInteractionTarget();

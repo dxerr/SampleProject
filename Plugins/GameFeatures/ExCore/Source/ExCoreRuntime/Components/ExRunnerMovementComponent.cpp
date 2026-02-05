@@ -230,6 +230,16 @@ void UExRunnerMovementComponent::SetInteractionTarget(USceneComponent* TargetCom
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[ExRunnerMovement] Failed to find MotionWarpingComponent on Owner!"));
 	}
+
+	// [Fix: Treadmill Pause Strategy]
+	// 등반 중에는 트레드밀을 멈춰서 동기화 문제와 조기 종료(Premature Overlap End) 문제를 원천 차단함.
+	if (UWorld* World = GetWorld())
+	{
+		if (AExCoreGameMode* GM = Cast<AExCoreGameMode>(World->GetAuthGameMode()))
+		{
+			GM->SetTreadmillPaused(true);
+		}
+	}
 }
 
 void UExRunnerMovementComponent::ClearInteractionTarget()
@@ -241,4 +251,14 @@ void UExRunnerMovementComponent::ClearInteractionTarget()
 
 	CurrentInteractionTarget = nullptr;
 	CurrentWarpTargetName = NAME_None;
+
+	// [Fix: Treadmill Pause Strategy]
+	// 등반 종료 시 트레드밀 재개
+	if (UWorld* World = GetWorld())
+	{
+		if (AExCoreGameMode* GM = Cast<AExCoreGameMode>(World->GetAuthGameMode()))
+		{
+			GM->SetTreadmillPaused(false);
+		}
+	}
 }

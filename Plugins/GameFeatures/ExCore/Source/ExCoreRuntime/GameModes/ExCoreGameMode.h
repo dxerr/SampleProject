@@ -117,6 +117,18 @@ public:
 	bool bRunnerModeEnabled = false;
 
 	/**
+	 * 트레드밀 일시 정지 여부 (장애물 등반 시 true)
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Runner")
+	bool bTreadmillPaused = false;
+
+	/**
+	 * 트레드밀 일시 정지 설정
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Runner")
+	void SetTreadmillPaused(bool bPaused);
+
+	/**
 	 * 현재 게임 속도 반환 (다른 액터에서 사용)
 	 */
 	UFUNCTION(BlueprintPure, Category = "Runner")
