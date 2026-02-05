@@ -1,6 +1,7 @@
 // Copyright ExFrameWork. All Rights Reserved.
 
 using UnrealBuildTool;
+using System.IO;
 
 public class ExCoreRuntime : ModuleRules
 {
@@ -10,17 +11,16 @@ public class ExCoreRuntime : ModuleRules
 
 		PublicIncludePaths.AddRange(
 			new string[] {
-				// ... add public include paths required here ...
+				// Path.Combine(ModuleDirectory, "ExCoreRuntime"), // Self
+				Path.Combine(ModuleDirectory, "GameModes"),
+				Path.Combine(ModuleDirectory, "Data"),
+				Path.Combine(ModuleDirectory, "Components"),
+				Path.Combine(ModuleDirectory, "Actors"),
 			}
 			);
 
 		PrivateIncludePaths.AddRange(
 			new string[] {
-				"ExCoreRuntime",
-				"ExCoreRuntime/GameModes",
-				"ExCoreRuntime/Data",
-				"ExCoreRuntime/Components",
-				"ExCoreRuntime/Actors",
 			}
 			);
 

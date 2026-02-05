@@ -7,8 +7,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
 #include "Components/SkeletalMeshComponent.h"
-#include "../Components/ExChunkSpawner.h"
-#include "../Components/ExObstacleManager.h"
+
 
 DEFINE_LOG_CATEGORY_STATIC(LogExCoreGameMode, Log, All);
 
@@ -17,9 +16,7 @@ AExCoreGameMode::AExCoreGameMode()
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.bStartWithTickEnabled = false; // bRunnerModeEnabled에 따라 활성화
 
-	// 청크 스포너 컴포넌트 생성
-	ChunkSpawner = CreateDefaultSubobject<UExChunkSpawner>(TEXT("ChunkSpawner"));
-	ObstacleManager = CreateDefaultSubobject<UExObstacleManager>(TEXT("ObstacleManager"));
+
 }
 
 void AExCoreGameMode::BeginPlay()
@@ -29,12 +26,7 @@ void AExCoreGameMode::BeginPlay()
 	UE_LOG(LogExCoreGameMode, Log, TEXT("ExCoreGameMode BeginPlay - SpawnDataAsset: %s"), 
 		SpawnDataAsset ? *SpawnDataAsset->GetName() : TEXT("None"));
 
-	// 러너 모드가 활성화되어 있으면 자동으로 시작
-	if (bRunnerModeEnabled)
-	{
-		StartRunnerGame();
-		UE_LOG(LogExCoreGameMode, Log, TEXT("Runner Game Auto-Started! Speed: %.2f"), CurrentGameSpeed);
-	}
+
 }
 
 void AExCoreGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
@@ -259,89 +251,9 @@ void AExCoreGameMode::ChangeVisualOverride(APawn* TargetPawn, int32 NewVisualInd
 	ApplyVisualOverride(TargetPawn, NewVisualClass);
 }
 
-// ========== 러너 게임 시스템 구현 ==========
-
 void AExCoreGameMode::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
-	if (!bRunnerModeEnabled)
-	{
-		return;
-	}
-
-	// 속도 가속
-	CurrentGameSpeed += SpeedAcceleration * DeltaTime;
-
-	// 이동 거리 누적 (Distance Matching용)
-	TotalDistance += CurrentGameSpeed * DeltaTime;
-
-	// [World Shift] 청크들을 뒤로 이동 (Treadmill)
-	// 일시 정지 상태(등반 중)가 아닐 때만 이동
-	if (ChunkSpawner && !bTreadmillPaused)
-	{
-		ChunkSpawner->ShiftWorld(-CurrentGameSpeed * DeltaTime);
-	}
-
-	UE_LOG(LogExCoreGameMode, Verbose, TEXT("Runner Tick - Speed: %.2f, Distance: %.2f"), 
-		CurrentGameSpeed, TotalDistance);
-}
-
-void AExCoreGameMode::StartRunnerGame()
-{
-	bRunnerModeEnabled = true;
-	CurrentGameSpeed = BaseGameSpeed;
-	TotalDistance = 0.f;
-	
-	SetActorTickEnabled(true);
-
-	// 스포너 초기화
-	if (ChunkSpawner)
-	{
-		if (ObstacleManager)
-		{
-			ObstacleManager->BindToSpawner(ChunkSpawner);
-		}
-
-		ChunkSpawner->InitializeSpawner();
-		UE_LOG(LogExCoreGameMode, Log, TEXT("ExChunkSpawner initialized."));
-	}
-	else
-	{
-		// 혹시나 블루프린트에서 제거했거나 실패했을 경우 동적 검색
-		UExChunkSpawner* ComponentSpawner = GetComponentByClass<UExChunkSpawner>();
-		if (ComponentSpawner)
-		{
-			ComponentSpawner->InitializeSpawner();
-			UE_LOG(LogExCoreGameMode, Log, TEXT("ExChunkSpawner component found dynamically."));
-		}
-		else
-		{
-			UE_LOG(LogExCoreGameMode, Warning, TEXT("ExChunkSpawner component NOT found!"));
-		}
-	}
-
-	UE_LOG(LogExCoreGameMode, Log, TEXT("Runner Game Started - BaseSpeed: %.2f"), BaseGameSpeed);
-}
-
-void AExCoreGameMode::StopRunnerGame()
-{
-	bRunnerModeEnabled = false;
-	CurrentGameSpeed = 0.f;
-	
-	SetActorTickEnabled(false);
-
-	SetActorTickEnabled(false);
-
-	UE_LOG(LogExCoreGameMode, Log, TEXT("Runner Game Stopped - TotalDistance: %.2f"), TotalDistance);
-}
-
-void AExCoreGameMode::SetTreadmillPaused(bool bPaused)
-{
-	if (bTreadmillPaused != bPaused)
-	{
-		bTreadmillPaused = bPaused;
-		UE_LOG(LogExCoreGameMode, Log, TEXT("Treadmill Paused: %s (Climbing/Interaction)"), bPaused ? TEXT("True") : TEXT("False"));
-	}
+	// Basic implementation
 }
 

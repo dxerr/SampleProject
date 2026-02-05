@@ -97,6 +97,10 @@
 		{
 			"Name": "MotionTrajectory",
 			"Enabled": true
+		},
+		{
+			"Name": "ExRunnerPlay",
+			"Enabled": true
 		}
 	],
 	"EpicSampleNameHash": "1673045636"
