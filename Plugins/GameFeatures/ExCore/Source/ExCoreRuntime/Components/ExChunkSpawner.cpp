@@ -143,6 +143,12 @@ void UExChunkSpawner::ShiftWorld(float DeltaX)
 	
 	// 스폰 위치 업데이트 (더 이상 사용 안함 - Relative 방식)
 	// NextSpawnX += DeltaX;
+
+	// 외부 시스템(장애물 매니저 등)에 시프트 알림
+	if (OnWorldShifted.IsBound())
+	{
+		OnWorldShifted.Broadcast(DeltaX);
+	}
 }
 
 void UExChunkSpawner::OnChunkReachedKillZ(AExFloorChunk* Chunk)

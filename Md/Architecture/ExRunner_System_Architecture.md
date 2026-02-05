@@ -99,3 +99,15 @@ ExRunner는 **무한 러너(Infinite Runner)** 게임 플레이를 지원하기 
 ### 7.3 청크 즉시 소실 (Double Deactivation)
 *   **문제**: `Tick` 함수 내에서 `OnChunkReachedKillZ` 델리게이트를 송출한 뒤, 연이어 `ReturnToPool`을 호출함. 스포너가 델리게이트를 받아 즉시 재활용(위치 이동 및 활성화)을 마쳤는데, 직후 `Tick`의 남은 로직이 실행되어 **방금 활성화된 청크를 다시 끔**.
 *   **해결**: `Tick` 내 중복 호출 로직(`ReturnToPool`) 제거. 생명주기 제어권을 스포너(Delegate)에게 전적으로 위임.
+
+### 7.4 장애물 생성 중단 (Coordinate Drift)
+*   **문제**: 트레드밀 시스템(`ShiftWorld`)으로 인해 월드 좌표가 계속 0 근처로 재설정(-DeltaX 이동)되지만, `ExObstacleManager`가 내부적으로 기억하는 `LastObstacleSafeEndX`(안전 생성 지점) 변수는 이 이동을 반영하지 않음. 시간이 지나면 안전 지점 좌표가 수만 단위로 커져서, 현재 청크 범위(0~1000)를 벗어난 것으로 판단, 생성을 영구 중단함.
+*   **해결**:
+    *   **이벤트 동기화**: `UExChunkSpawner`에 `OnWorldShifted` 델리게이트 추가.
+    *   **좌표 보정**: `ExObstacleManager`가 이를 구독하여, 월드 이동량(`DeltaX`)만큼 `LastObstacleSafeEndX` 변수도 함께 이동(감소)시킴.
+
+### 7.5 투명 장애물 (Component Visibility Reset)
+*   **문제**: 장애물 액터를 풀링할 때 `SetActorHiddenInGame(false)`를 호출해도, 내부에 포함된 `StaticMeshComponent` 등의 렌더링 상태가 즉시 갱신되지 않아 게임 내에서 투명하게 보이는 현상.
+*   **해결**:
+    *   **강제 초기화**: `ActivateObstacle` 함수 구현. 액터 내부의 모든 `UPrimitiveComponent`를 순회하며 `SetVisibility(true, true)`를 강제 호출.
+    *   **FIFO 풀링**: 장애물 풀 역시 **FIFO(선입선출)**로 변경하여 재사용 대기 시간을 확보.

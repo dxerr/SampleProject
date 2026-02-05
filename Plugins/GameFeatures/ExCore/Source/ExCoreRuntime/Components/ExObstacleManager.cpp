@@ -29,8 +29,21 @@ void UExObstacleManager::BindToSpawner(UExChunkSpawner* Spawner)
 	{
 		Spawner->OnChunkSpawned.AddDynamic(this, &UExObstacleManager::OnChunkSpawned);
 		Spawner->OnChunkDespawned.AddDynamic(this, &UExObstacleManager::OnChunkDespawned);
+		Spawner->OnWorldShifted.AddDynamic(this, &UExObstacleManager::OnWorldShifted);
 		
 		UE_LOG(LogExObstacleManager, Log, TEXT("Bound to ChunkSpawner: %s"), *Spawner->GetName());
+	}
+}
+
+void UExObstacleManager::OnWorldShifted(float DeltaX)
+{
+	// 월드 시프트에 맞춰 좌표 보정
+	// LastObstacleSafeEndX는 월드 좌표이므로, 모든 액터가 이동한 만큼 함께 이동해야 함.
+	// Spawner::ShiftWorld에서 DeltaX만큼 액터를 이동시키므로(Current += Delta), 여기서도 더해줌.
+	if (LastObstacleSafeEndX > -50000.f) // 초기값(-99999)이 아닐 때만
+	{
+		LastObstacleSafeEndX += DeltaX;
+		UE_LOG(LogExObstacleManager, Verbose, TEXT("World Shifted by %.2f. New SafeEnd: %.2f"), DeltaX, LastObstacleSafeEndX);
 	}
 }
 
@@ -181,6 +194,39 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 	}
 }
 
+void UExObstacleManager::ActivateObstacle(AActor* Obstacle)
+{
+	if (!IsValid(Obstacle)) return;
+
+	Obstacle->SetActorHiddenInGame(false);
+	Obstacle->SetActorEnableCollision(true);
+	Obstacle->SetActorTickEnabled(true);
+
+	// 모든 Primitive Component (Mesh, Collision 등)의 가시성 강제 초기화
+	TArray<UPrimitiveComponent*> Comps;
+	Obstacle->GetComponents<UPrimitiveComponent>(Comps);
+	for (UPrimitiveComponent* Comp : Comps)
+	{
+		if (Comp)
+		{
+			Comp->SetHiddenInGame(false);
+			Comp->SetVisibility(true, true);
+		}
+	}
+	
+	Obstacle->MarkComponentsRenderStateDirty();
+}
+
+void UExObstacleManager::DeactivateObstacle(AActor* Obstacle)
+{
+	if (!IsValid(Obstacle)) return;
+
+	Obstacle->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+	Obstacle->SetActorHiddenInGame(true);
+	Obstacle->SetActorEnableCollision(false);
+	Obstacle->SetActorTickEnabled(false);
+}
+
 AActor* UExObstacleManager::GetObstacleFromPool(UClass* ObstacleClass)
 {
 	if (!ObstacleClass) return nullptr;
@@ -188,14 +234,17 @@ AActor* UExObstacleManager::GetObstacleFromPool(UClass* ObstacleClass)
 	if (ObstaclePool.Contains(ObstacleClass))
 	{
 		TArray<AActor*>& Pool = ObstaclePool[ObstacleClass];
+		
+		// FIFO (First-In First-Out) 방식 적용
+		// 오래된(먼저 반환된) 객체부터 사용하여 상태 안정화 시간 확보
 		if (Pool.Num() > 0)
 		{
-			AActor* PooledActor = Pool.Pop();
+			AActor* PooledActor = Pool[0];
+			Pool.RemoveAt(0); // Pop() 대신 RemoveAt(0) 사용
+
 			if (IsValid(PooledActor))
 			{
-				PooledActor->SetActorHiddenInGame(false);
-				PooledActor->SetActorEnableCollision(true);
-				PooledActor->SetActorTickEnabled(true);
+				ActivateObstacle(PooledActor);
 				return PooledActor;
 			}
 		}
@@ -213,10 +262,7 @@ void UExObstacleManager::ReturnObstacleToPool(AActor* Obstacle)
 {
 	if (!IsValid(Obstacle)) return;
 
-	Obstacle->SetActorHiddenInGame(true);
-	Obstacle->SetActorEnableCollision(false);
-	Obstacle->SetActorTickEnabled(false);
-	Obstacle->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+	DeactivateObstacle(Obstacle);
 
 	UClass* Key = Obstacle->GetClass();
 	

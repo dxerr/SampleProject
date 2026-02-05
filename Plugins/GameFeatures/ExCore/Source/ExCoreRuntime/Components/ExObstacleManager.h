@@ -50,6 +50,12 @@ protected:
 	UFUNCTION()
 	void OnChunkDespawned(AExFloorChunk* Chunk);
 
+	/**
+	 * 월드 시프트 이벤트 핸들러 (좌표 보정)
+	 */
+	UFUNCTION()
+	void OnWorldShifted(float DeltaX);
+
 protected:
 	// 장애물 풀: 클래스별로 스택 관리
 	// UPROPERTY가 없어도 World에 Spawn된 Actor는 GC되지 않음 (Level이 참조)
@@ -61,6 +67,10 @@ protected:
 	// 내부 함수들
 	AActor* GetObstacleFromPool(UClass* ObstacleClass);
 	void ReturnObstacleToPool(AActor* Obstacle);
+
+	void ActivateObstacle(AActor* Obstacle);
+	void DeactivateObstacle(AActor* Obstacle);
+
 	void SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float ChunkStartLocalX, float ChunkLength);
 	bool CheckFeasibility(float CurrentSpawnX, float& OutNextSafeX);
 

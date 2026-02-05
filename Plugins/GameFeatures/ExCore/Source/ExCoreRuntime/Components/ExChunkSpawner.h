@@ -93,6 +93,14 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Spawner")
 	FOnChunkEvent OnChunkDespawned;
 
+	/**
+	 * 월드 시프트(좌표 이동) 발생 시 이벤트 (DeltaX 만큼 이동)
+	 */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWorldShifted, float, DeltaX);
+
+	UPROPERTY(BlueprintAssignable, Category = "Spawner")
+	FOnWorldShifted OnWorldShifted;
+
 protected:
 	virtual void BeginPlay() override;
 
