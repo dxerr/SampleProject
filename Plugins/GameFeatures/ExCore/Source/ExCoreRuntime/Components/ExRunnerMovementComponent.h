@@ -83,4 +83,8 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner|Interaction")
 	FName CurrentWarpTargetName;
+
+private:
+	/** Motion Warping Component Cache */
+	TWeakObjectPtr<class UMotionWarpingComponent> MotionWarpingComp;
 };

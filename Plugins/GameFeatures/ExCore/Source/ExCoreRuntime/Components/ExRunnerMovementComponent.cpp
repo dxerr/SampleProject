@@ -188,16 +188,57 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
 
 void UExRunnerMovementComponent::SetInteractionTarget(USceneComponent* TargetComponent, FName WarpTargetName)
 {
+	if (!TargetComponent) return;
+
 	CurrentInteractionTarget = TargetComponent;
 	CurrentWarpTargetName = WarpTargetName;
 	
 	UE_LOG(LogTemp, Log, TEXT("ExRunnerMovement: Interaction Target Set to %s (Warp: %s)"), 
-		TargetComponent ? *TargetComponent->GetName() : TEXT("None"), 
+		*TargetComponent->GetName(), 
 		*WarpTargetName.ToString());
+
+	// Motion Warping Target 등록 (bFollowComponent=true로 설정하여 움직이는 장애물 추적)
+	if (!MotionWarpingComp.IsValid())
+	{
+		if (TargetPawn)
+		{
+			MotionWarpingComp = TargetPawn->FindComponentByClass<UMotionWarpingComponent>();
+		}
+		else if (AActor* Owner = GetOwner())
+		{
+			// 혹시 TargetPawn이 아직 세팅 안됐을 경우 Owner 검색
+			MotionWarpingComp = Owner->FindComponentByClass<UMotionWarpingComponent>();
+		}
+	}
+
+	if (MotionWarpingComp.IsValid())
+	{
+		// 중요: bFollowComponent = true
+		// 이렇게 하면 MotionWarpingComponent가 Tick마다 이 컴포넌트의 위치를 추적하여 Warp Target을 자동 갱신함.
+		// Treadmill System으로 장애물이 뒤로 밀려나도, Warp 위치는 Obstacle 기준이므로 정확히 동기화됨.
+		MotionWarpingComp->AddOrUpdateWarpTargetFromComponent(
+			WarpTargetName, 
+			TargetComponent, 
+			NAME_None, 
+			true,
+			EWarpTargetLocationOffsetDirection::TargetsForwardVector,
+			FVector::ZeroVector,
+			FRotator::ZeroRotator
+		);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ExRunnerMovement] Failed to find MotionWarpingComponent on Owner!"));
+	}
 }
 
 void UExRunnerMovementComponent::ClearInteractionTarget()
 {
+	if (MotionWarpingComp.IsValid() && !CurrentWarpTargetName.IsNone())
+	{
+		MotionWarpingComp->RemoveWarpTarget(CurrentWarpTargetName);
+	}
+
 	CurrentInteractionTarget = nullptr;
 	CurrentWarpTargetName = NAME_None;
 }
