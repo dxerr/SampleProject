@@ -1,4 +1,10 @@
-// Copyright ExFrameWork. All Rights Reserved.
+/**
+ * @file ExChunkSpawner.h
+ * @brief 청크 스폰 및 오브젝트 풀 관리 컴포넌트
+ * @details 러너 게임에서 무한 맵 생성을 위한 청크 풀링 시스템
+ * 
+ * Copyright ExFrameWork. All Rights Reserved.
+ */
 
 #pragma once
 
@@ -60,12 +66,14 @@ public:
 
 	/**
 	 * 새 청크를 다음 위치에 스폰
+	 * @return 스폰된 청크, 실패 시 nullptr
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Spawner")
 	AExFloorChunk* SpawnNextChunk();
 
 	/**
 	 * 청크를 풀로 반환
+	 * @param Chunk 반환할 청크
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Spawner")
 	void ReturnChunkToPool(AExFloorChunk* Chunk);
@@ -78,6 +86,7 @@ public:
 
 	/**
 	 * 모든 활성 청크를 X축으로 이동 (World Shift)
+	 * @param DeltaX 이동할 X 거리
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Spawner")
 	void ShiftWorld(float DeltaX);
@@ -104,31 +113,27 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
-	// --- 장애물 시스템 제거됨 (ExObstacleManager로 이관) ---
-
 	/**
 	 * 청크가 KillZ 도달 시 콜백
+	 * @param Chunk KillZ에 도달한 청크
 	 */
 	UFUNCTION()
 	void OnChunkReachedKillZ(AExFloorChunk* Chunk);
 
-	// 논리적 배치 검사 (더 이상 사용 안함, ObstacleManager로 이동)
-	// bool CheckFeasibility(float CurrentSpawnX, float& OutNextSafeX);
-
-
-
 private:
 	/**
 	 * 오브젝트 풀 (비활성 청크)
+	 * FIFO 방식: Insert(0)으로 앞에 추가, Pop()으로 뒤에서 꺼냄
+	 * 반환된 청크가 최소 1사이클 이상 대기 후 재사용되어 즉시 재사용 버그 방지
 	 */
 	UPROPERTY()
-	TArray<AExFloorChunk*> ChunkPool;
+	TArray<TObjectPtr<AExFloorChunk>> ChunkPool;
 
 	/**
 	 * 활성 청크 목록
 	 */
 	UPROPERTY()
-	TArray<AExFloorChunk*> ActiveChunks;
+	TArray<TObjectPtr<AExFloorChunk>> ActiveChunks;
 
 	/**
 	 * 다음 청크 스폰 위치
@@ -137,11 +142,13 @@ private:
 
 	/**
 	 * 풀에서 청크 가져오기 (없으면 새로 생성)
+	 * @return 풀에서 가져온 청크 또는 새로 생성된 청크
 	 */
 	AExFloorChunk* GetChunkFromPool();
 
 	/**
 	 * 새 청크 생성
+	 * @return 새로 생성된 청크, 실패 시 nullptr
 	 */
 	AExFloorChunk* CreateNewChunk();
 };

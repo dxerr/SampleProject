@@ -1,17 +1,17 @@
-
-
-
-// Copyright ExFrameWork. All Rights Reserved.
+/**
+ * @file ExChunkSpawner.cpp
+ * @brief 청크 스폰 및 오브젝트 풀 관리 컴포넌트 구현
+ * @details 러너 게임에서 무한 맵 생성을 위한 청크 풀링 시스템
+ * 
+ * Copyright ExFrameWork. All Rights Reserved.
+ */
 
 #include "ExChunkSpawner.h"
 #include "../Actors/ExFloorChunk.h"
 #include "Kismet/GameplayStatics.h"
-
-// ... existing code ...
-
 #include "Engine/World.h"
 #include "EngineUtils.h"
-#include "Components/BoxComponent.h" // For InteractionComponent Setup
+#include "Components/BoxComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExChunkSpawner, Log, All);
 
@@ -54,6 +54,12 @@ void UExChunkSpawner::InitializeSpawner()
 
 AExFloorChunk* UExChunkSpawner::SpawnNextChunk()
 {
+	// 서버 권한 체크 (멀티플레이어 환경 고려)
+	if (GetOwner() && !GetOwner()->HasAuthority())
+	{
+		return nullptr;
+	}
+
 	AExFloorChunk* Chunk = GetChunkFromPool();
 	if (!Chunk)
 	{
@@ -70,22 +76,15 @@ AExFloorChunk* UExChunkSpawner::SpawnNextChunk()
 			SpawnX = LastChunk->GetActorLocation().X + ChunkSpacing;
 		}
 	}
-	// 만약 활성 청크가 없다면 SpawnStartX(0)부터 시작 (혹은 NextSpawnX 유지)
-	// 여기서는 Reset 개념으로 SpawnStartX 사용 혹은 기존 NextSpawnX 사용 가능
-	// 하지만 Treadmill 특성상 "이어지는" 것이 중요하므로 LastChunk 기반이 확실함.
 	
-	// 청크 활성화 (ActivateChunk 메서드 사용으로 메시 가시성 등 초기화 보장)
+	// 청크 활성화
 	FVector SpawnLocation(SpawnX, 0.f, 0.f);
 	Chunk->ActivateChunk(SpawnLocation);
 	
 	// 활성 목록에 추가
 	ActiveChunks.Add(Chunk);
 	
-	// NextSpawnX 변수는 이제 "다음"을 위해 누적할 필요 없이, 
-	// 항상 리스트 기반으로 계산하므로 업데이트 로직 제거
-	// NextSpawnX += ChunkSpacing; (Removed)
-	
-	// 델리게이트를 통해 청크 생성 알림 (장애물 배치 등)
+	// 델리게이트를 통해 청크 생성 알림
 	if (OnChunkSpawned.IsBound())
 	{
 		OnChunkSpawned.Broadcast(Chunk);
@@ -101,20 +100,28 @@ void UExChunkSpawner::ReturnChunkToPool(AExFloorChunk* Chunk)
 		return;
 	}
 	
-	// 청크 비활성화 (DeactivateChunk 메서드 사용)
+	// 서버 권한 체크 (멀티플레이어 환경 고려)
+	if (GetOwner() && !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	// 청크 비활성화
 	Chunk->DeactivateChunk();
 	
 	// 활성 목록에서 제거
 	ActiveChunks.Remove(Chunk);
 	
-	// 소멸 알림 (장애물 정리 등)
+	// 소멸 알림
 	if (OnChunkDespawned.IsBound())
 	{
 		OnChunkDespawned.Broadcast(Chunk);
 	}
 
-	// 풀에 반환
-	ChunkPool.Add(Chunk);
+	// 풀에 반환 (앞에 삽입 - FIFO 방식)
+	// Pop()은 뒤에서 꺼내므로, 앞에 삽입하면 최소 1사이클 딜레이 확보
+	// 이를 통해 방금 반환된 청크가 즉시 재사용되는 것을 방지
+	ChunkPool.Insert(Chunk, 0);
 }
 
 void UExChunkSpawner::ClearAllChunks()
@@ -131,6 +138,12 @@ void UExChunkSpawner::ClearAllChunks()
 
 void UExChunkSpawner::ShiftWorld(float DeltaX)
 {
+	// 서버 권한 체크
+	if (GetOwner() && !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
 	for (AExFloorChunk* Chunk : ActiveChunks)
 	{
 		if (IsValid(Chunk))
@@ -140,11 +153,8 @@ void UExChunkSpawner::ShiftWorld(float DeltaX)
 			Chunk->SetActorLocation(CurrentLocation);
 		}
 	}
-	
-	// 스폰 위치 업데이트 (더 이상 사용 안함 - Relative 방식)
-	// NextSpawnX += DeltaX;
 
-	// 외부 시스템(장애물 매니저 등)에 시프트 알림
+	// 외부 시스템에 시프트 알림
 	if (OnWorldShifted.IsBound())
 	{
 		OnWorldShifted.Broadcast(DeltaX);
@@ -155,23 +165,25 @@ void UExChunkSpawner::OnChunkReachedKillZ(AExFloorChunk* Chunk)
 {
 	if (IsValid(Chunk))
 	{
-		// 청크를 풀로 반환
-		ReturnChunkToPool(Chunk);
+		// [Fix] 순서 변경: 먼저 스폰 → 그 다음 반환
+		// 이렇게 하면 삭제된 청크가 즉시 재사용되는 것을 방지
 		
-		// 무한 맵 유지를 위해 새 청크 생성
+		// 1️⃣ 먼저 새 청크 스폰 (풀에서 다른 청크 사용)
 		SpawnNextChunk();
+		
+		// 2️⃣ 그 다음 삭제된 청크를 풀로 반환
+		ReturnChunkToPool(Chunk);
 	}
 }
 
 AExFloorChunk* UExChunkSpawner::GetChunkFromPool()
 {
-	// FIFO (First-In, First-Out) 방식으로 변경
-	// 가장 오래된(먼저 들어온) 청크를 재사용하여, 렌더링/물리 상태 안정화 시간 확보
+	// FIFO (First-In, First-Out) 방식
+	// Insert(0)으로 앞에 추가, Pop()으로 뒤에서 제거
+	// 이를 통해 반환된 청크가 최소 1사이클 이상 대기 후 재사용됨
 	if (ChunkPool.Num() > 0)
 	{
-		// 0번 인덱스(가장 오래된 녀석) 가져오기
-		AExFloorChunk* Chunk = ChunkPool[0];
-		ChunkPool.RemoveAt(0); // 앞쪽 제거 (Shift 발생하지만 풀 크기가 작으므로 무시 가능)
+		AExFloorChunk* Chunk = ChunkPool.Pop();
 		
 		if (IsValid(Chunk))
 		{
@@ -204,7 +216,4 @@ AExFloorChunk* UExChunkSpawner::CreateNewChunk()
 	
 	return NewChunk;
 }
-
-// --- Obstacle System Implementations (Moved to ExObstacleManager) ---
-// See ExObstacleManager.cpp for implementation details.
 
