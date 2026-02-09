@@ -185,7 +185,7 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 		float RunSpeed = 600.f;
 		if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(UGameplayStatics::GetGameMode(this)))
 		{
-			RunSpeed = GM->GetCurrentGameSpeed();
+			RunSpeed = GM->GetCurrentTreadmillSpeed();
 		}
 		float RecoveryDist = RunSpeed * SelectedDef->RecoveryTime;
 		LastObstacleSafeEndX = SpawnWorldX + (ObsLen * 0.5f) + RecoveryDist; 

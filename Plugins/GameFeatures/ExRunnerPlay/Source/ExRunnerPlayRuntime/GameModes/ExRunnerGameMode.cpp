@@ -6,6 +6,8 @@
 #include "ExGameplayTags.h"
 #include "ExGameplayEventSubsystem.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogExRunnerPlay, Log, All);
+
 AExRunnerGameMode::AExRunnerGameMode()
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -26,7 +28,7 @@ void AExRunnerGameMode::BeginPlay()
 	{
 		EventSub->GetEventDelegate(TAG_Ex_Action_Climb_Start).AddDynamic(this, &AExRunnerGameMode::OnClimbStart);
 		EventSub->GetEventDelegate(TAG_Ex_Action_Climb_End).AddDynamic(this, &AExRunnerGameMode::OnClimbEnd);
-		UE_LOG(LogTemp, Log, TEXT("ExRunnerGameMode: Registered GameplayTag event listeners"));
+		UE_LOG(LogExRunnerPlay, Log, TEXT("ExRunnerGameMode: Registered GameplayTag event listeners"));
 	}
 
 	if (bRunnerModeEnabled)
@@ -37,7 +39,7 @@ void AExRunnerGameMode::BeginPlay()
 
 void AExRunnerGameMode::StartRunnerGame()
 {
-	CurrentGameSpeed = BaseGameSpeed;
+	CurrentTreadmillSpeed = BaseTreadmillSpeed;
 	TotalDistance = 0.f;
 	bTreadmillPaused = false;
 
@@ -52,15 +54,15 @@ void AExRunnerGameMode::StartRunnerGame()
 		ObstacleManager->BindToSpawner(ChunkSpawner);
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("ExRunnerGameMode: Runner Game Started. Speed: %f"), CurrentGameSpeed);
+	UE_LOG(LogExRunnerPlay, Log, TEXT("ExRunnerGameMode: Runner Game Started. TreadmillSpeed: %f"), CurrentTreadmillSpeed);
 }
 
 void AExRunnerGameMode::StopRunnerGame()
 {
-	CurrentGameSpeed = 0.f;
+	CurrentTreadmillSpeed = 0.f;
 	bRunnerModeEnabled = false;
 	
-	UE_LOG(LogTemp, Log, TEXT("ExRunnerGameMode: Runner Game Stopped."));
+	UE_LOG(LogExRunnerPlay, Log, TEXT("ExRunnerGameMode: Runner Game Stopped."));
 }
 
 void AExRunnerGameMode::SetTreadmillPaused(bool bPaused)
@@ -68,7 +70,7 @@ void AExRunnerGameMode::SetTreadmillPaused(bool bPaused)
 	if (bTreadmillPaused != bPaused)
 	{
 		bTreadmillPaused = bPaused;
-		UE_LOG(LogTemp, Log, TEXT("Treadmill Paused: %s (Climbing/Interaction)"), bPaused ? TEXT("True") : TEXT("False"));
+		UE_LOG(LogExRunnerPlay, Log, TEXT("Treadmill Paused: %s (Climbing/Interaction)"), bPaused ? TEXT("True") : TEXT("False"));
 	}
 }
 
@@ -82,36 +84,35 @@ void AExRunnerGameMode::Tick(float DeltaTime)
 	}
 
 	// [Speed] 시간 경과에 따른 속도 증가
-	if (!bTreadmillPaused) // 멈춰있지 않을 때만 가속? 혹은 멈춰도 시간은 가나? 보통 멈추면 가속도 멈춤
+	if (!bTreadmillPaused)
 	{
-		CurrentGameSpeed += SpeedAcceleration * DeltaTime;
+		CurrentTreadmillSpeed += TreadmillAcceleration * DeltaTime;
 	}
 
 	// [World Shift] 청크들을 뒤로 이동 (Treadmill)
-	// 일시 정지 상태(등반 중)가 아닐 때만 이동
 	if (ChunkSpawner && !bTreadmillPaused)
 	{
-		ChunkSpawner->ShiftWorld(-CurrentGameSpeed * DeltaTime);
+		ChunkSpawner->ShiftWorld(-CurrentTreadmillSpeed * DeltaTime);
 	}
 
 	// [Distance] 거리 누적
 	if (!bTreadmillPaused)
 	{
-		TotalDistance += CurrentGameSpeed * DeltaTime;
+		TotalDistance += CurrentTreadmillSpeed * DeltaTime;
 	}
 }
 
 // ========== GameplayTag Event Callbacks ==========
 void AExRunnerGameMode::OnClimbStart(FGameplayTag EventTag, const FExGameplayEventPayload& Payload)
 {
-	UE_LOG(LogTemp, Log, TEXT("ExRunnerGameMode: OnClimbStart received from %s"), 
+	UE_LOG(LogExRunnerPlay, Log, TEXT("ExRunnerGameMode: OnClimbStart received from %s"), 
 		Payload.Instigator ? *Payload.Instigator->GetName() : TEXT("Unknown"));
 	SetTreadmillPaused(true);
 }
 
 void AExRunnerGameMode::OnClimbEnd(FGameplayTag EventTag, const FExGameplayEventPayload& Payload)
 {
-	UE_LOG(LogTemp, Log, TEXT("ExRunnerGameMode: OnClimbEnd received from %s"), 
+	UE_LOG(LogExRunnerPlay, Log, TEXT("ExRunnerGameMode: OnClimbEnd received from %s"), 
 		Payload.Instigator ? *Payload.Instigator->GetName() : TEXT("Unknown"));
 	SetTreadmillPaused(false);
 }

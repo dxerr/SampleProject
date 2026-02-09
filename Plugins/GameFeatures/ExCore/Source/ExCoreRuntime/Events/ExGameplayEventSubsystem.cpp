@@ -38,6 +38,7 @@ void UExGameplayEventSubsystem::BroadcastEventSimple(FGameplayTag EventTag, UObj
 
 FExGameplayEventDelegate& UExGameplayEventSubsystem::GetEventDelegate(FGameplayTag EventTag)
 {
+	UE_LOG(LogExGameplayEvent, Log, TEXT("GetEventDelegate: Registering listener for tag: %s"), *EventTag.ToString());
 	return EventDelegates.FindOrAdd(EventTag);
 }
 

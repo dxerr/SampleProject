@@ -66,7 +66,7 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 
 			if (TargetPawn)
 			{
-				UE_LOG(LogTemp, Log, TEXT("ExRunnerMovementComponent: Found Target Pawn: %s"), *TargetPawn->GetName());
+				UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovementComponent: Found Target Pawn: %s"), *TargetPawn->GetName());
 			}
 		}
 
@@ -79,54 +79,15 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 			if (LogTimer > 2.0f)
 			{
 				LogTimer = 0.0f;
-				UE_LOG(LogTemp, Warning, TEXT("[RunnerDebug] Waiting for TargetPawn... Owner: %s (AttachParent is NULL?)"), 
+				UE_LOG(LogExRunnerMovement, Warning, TEXT("[RunnerDebug] Waiting for TargetPawn... Owner: %s (AttachParent is NULL?)"), 
 					GetOwner() ? *GetOwner()->GetName() : TEXT("None"));
 			}
-			return;
+			return;  // TargetPawn 없으면 스킵
 		}
 	}
 
-	// 1. 게임 모드에서 속도 가져오기
-	float RunnerSpeed = 600.f;
-	AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(UGameplayStatics::GetGameMode(this));
-	if (GM)
-	{
-		RunnerSpeed = GM->GetCurrentGameSpeed();
-	}
-
-	// 2. 캐릭터 MaxWalkSpeed 동기화 (CMC가 있는 경우)
-	bool bHasCMC = false;
-	if (TargetPawn)
-	{
-		// 1차 시도: 표준 인터페이스
-		UPawnMovementComponent* MovementComp = TargetPawn->GetMovementComponent();
-		
-		// 1. CharacterMovementComponent 확인
-		UCharacterMovementComponent* CMC = Cast<UCharacterMovementComponent>(MovementComp);
-		
-		// 2차 시도: 컴포넌트 직접 검색
-		if (!CMC) CMC = TargetPawn->FindComponentByClass<UCharacterMovementComponent>();
-
-		if (CMC)
-		{
-			CMC->MaxWalkSpeed = RunnerSpeed;
-			bHasCMC = true;
-		}
-		else
-		{
-			// CMC를 못 찾으면 가끔 경고
-			static float CMCCheckTimer = 0.0f;
-			CMCCheckTimer += DeltaTime;
-			if (CMCCheckTimer > 3.0f)
-			{
-				CMCCheckTimer = 0.0f;
-				
-				FString PawnClassName = TargetPawn->GetClass()->GetName();
-				// 보유 컴포넌트 리스트 덤프 (다시 확인용)
-				UE_LOG(LogTemp, Warning, TEXT("[RunnerDebug] Failed to find CMC on %s! Class: %s"), *TargetPawn->GetName(), *PawnClassName);
-			}
-		}
-	}
+	// [NOTE] 캐릭터 MaxWalkSpeed는 ABP 또는 상태 시스템에서 자체 관리됨
+	// 트레드밀 속도와 분리되어 별도 설정 불필요
 
 	// 3. 강제 전진 (Forward Vector)
 	// [Treadmill Mode] 플레이어는 X축 고정, 월드(Floor)가 뒤로 이동함.
@@ -250,7 +211,7 @@ void UExRunnerMovementComponent::SetInteractionTarget(USceneComponent* TargetCom
 	CurrentInteractionTarget = TargetComponent;
 	CurrentWarpTargetName = WarpTargetName;
 	
-	UE_LOG(LogTemp, Log, TEXT("ExRunnerMovement: Interaction Target Set to %s (Warp: %s)"), 
+	UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: Interaction Target Set to %s (Warp: %s)"), 
 		*TargetComponent->GetName(), 
 		*WarpTargetName.ToString());
 
@@ -285,18 +246,18 @@ void UExRunnerMovementComponent::SetInteractionTarget(USceneComponent* TargetCom
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ExRunnerMovement] Failed to find MotionWarpingComponent on Owner!"));
+		UE_LOG(LogExRunnerMovement, Warning, TEXT("[ExRunnerMovement] Failed to find MotionWarpingComponent on Owner!"));
 	}
 
-	// [Fix: Treadmill Pause Strategy]
-	// 등반 중에는 트레드밀을 멈춰서 동기화 문제와 조기 종료(Premature Overlap End) 문제를 원천 차단함.
-	if (UWorld* World = GetWorld())
-	{
-		if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(World->GetAuthGameMode()))
-		{
-			GM->SetTreadmillPaused(true);
-		}
-	}
+	// [DEPRECATED] GameplayTag 이벤트로 트레드밀 제어가 이관됨
+	// AC_TraversalLogic에서 TAG_Ex_Action_Climb_Start 이벤트 발행 → ExRunnerGameMode에서 처리
+	// if (UWorld* World = GetWorld())
+	// {
+	// 	if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(World->GetAuthGameMode()))
+	// 	{
+	// 		GM->SetTreadmillPaused(true);
+	// 	}
+	// }
 }
 
 void UExRunnerMovementComponent::ClearInteractionTarget()
@@ -309,13 +270,13 @@ void UExRunnerMovementComponent::ClearInteractionTarget()
 	CurrentInteractionTarget = nullptr;
 	CurrentWarpTargetName = NAME_None;
 
-	// [Fix: Treadmill Pause Strategy]
-	// 등반 종료 시 트레드밀 재개
-	if (UWorld* World = GetWorld())
-	{
-		if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(World->GetAuthGameMode()))
-		{
-			GM->SetTreadmillPaused(false);
-		}
-	}
+	// [DEPRECATED] GameplayTag 이벤트로 트레드밀 제어가 이관됨
+	// AC_TraversalLogic에서 TAG_Ex_Action_Climb_End 이벤트 발행 → ExRunnerGameMode에서 처리
+	// if (UWorld* World = GetWorld())
+	// {
+	// 	if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(World->GetAuthGameMode()))
+	// 	{
+	// 		GM->SetTreadmillPaused(false);
+	// 	}
+	// }
 }

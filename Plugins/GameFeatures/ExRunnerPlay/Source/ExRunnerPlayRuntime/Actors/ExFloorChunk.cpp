@@ -42,7 +42,7 @@ void AExFloorChunk::BeginPlay()
 	}
 	else
 	{
-		UE_LOG(LogExFloorChunk, Log, TEXT("ExFloorChunk: GameMode found, CurrentSpeed=%.2f"), CachedGameMode->GetCurrentGameSpeed());
+		UE_LOG(LogExFloorChunk, Log, TEXT("ExFloorChunk: GameMode found, CurrentSpeed=%.2f"), CachedGameMode->GetCurrentTreadmillSpeed());
 	}
 
 	// 레벨에 직접 배치된 청크는 자동으로 활성화
@@ -63,7 +63,7 @@ void AExFloorChunk::Tick(float DeltaTime)
 	}
 
 	// 게임모드에서 현재 속도 가져오기
-	const float GameSpeed = CachedGameMode->GetCurrentGameSpeed();
+	const float GameSpeed = CachedGameMode->GetCurrentTreadmillSpeed();
 	
 	if (GameSpeed <= 0.f)
 	{

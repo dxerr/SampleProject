@@ -43,9 +43,9 @@
    - `ChunkSpacing`: `1000` (청크 간격 = ChunkLength)
    - `MaxActiveChunks`: `4`
 
-4. **Class Defaults → Runner 카테고리**:
-   - `BaseGameSpeed`: `600` (cm/s, 6m/s)
-   - `SpeedAcceleration`: `10` (초당 가속)
+4. **Class Defaults → Runner | Treadmill 카테고리**:
+   - `BaseTreadmillSpeed`: `600` (cm/s, 6m/s)
+   - `TreadmillAcceleration`: `10` (초당 가속)
    - `bRunnerModeEnabled`: `false` (시작 시 비활성화)
 
 5. **Event Graph**에 시작 로직 추가:
@@ -78,8 +78,8 @@
    ```
    Event Tick
        [Get GameMode as ExCoreGameMode]
-       → Get CurrentGameSpeed
-       → Make Vector (X: CurrentGameSpeed, Y: 0, Z: Get Velocity.Z)
+       → Get CurrentTreadmillSpeed
+       → Make Vector (X: CurrentTreadmillSpeed, Y: 0, Z: Get Velocity.Z)
        → Set FakeVelocity
        
        [If bConstrainPosition]
