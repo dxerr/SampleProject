@@ -93,9 +93,17 @@
 
 ### 2.1 문서 폴더 구조 (Folder Structure)
 - **Architecture/**: 시스템 아키텍처, 분석 보고서, 설계 문서 등을 보관합니다.
-    - 예: `ExRunner_System_Architecture.md`, `Mover_System_Analysis.md`
+    - **ExCore/**: 핵심 프레임워크 관련 (장르 무관 범용 시스템)
+        - 예: `Mover_System_Analysis.md`, `DataDrivenCVars_Analysis.md`
+    - **ExRunnerPlay/**: 러너 게임 특화 기능 관련
+        - 예: `ExRunner_System_Architecture.md`, `Issue_Obstacle_Sync_Report.md`
 - **Guides/**: 사용 가이드, 튜토리얼, 셋업 가이드 등을 보관합니다.
-    - 예: `PythonBridge_Documentation.md`, `MotionMatching_Guide_KR.md`
+    - **ExCore/**: 핵심 프레임워크 가이드
+        - 예: `ExCore_GameplayTag_EventSystem_Guide.md`
+    - **ExRunnerPlay/**: 러너 게임 관련 가이드
+        - 예: `Climb_Sync_Guide.md`, `CurvedWorld_Runner_Setup_Guide.md`
+    - **Common/**: 엔진, 도구, 범용 설정 가이드 (특정 모듈에 종속되지 않음)
+        - 예: `MotionMatching_Guide_KR.md`, `PythonBridge_Documentation.md`
 - **Bug/**: 개발 중 발생한 크리티컬 이슈와 해결 방법을 기록합니다.
     - 파일명: `[이슈키워드]_[원인].md` (예: `Constructor_Crash_NewObject.md`)
     - 비슷한 이슈 발생 시 우선 검색하여 해결책을 찾습니다.

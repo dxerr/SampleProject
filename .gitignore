@@ -1,5 +1,9 @@
 # Visual Studio 2022
 .vs/
+*.sln
+*.suo
+*.vcxproj*
+*.user
 
 # Unreal Engine
 Binaries/
@@ -8,6 +12,11 @@ DerivedDataCache/
 Intermediate/
 Saved/
 Script/
+
+# Plugin Build Artifacts (recursive)
+**/Binaries/
+**/Intermediate/
+**/DerivedDataCache/
 
 # Xcode
 .xcodeproj/

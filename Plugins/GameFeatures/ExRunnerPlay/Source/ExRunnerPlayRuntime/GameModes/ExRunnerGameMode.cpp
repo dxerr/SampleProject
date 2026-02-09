@@ -3,6 +3,8 @@
 #include "ExRunnerGameMode.h"
 #include "../Components/ExChunkSpawner.h"
 #include "../Components/ExObstacleManager.h"
+#include "ExGameplayTags.h"
+#include "ExGameplayEventSubsystem.h"
 
 AExRunnerGameMode::AExRunnerGameMode()
 {
@@ -18,6 +20,14 @@ AExRunnerGameMode::AExRunnerGameMode()
 void AExRunnerGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// ========== GameplayTag Event Registration ==========
+	if (UExGameplayEventSubsystem* EventSub = GetWorld()->GetSubsystem<UExGameplayEventSubsystem>())
+	{
+		EventSub->GetEventDelegate(TAG_Ex_Action_Climb_Start).AddDynamic(this, &AExRunnerGameMode::OnClimbStart);
+		EventSub->GetEventDelegate(TAG_Ex_Action_Climb_End).AddDynamic(this, &AExRunnerGameMode::OnClimbEnd);
+		UE_LOG(LogTemp, Log, TEXT("ExRunnerGameMode: Registered GameplayTag event listeners"));
+	}
 
 	if (bRunnerModeEnabled)
 	{
@@ -90,3 +100,19 @@ void AExRunnerGameMode::Tick(float DeltaTime)
 		TotalDistance += CurrentGameSpeed * DeltaTime;
 	}
 }
+
+// ========== GameplayTag Event Callbacks ==========
+void AExRunnerGameMode::OnClimbStart(FGameplayTag EventTag, const FExGameplayEventPayload& Payload)
+{
+	UE_LOG(LogTemp, Log, TEXT("ExRunnerGameMode: OnClimbStart received from %s"), 
+		Payload.Instigator ? *Payload.Instigator->GetName() : TEXT("Unknown"));
+	SetTreadmillPaused(true);
+}
+
+void AExRunnerGameMode::OnClimbEnd(FGameplayTag EventTag, const FExGameplayEventPayload& Payload)
+{
+	UE_LOG(LogTemp, Log, TEXT("ExRunnerGameMode: OnClimbEnd received from %s"), 
+		Payload.Instigator ? *Payload.Instigator->GetName() : TEXT("Unknown"));
+	SetTreadmillPaused(false);
+}
+

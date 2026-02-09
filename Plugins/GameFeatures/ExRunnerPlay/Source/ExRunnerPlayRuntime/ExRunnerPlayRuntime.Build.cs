@@ -27,6 +27,7 @@ public class ExRunnerPlayRuntime : ModuleRules
 			{
 				"Core",
 				"ExCoreRuntime", // Framework Dependency
+				"GameplayTags",	// GameplayTag types (FGameplayTag, native tags)
 				"Mover",
 				"MotionWarping",
 				"EnhancedInput",

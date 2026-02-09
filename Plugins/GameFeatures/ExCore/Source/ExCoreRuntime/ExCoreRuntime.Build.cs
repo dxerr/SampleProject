@@ -16,8 +16,13 @@ public class ExCoreRuntime : ModuleRules
 				Path.Combine(ModuleDirectory, "Data"),
 				Path.Combine(ModuleDirectory, "Components"),
 				Path.Combine(ModuleDirectory, "Actors"),
+				Path.Combine(ModuleDirectory, "Tags"),
+				Path.Combine(ModuleDirectory, "Events"),
+				Path.Combine(ModuleDirectory, "Util"),
+				Path.Combine(ModuleDirectory, "Util", "Events"),
 			}
 			);
+
 
 		PrivateIncludePaths.AddRange(
 			new string[] {
@@ -34,6 +39,7 @@ public class ExCoreRuntime : ModuleRules
 				"ModularGameplay",
 				"GameFeatures",
 				"GameplayAbilities",
+				"GameplayTags",	// NEW: Native GameplayTag 지원
 				"EnhancedInput",
 				"Mover",
 				"MotionWarping", // Centralized Warp Logic

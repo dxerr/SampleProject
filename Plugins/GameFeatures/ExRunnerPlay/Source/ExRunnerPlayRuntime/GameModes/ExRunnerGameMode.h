@@ -4,10 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "ExCoreGameMode.h"
+#include "GameplayTagContainer.h"
 #include "ExRunnerGameMode.generated.h"
 
 class UExChunkSpawner;
 class UExObstacleManager;
+struct FExGameplayEventPayload;
 
 /**
  * AExRunnerGameMode
@@ -88,6 +90,15 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
+
+	// ========== GameplayTag Event Callbacks ==========
+	/** Climb 시작 이벤트 수신 시 트레드밀 정지 */
+	UFUNCTION()
+	void OnClimbStart(FGameplayTag EventTag, const FExGameplayEventPayload& Payload);
+
+	/** Climb 종료 이벤트 수신 시 트레드밀 재개 */
+	UFUNCTION()
+	void OnClimbEnd(FGameplayTag EventTag, const FExGameplayEventPayload& Payload);
 
 private:
 	/**
