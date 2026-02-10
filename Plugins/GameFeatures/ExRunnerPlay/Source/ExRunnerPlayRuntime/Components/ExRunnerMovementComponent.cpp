@@ -5,6 +5,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "MotionWarpingComponent.h" 
 #include "MoverDataModelTypes.h"
+#include "MoverComponent.h"
 
 // 디버깅용 로그 카테고리 정의
 DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
@@ -14,10 +15,37 @@ UExRunnerMovementComponent::UExRunnerMovementComponent()
 	PrimaryComponentTick.bCanEverTick = true;
 }
 
-// BeginPlay에서는 아무것도 하지 않고 Tick에서 지연 초기화 수행
+// BeginPlay에서 상위 Pawn의 MoverComponent에 자신을 InputProducer로 등록합니다.
 void UExRunnerMovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// 상위 Pawn 찾기 (1순위: Owner, 2순위: AttachParent)
+	APawn* ParentPawn = Cast<APawn>(GetOwner());
+	if (!ParentPawn)
+	{
+		ParentPawn = Cast<APawn>(GetOwner()->GetAttachParentActor());
+	}
+
+	// 상위 Pawn의 MoverComponent를 찾아 InputProducer로 등록
+	if (ParentPawn)
+	{
+		UMoverComponent* MoverComp = ParentPawn->FindComponentByClass<UMoverComponent>();
+		if (MoverComp)
+		{
+			// InputProducers 배열에 자신을 추가하여 Mover가 매 틱마다 ProduceInput을 호출하도록 합니다.
+			MoverComp->InputProducers.AddUnique(this);
+			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 InputProducer로 등록 완료"), *ParentPawn->GetName());
+		}
+		else
+		{
+			UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 상위 Pawn '%s'에서 MoverComponent를 찾을 수 없습니다."), *ParentPawn->GetName());
+		}
+	}
+	else
+	{
+		UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 상위 Pawn을 찾을 수 없습니다. ProduceInput이 호출되지 않습니다."));
+	}
 }
 
 void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult)

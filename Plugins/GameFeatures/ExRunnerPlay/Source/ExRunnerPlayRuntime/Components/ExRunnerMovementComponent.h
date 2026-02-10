@@ -6,16 +6,18 @@
 #include "ExRunnerMovementComponent.generated.h"
 
 class ACharacter;
+class UMoverComponent;
 struct FMoverInputCmdContext;
 struct FCharacterDefaultInputs;
 
 /**
  * 러너 게임을 위한 무브먼트 제어 컴포넌트
- * - Visual Actor에 부착되어 상위 Mover 캐릭터를 조종
+ * - Visual Actor(Child Actor)에 부착되어 상위 Mover 캐릭터를 조종
+ * - BeginPlay 시 상위 Pawn의 UMoverComponent에 자신을 InputProducer로 등록
  * - 자동 전진 및 레인 변경 로직 담당
  * - IMoverInputProducerInterface를 구현하여 Mover 시스템과 연동
  */
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
+UCLASS(Blueprintable, ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class EXRUNNERPLAYRUNTIME_API UExRunnerMovementComponent : public UActorComponent, public IMoverInputProducerInterface
 {
 	GENERATED_BODY()
@@ -87,4 +89,6 @@ protected:
 private:
 	/** Motion Warping Component Cache */
 	TWeakObjectPtr<class UMotionWarpingComponent> MotionWarpingComp;
+
+
 };
