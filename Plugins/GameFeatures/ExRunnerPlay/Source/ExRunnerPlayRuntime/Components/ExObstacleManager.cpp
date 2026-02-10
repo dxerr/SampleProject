@@ -4,6 +4,7 @@
 #include "ExChunkSpawner.h" // For Delegate definition
 #include "../Actors/ExFloorChunk.h"
 #include "../Data/ExObstacleDefinition.h"
+#include "../Data/ExObstacleSpawnStrategy.h"
 #include "ExObstacleInteractionComponent.h"
 
 #include "Kismet/GameplayStatics.h"
@@ -111,92 +112,93 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 	// 간단한 확률 체크 (임시: 30% 확률로 생성 안함)
 	if (FMath::RandRange(0, 10) < 3) return;
 
-	// 랜덤 장애물 선택
-	int32 Index = FMath::RandRange(0, ObstacleDefinitions.Num() - 1);
-	UExObstacleDefinition* SelectedDef = ObstacleDefinitions[Index];
+	// ── 공통 로직: 랜덤 장애물 선택 ──
+	UExObstacleDefinition* SelectedDef = SelectRandomDefinition();
 	if (!SelectedDef || !SelectedDef->ObstacleClass) return;
 
-	// 배치 가능성 검사
+	// ── 공통 로직: 타입별 전략 찾기 ──
+	UExObstacleSpawnStrategy* Strategy = nullptr;
+	if (TObjectPtr<UExObstacleSpawnStrategy>* Found = SpawnStrategies.Find(SelectedDef->Type))
+	{
+		Strategy = *Found;
+	}
+
+	if (!Strategy)
+	{
+		UE_LOG(LogExObstacleManager, Warning,
+			TEXT("Type [%d]에 대한 SpawnStrategy가 설정되지 않았습니다. 장애물 생략."),
+			(int32)SelectedDef->Type);
+		return;
+	}
+
+	// ── 공통 로직: 배치 가능성 검사 ──
 	float ChunkWorldStartX = Chunk->GetActorLocation().X - (ChunkLength * 0.5f);
 	float SafeStartX = LastObstacleSafeEndX;
 	if (SafeStartX < ChunkWorldStartX) SafeStartX = ChunkWorldStartX;
 
-	float ObsLen = SelectedDef->MaxSize.X; 
-	float SpawnWorldX = SafeStartX + 200.f; // Buffer
-
+	float ObsLen = SelectedDef->MaxSize.X;
 	float ChunkWorldEndX = Chunk->GetActorLocation().X + (ChunkLength * 0.5f);
-	if (SpawnWorldX + ObsLen > ChunkWorldEndX) return;
 
-	// --- 배치 실행 ---
+	// ── Strategy 위임: 스폰 위치 계산 ──
+	FVector SpawnPos = Strategy->CalculateSpawnPosition(SelectedDef, Chunk, SafeStartX);
+
+	// 청크 범위 초과 체크
+	if (SpawnPos.X + ObsLen > ChunkWorldEndX) return;
+
+	// ── 공통 로직: 풀에서 가져오기 ──
 	AActor* Obstacle = GetObstacleFromPool(SelectedDef->ObstacleClass);
-	if (Obstacle)
+	if (!Obstacle) return;
+
+	// ── Strategy 위임: 장애물 설정 (스케일, 크기 등) ──
+	Strategy->ConfigureObstacle(Obstacle, SelectedDef, Chunk);
+
+	// ── 공통 로직: Interaction Component 설정 ──
+	UExObstacleInteractionComponent* InteractionComp = Obstacle->FindComponentByClass<UExObstacleInteractionComponent>();
+	if (InteractionComp)
 	{
-		// 1. 랜덤 크기 생성
-		float TargetLength = FMath::RandRange(SelectedDef->MinSize.X, SelectedDef->MaxSize.X);
-		float TargetHeight = FMath::RandRange(SelectedDef->MinSize.Z, SelectedDef->MaxSize.Z);
-		float TargetWidth = 1000.f; 
-
-		// 바닥 너비 구하기
-		FBoxSphereBounds FloorBounds = GetVisualBounds(Chunk);
-		float FloorHalfWidth = FloorBounds.BoxExtent.Y;
-		if (FloorHalfWidth < 10.f) FloorHalfWidth = 500.f;
-		TargetWidth = FloorHalfWidth * 2.0f;
-
-		// 2. 스케일 적용
-		Obstacle->SetActorScale3D(FVector::OneVector);
-		FBoxSphereBounds ObsBounds = GetVisualBounds(Obstacle);
-		FVector BaseSize = ObsBounds.BoxExtent * 2.0f;
-		
-		if (BaseSize.X < 1.f) BaseSize.X = 100.f;
-		if (BaseSize.Y < 1.f) BaseSize.Y = 100.f;
-		if (BaseSize.Z < 1.f) BaseSize.Z = 100.f;
-
-		FVector NewScale;
-		NewScale.X = TargetLength / BaseSize.X;
-		NewScale.Y = TargetWidth / BaseSize.Y;
-		NewScale.Z = TargetHeight / BaseSize.Z;
-		
-		Obstacle->SetActorScale3D(NewScale);
-
-		// 3. Interaction Component 설정
-		UExObstacleInteractionComponent* InteractionComp = Obstacle->FindComponentByClass<UExObstacleInteractionComponent>();
-		if (InteractionComp)
-		{
-			InteractionComp->SetBoxExtent(BaseSize * 0.5f); 
-			InteractionComp->SetRelativeLocation(FVector::ZeroVector);
-		}
-
-		// 4. 위치 결정
-		FVector ChunkLoc = Chunk->GetActorLocation();
-		// Pivot Adjustment: Subtract half-width to center Bottom-Left pivot object
-		FVector TargetWorldPos(
-			SpawnWorldX, 
-			ChunkLoc.Y - (TargetWidth * 0.5f), 
-			ChunkLoc.Z
-		);
-
-		FVector RelLoc = Chunk->GetActorTransform().InverseTransformPosition(TargetWorldPos);
-
-		Obstacle->AttachToActor(Chunk, FAttachmentTransformRules::KeepWorldTransform);
-		Obstacle->SetActorRelativeLocation(RelLoc);
-		Obstacle->SetActorHiddenInGame(false);
-
-		// Next Safe X 갱신
-		float RunSpeed = 600.f;
-		if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(UGameplayStatics::GetGameMode(this)))
-		{
-			RunSpeed = GM->GetCurrentTreadmillSpeed();
-		}
-		float RecoveryDist = RunSpeed * SelectedDef->RecoveryTime;
-		LastObstacleSafeEndX = SpawnWorldX + (ObsLen * 0.5f) + RecoveryDist; 
-		
-		UE_LOG(LogExObstacleManager, Verbose, TEXT("Obstacle Spawned: %s at %.2f"), *Obstacle->GetName(), SpawnWorldX);
+		FVector Origin, BaseExtent;
+		Obstacle->GetActorBounds(true, Origin, BaseExtent);
+		InteractionComp->SetBoxExtent(BaseExtent);
+		InteractionComp->SetRelativeLocation(FVector::ZeroVector);
 	}
+
+	// ── 공통 로직: 위치 결정 및 어태치 ──
+	FVector RelLoc = Chunk->GetActorTransform().InverseTransformPosition(SpawnPos);
+	Obstacle->AttachToActor(Chunk, FAttachmentTransformRules::KeepWorldTransform);
+	Obstacle->SetActorRelativeLocation(RelLoc);
+	Obstacle->SetActorHiddenInGame(false);
+
+	// ── Strategy 위임: 복귀 거리 계산 ──
+	float RunSpeed = 600.f;
+	if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(UGameplayStatics::GetGameMode(this)))
+	{
+		RunSpeed = GM->GetCurrentTreadmillSpeed();
+	}
+
+	float RecoveryDist = Strategy->GetRecoveryDistance(SelectedDef, RunSpeed);
+	LastObstacleSafeEndX = SpawnPos.X + (ObsLen * 0.5f) + RecoveryDist;
+
+	UE_LOG(LogExObstacleManager, Verbose,
+		TEXT("Obstacle Spawned [Type:%d]: %s at (%.2f, %.2f, %.2f)"),
+		(int32)SelectedDef->Type, *Obstacle->GetName(),
+		SpawnPos.X, SpawnPos.Y, SpawnPos.Z);
+}
+
+UExObstacleDefinition* UExObstacleManager::SelectRandomDefinition() const
+{
+	if (ObstacleDefinitions.Num() == 0) return nullptr;
+
+	const int32 Index = FMath::RandRange(0, ObstacleDefinitions.Num() - 1);
+	return ObstacleDefinitions[Index];
 }
 
 void UExObstacleManager::ActivateObstacle(AActor* Obstacle)
 {
 	if (!IsValid(Obstacle)) return;
+
+	// 풀에서 재활용 시 이전 상태 완전 초기화
+	Obstacle->SetActorScale3D(FVector::OneVector);
+	Obstacle->SetActorRotation(FRotator::ZeroRotator);
 
 	Obstacle->SetActorHiddenInGame(false);
 	Obstacle->SetActorEnableCollision(true);
@@ -213,7 +215,9 @@ void UExObstacleManager::ActivateObstacle(AActor* Obstacle)
 			Comp->SetVisibility(true, true);
 		}
 	}
-	
+
+	// 스케일/트랜스폼 변경을 컴포넌트에 즉시 반영
+	Obstacle->UpdateComponentTransforms();
 	Obstacle->MarkComponentsRenderStateDirty();
 }
 

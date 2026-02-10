@@ -9,6 +9,8 @@
 class AExFloorChunk;
 class UExChunkSpawner;
 class UExObstacleDefinition;
+class UExObstacleSpawnStrategy;
+enum class EExObstacleType : uint8;
 
 /**
  * UExObstacleManager
@@ -28,6 +30,13 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Obstacle")
 	TArray<UExObstacleDefinition*> ObstacleDefinitions;
+
+	/**
+	 * 타입별 스폰 전략 매핑 (Strategy Pattern)
+	 * 에디터에서 각 EExObstacleType에 대응하는 전략을 인라인 편집 가능
+	 */
+	UPROPERTY(EditAnywhere, Instanced, Category = "Obstacle|Strategy")
+	TMap<EExObstacleType, TObjectPtr<UExObstacleSpawnStrategy>> SpawnStrategies;
 
 	/**
 	 * 청크 스포너와 연결 (델리게이트 구독)
@@ -73,6 +82,7 @@ protected:
 
 	void SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float ChunkStartLocalX, float ChunkLength);
 	bool CheckFeasibility(float CurrentSpawnX, float& OutNextSafeX);
+	UExObstacleDefinition* SelectRandomDefinition() const;
 
 	// Helper
 	static FBoxSphereBounds GetVisualBounds(AActor* Actor);
