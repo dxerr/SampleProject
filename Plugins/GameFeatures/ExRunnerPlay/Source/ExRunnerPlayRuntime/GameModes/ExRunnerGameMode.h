@@ -14,8 +14,8 @@ struct FExGameplayEventPayload;
 /**
  * AExRunnerGameMode
  * 러너 게임 전용 모드
- * 트레드밀 시스템, 장애물 관리, 게임 속도 제어 등을 담당
- * 비주얼 오버라이드 기능은 부모인 ExCoreGameMode에서 상속받음
+ * 오프셋 기반 트레드밀: BaseSpeed로 Floor를 이동하되,
+ * 캐릭터 위치 오프셋에 따라 속도를 부드럽게 가변 조정
  */
 UCLASS()
 class EXRUNNERPLAYRUNTIME_API AExRunnerGameMode : public AExCoreGameMode
@@ -25,67 +25,64 @@ class EXRUNNERPLAYRUNTIME_API AExRunnerGameMode : public AExCoreGameMode
 public:
 	AExRunnerGameMode();
 
-	// ========== 러너 게임 시스템 ==========
-public:
-	/**
-	 * 트레드밀 기본 속도 (청크 이동, cm/s)
-	 */
+	// ========== 트레드밀 설정 ==========
+
+	/** 트레드밀 기본 속도 (cm/s) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Runner|Treadmill")
 	float BaseTreadmillSpeed = 600.f;
 
 
-	/**
-	 * 초당 트레드밀 속도 가속률 (cm/s²)
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Runner|Treadmill")
-	float TreadmillAcceleration = 10.f;
 
 	/**
-	 * 현재 트레드밀 속도 (런타임)
+	 * 오프셋 보정 계수
+	 * 값이 클수록 기준점 이탈 시 빠르게 복귀
 	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Runner|Treadmill")
+	float CorrectionStrength = 2.0f;
+
+
+
+	// ========== 런타임 상태 ==========
+
+	/** 현재 트레드밀 속도 (BaseSpeed + 가속 + 오프셋 보정 적용 후) */
 	UPROPERTY(BlueprintReadOnly, Category = "Runner")
 	float CurrentTreadmillSpeed = 0.f;
 
-	/**
-	 * 총 이동 거리 (점수/거리 매칭용)
-	 */
+	/** 총 이동 거리 */
 	UPROPERTY(BlueprintReadOnly, Category = "Runner")
 	float TotalDistance = 0.f;
 
-	/**
-	 * 러너 모드 활성화 여부
-	 */
+	/** 러너 모드 활성화 여부 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Runner")
 	bool bRunnerModeEnabled = true;
 
-	/**
-	 * 트레드밀 일시 정지 여부 (장애물 등반 시 true)
-	 */
+	/** 트레드밀 일시 정지 여부 (Climb 등 상호작용 중) */
 	UPROPERTY(BlueprintReadOnly, Category = "Runner")
 	bool bTreadmillPaused = false;
 
-	/**
-	 * 트레드밀 일시 정지 설정
-	 */
+	/** 트레드밀 완전 비활성화 여부 */
+	UPROPERTY(BlueprintReadOnly, Category = "Runner")
+	bool bTreadmillDisabled = false;
+
+	// ========== 함수 ==========
+
+	/** 트레드밀 일시 정지 (재개 시 TargetX 자동 갱신) */
 	UFUNCTION(BlueprintCallable, Category = "Runner")
 	void SetTreadmillPaused(bool bPaused);
 
-	/**
-	 * 현재 트레드밀 속도 반환
-	 */
+	/** 트레드밀 완전 비활성화/활성화 */
+	UFUNCTION(BlueprintCallable, Category = "Runner")
+	void SetTreadmillDisabled(bool bDisabled);
+
+	/** 현재 트레드밀 속도 반환 */
 	UFUNCTION(BlueprintPure, Category = "Runner")
 	float GetCurrentTreadmillSpeed() const { return CurrentTreadmillSpeed; }
 
-
-	/**
-	 * 러너 게임 시작
-	 */
+	/** 러너 게임 시작 */
 	UFUNCTION(BlueprintCallable, Category = "Runner")
 	void StartRunnerGame();
 
-	/**
-	 * 러너 게임 중지
-	 */
+	/** 러너 게임 중지 */
 	UFUNCTION(BlueprintCallable, Category = "Runner")
 	void StopRunnerGame();
 
@@ -94,24 +91,34 @@ protected:
 	virtual void Tick(float DeltaTime) override;
 
 	// ========== GameplayTag Event Callbacks ==========
-	/** Climb 시작 이벤트 수신 시 트레드밀 정지 */
 	UFUNCTION()
 	void OnClimbStart(FGameplayTag EventTag, const FExGameplayEventPayload& Payload);
 
-	/** Climb 종료 이벤트 수신 시 트레드밀 재개 */
 	UFUNCTION()
 	void OnClimbEnd(FGameplayTag EventTag, const FExGameplayEventPayload& Payload);
 
 private:
-	/**
-	 * 청크 스포너 컴포넌트
-	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UExChunkSpawner* ChunkSpawner;
+	TObjectPtr<UExChunkSpawner> ChunkSpawner;
 
-	/**
-	 * 장애물 매니저 컴포넌트
-	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UExObstacleManager* ObstacleManager;
+	TObjectPtr<UExObstacleManager> ObstacleManager;
+
+	// ========== 오프셋 추적 (트레드밀 핵심) ==========
+
+	/** 캐릭터 기준 X 좌표 (스폰 위치) */
+	float TargetX = 0.f;
+
+	/** 오프셋 추적 초기화 완료 여부 */
+	bool bTrackingInitialized = false;
+
+
+
+	/** PlayerPawn 캐시 */
+	TWeakObjectPtr<APawn> CachedPlayerPawn;
+
+	/** 캐싱된 PlayerPawn 반환 */
+	APawn* GetCachedPlayerPawn();
+
+
 };

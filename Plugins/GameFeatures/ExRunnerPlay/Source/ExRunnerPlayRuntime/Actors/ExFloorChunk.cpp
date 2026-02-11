@@ -57,23 +57,14 @@ void AExFloorChunk::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (!CachedGameMode || bIsPooled)
+	if (bIsPooled)
 	{
 		return;
 	}
 
-	// 게임모드에서 현재 속도 가져오기
-	const float GameSpeed = CachedGameMode->GetCurrentTreadmillSpeed();
-	
-	if (GameSpeed <= 0.f)
-	{
-		return;
-	}
-
-	// World Shift 방식으로 변경됨에 따라, 더 이상 FloorChunk 스스로 이동하지 않음
-	// float ClampedDeltaTime = FMath::Min(DeltaTime, 0.1f);
-	// FVector Offset(-GameSpeed * ClampedDeltaTime, 0.f, 0.f);
-	// AddActorWorldOffset(Offset, false, nullptr, ETeleportType::None);
+	// [위치 변화량 기반 트레드밀]
+	// Floor 이동은 GameMode::Tick → ChunkSpawner::ShiftWorld에서 처리
+	// FloorChunk는 KillZ 도달 체크만 수행
 
 	// KillZ 도달 체크
 	if (GetActorLocation().X < KillZ)

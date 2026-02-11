@@ -110,6 +110,9 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Spawner")
 	FOnWorldShifted OnWorldShifted;
 
+	/** 활성 청크 목록 접근자 */
+	const TArray<TObjectPtr<AExFloorChunk>>& GetActiveChunks() const { return ActiveChunks; }
+
 protected:
 	virtual void BeginPlay() override;
 

@@ -148,9 +148,8 @@ void UExChunkSpawner::ShiftWorld(float DeltaX)
 	{
 		if (IsValid(Chunk))
 		{
-			FVector CurrentLocation = Chunk->GetActorLocation();
-			CurrentLocation.X += DeltaX;
-			Chunk->SetActorLocation(CurrentLocation);
+			Chunk->AddActorWorldOffset(FVector(DeltaX, 0.f, 0.f));
+			Chunk->UpdateOverlaps();
 		}
 	}
 
