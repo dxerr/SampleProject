@@ -63,6 +63,24 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Floor")
 	void ReturnToPool();
 
+	// ── Gap 관련 ──
+
+	/**
+	 * Gap 적용: FloorMesh를 숨기고 양쪽에 바닥 조각 스폰
+	 * @param GapLocalStartX  Gap 시작 위치 (청크 로컬 X, 왼쪽 끝 = -ChunkLength/2 기준)
+	 * @param GapWidth        Gap 폭 (cm)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Floor|Gap")
+	void ApplyGap(float GapLocalStartX, float GapWidth);
+
+	/** Gap 해제: 바닥 조각 제거, FloorMesh 복원 */
+	UFUNCTION(BlueprintCallable, Category = "Floor|Gap")
+	void ClearGap();
+
+	/** Gap 적용 중인지 여부 */
+	UPROPERTY(BlueprintReadOnly, Category = "Floor|Gap")
+	bool bHasGap = false;
+
 	UFUNCTION(BlueprintPure, Category = "Floor")
 	FBox GetFloorBounds() const;
 
@@ -83,4 +101,8 @@ private:
 	 */
 	UPROPERTY()
 	TObjectPtr<class AExRunnerGameMode> CachedGameMode;
+
+	/** Gap 적용 시 생성된 양쪽 바닥 조각 */
+	UPROPERTY()
+	TArray<TObjectPtr<UStaticMeshComponent>> GapFloorPieces;
 };

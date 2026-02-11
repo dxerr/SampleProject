@@ -110,7 +110,7 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 	if (!Chunk) return;
 
 	// 간단한 확률 체크 (임시: 30% 확률로 생성 안함)
-	if (FMath::RandRange(0, 10) < 3) return;
+	if (FMath::RandRange(0, 10) < 5) return;
 
 	// ── 공통 로직: 랜덤 장애물 선택 ──
 	UExObstacleDefinition* SelectedDef = SelectRandomDefinition();

@@ -126,6 +126,9 @@ void AExFloorChunk::ActivateChunk(const FVector& SpawnLocation)
 void AExFloorChunk::DeactivateChunk()
 {
 	bIsPooled = true;
+
+	// Gap 적용 중이면 원상복구
+	ClearGap();
 	
 	SetActorHiddenInGame(true);
 	if (FloorMesh)
@@ -151,4 +154,129 @@ void AExFloorChunk::ReturnToPool()
 	DeactivateChunk();
 	
 	// 추가 처리는 OnChunkReachedKillZ 델리게이트를 통해 스포너에서 수행
+}
+
+// ──────────────────────────────────────────────
+// Gap 적용: FloorMesh 숨기고 양쪽 바닥 조각 생성
+// ──────────────────────────────────────────────
+void AExFloorChunk::ApplyGap(float GapLocalStartX, float GapWidth)
+{
+	// 이미 Gap 적용 중이면 먼저 해제
+	if (bHasGap) ClearGap();
+	if (!FloorMesh || !FloorMesh->GetStaticMesh()) return;
+
+	// 원본 메시/머티리얼 참조
+	UStaticMesh* OrigMesh = FloorMesh->GetStaticMesh();
+	const float HalfLen = ChunkLength * 0.5f;
+
+	// Gap 경계 (로컬 좌표, 청크 중심 = 0)
+	const float GapStartX = GapLocalStartX;
+	const float GapEndX   = GapLocalStartX + GapWidth;
+
+	UE_LOG(LogExFloorChunk, Log, TEXT("[%s] ApplyGap: LocalX=%.1f, Width=%.1f (HalfLen=%.1f)"),
+		*GetName(), GapLocalStartX, GapWidth, HalfLen);
+
+	// ── 1. 원본 FloorMesh 숨기기 ──
+	FloorMesh->SetVisibility(false, true);
+	FloorMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// ── 2. 원본 메시의 로컬 바운드로 기본 크기 계산 ──
+	FBoxSphereBounds MeshBounds = OrigMesh->GetBounds();
+	FVector MeshExtent = MeshBounds.BoxExtent; // 메시 원본 반크기
+	FVector MeshOrigin = MeshBounds.Origin;
+
+	// 원본 FloorMesh의 현재 스케일을 고려
+	FVector FloorScale = FloorMesh->GetRelativeScale3D();
+	float OrigMeshLenX = MeshExtent.X * 2.0f * FloorScale.X; // 실제 월드 X 길이
+
+	// ── 3. 왼쪽 바닥 조각 (ChunkStart ~ GapStart) ──
+	float LeftLen = GapStartX - (-HalfLen); // 왼쪽 조각 길이
+	if (LeftLen > 1.f)
+	{
+		UStaticMeshComponent* LeftFloor = NewObject<UStaticMeshComponent>(this, 
+			UStaticMeshComponent::StaticClass(), FName(TEXT("GapFloor_Left")));
+		LeftFloor->SetStaticMesh(OrigMesh);
+
+		// 원본 머티리얼 복사
+		for (int32 i = 0; i < FloorMesh->GetNumMaterials(); ++i)
+		{
+			LeftFloor->SetMaterial(i, FloorMesh->GetMaterial(i));
+		}
+
+		LeftFloor->SetCollisionProfileName(TEXT("BlockAll"));
+		LeftFloor->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+		LeftFloor->RegisterComponent();
+
+		// ★ 스케일: 부모(FloorMesh)가 이미 FloorScale을 가지고 있으므로
+		//    자식의 RelativeScale은 비율만 설정 (Y/Z = 1, 부모에서 상속)
+		float LeftScaleX = LeftLen / OrigMeshLenX;
+		LeftFloor->SetRelativeScale3D(FVector(LeftScaleX, 1.f, 1.f));
+
+		// ★ 위치: RelativeLocation은 부모 스케일로 곱해지므로
+		//    월드 좌표를 부모 스케일로 나눠서 로컬 좌표 변환
+		float LeftCenterX = (-HalfLen) + (LeftLen * 0.5f);
+		LeftFloor->SetRelativeLocation(FVector(LeftCenterX / FloorScale.X, 0.f, 0.f));
+
+		GapFloorPieces.Add(LeftFloor);
+	}
+
+	// ── 4. 오른쪽 바닥 조각 (GapEnd ~ ChunkEnd) ──
+	float RightLen = HalfLen - GapEndX; // 오른쪽 조각 길이
+	if (RightLen > 1.f)
+	{
+		UStaticMeshComponent* RightFloor = NewObject<UStaticMeshComponent>(this,
+			UStaticMeshComponent::StaticClass(), FName(TEXT("GapFloor_Right")));
+		RightFloor->SetStaticMesh(OrigMesh);
+
+		// 원본 머티리얼 복사
+		for (int32 i = 0; i < FloorMesh->GetNumMaterials(); ++i)
+		{
+			RightFloor->SetMaterial(i, FloorMesh->GetMaterial(i));
+		}
+
+		RightFloor->SetCollisionProfileName(TEXT("BlockAll"));
+		RightFloor->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+		RightFloor->RegisterComponent();
+
+		// ★ 스케일: 비율만 설정 (부모 FloorScale 자동 적용)
+		float RightScaleX = RightLen / OrigMeshLenX;
+		RightFloor->SetRelativeScale3D(FVector(RightScaleX, 1.f, 1.f));
+
+		// ★ 위치: 월드 → 부모 로컬 좌표 변환
+		float RightCenterX = GapEndX + (RightLen * 0.5f);
+		RightFloor->SetRelativeLocation(FVector(RightCenterX / FloorScale.X, 0.f, 0.f));
+
+		GapFloorPieces.Add(RightFloor);
+	}
+
+	bHasGap = true;
+}
+
+// ──────────────────────────────────────────────
+// Gap 해제: 바닥 조각 파괴, FloorMesh 복원
+// ──────────────────────────────────────────────
+void AExFloorChunk::ClearGap()
+{
+	if (!bHasGap) return;
+
+	// 동적 생성된 바닥 조각 제거
+	for (UStaticMeshComponent* Piece : GapFloorPieces)
+	{
+		if (Piece)
+		{
+			Piece->DestroyComponent();
+		}
+	}
+	GapFloorPieces.Empty();
+
+	// 원본 FloorMesh 복원
+	if (FloorMesh)
+	{
+		FloorMesh->SetVisibility(true, true);
+		FloorMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	}
+
+	bHasGap = false;
+
+	UE_LOG(LogExFloorChunk, Log, TEXT("[%s] ClearGap: FloorMesh restored"), *GetName());
 }

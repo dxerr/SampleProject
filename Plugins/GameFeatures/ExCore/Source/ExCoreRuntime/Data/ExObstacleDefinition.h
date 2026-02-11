@@ -61,11 +61,7 @@ public:
 		meta = (EditCondition = "Type == EExObstacleType::Gap", EditConditionHides))
 	bool bDisableFloorMesh = true;
 
-	// ── Slide 타입 전용 ──
-	// 슬라이딩으로 통과 가능한 최대 높이 (cm)
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Type|Slide",
-		meta = (EditCondition = "Type == EExObstacleType::Slide", EditConditionHides))
-	float MaxPassHeight = 120.f;
+
 
 	// ── WallRun 타입 전용 ──
 	// 벽 달리기 구간의 벽 높이 (cm)
