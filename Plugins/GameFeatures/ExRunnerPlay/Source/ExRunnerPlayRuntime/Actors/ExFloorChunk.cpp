@@ -76,17 +76,26 @@ void AExFloorChunk::Tick(float DeltaTime)
 
 	if (SegmentType != EExPathSegmentType::Straight || PathDistance != 0.f)
 	{
-		// 경로 기반: PathDistance가 (현재 플레이어 거리 + KillZ) 미만이면 회수
+		// 경로 기반: PathDistance가 (실제 플레이어 거리 + KillZ) 미만이면 회수
 		// KillZ는 플레이어 뒤쪽 거리(음수)로 가정
 		if (CachedGameMode)
 		{
-			// 예: PathDist(100) < Current(1000) + KillZ(-500) = 500 -> True (회수)
-			bReachedKillZ = (PathDistance < CachedGameMode->GetCurrentPathDistance() + KillZ);
+			// ★ 개선: 가상 거리(CurrentPathDistance)가 아닌 실제 플레이어 위치(RealPlayerPathDistance) 사용
+			// 플레이어가 뒤쳐져 있을 때 바닥이 먼저 삭제되는 낙하 사고 방지
+			float PlayerDist = CachedGameMode->GetPlayerPathDistance();
+			
+			// 첫 프레임 등에서 PlayerDist가 0일 수 있으므로(보정 전), CurrentPathDistance와 큰 차이가 나면 보정?
+			// 아니, RealPlayerPathDistance는 GameMode Tick에서 갱신됨.
+			// 만약 0이라면 안전하게 삭제하지 않음.
+			if (PlayerDist > 0.1f)
+			{
+				bReachedKillZ = (PathDistance < PlayerDist + KillZ);
+			}
 		}
 	}
 	else
 	{
-		// 레거시 직선: X좌표 기반
+		// 레거시 직선: X좌표 기반 (PathManager가 없을 때)
 		bReachedKillZ = (GetActorLocation().X < KillZ);
 	}
 

@@ -34,6 +34,9 @@ void AExRunnerGameMode::UpdateCharacterRotation(float DeltaTime)
 	// 개선: 실제 월드 위치를 경로에 투영하여 정확한 경로 거리 산출
 	float PlayerPathDist = PathManager->GetClosestDistanceAtLocation(PlayerPawn->GetActorLocation(), CurrentPathDistance, 3000.f);
 
+	// ★ 실제 플레이어 거리 저장 (Chunk 삭제 판단용)
+	RealPlayerPathDistance = PlayerPathDist;
+
 	// 현재 경로 거리에서의 접선 방향 및 위치 조회
 	FRotator PathDirection = PathManager->GetDirectionAtDistance(PlayerPathDist);
 	FVector ExpectedPos = PathManager->GetPositionAtDistance(PlayerPathDist);
@@ -267,20 +270,56 @@ void AExRunnerGameMode::Tick(float DeltaTime)
 
 	const float CurrentX = PlayerPawn->GetActorLocation().X;
 
-	// 1. 기준점(TargetX) 설정 (첫 프레임 또는 재개 시)
+	// 1. 기준점(TargetLocation) 설정 (첫 프레임 또는 재개 시)
 	if (!bTrackingInitialized)
 	{
-		TargetX = CurrentX;
+		TargetLocation = PlayerPawn->GetActorLocation();
+		// Z축은 무시 (높이 변동에 의한 속도 영향 제외)
+		// TargetLocation.Z = 0.f; // 필요하다면
+		
 		bTrackingInitialized = true;
-		UE_LOG(LogExRunnerPlay, Log, TEXT("Treadmill Tracking Initialized: TargetX=%.1f"), TargetX);
+		UE_LOG(LogExRunnerPlay, Log, TEXT("Treadmill Tracking Initialized: TargetLoc=%s"), *TargetLocation.ToString());
 	}
 
-	// 2. 오프셋 계산 (캐릭터가 기준점보다 앞 = 양수)
-	// 양수: 트레드밀 빨라져야 함 / 음수: 트레드밀 느려져야 함
-	float Offset = CurrentX - TargetX;
+	// 2. 오프셋 계산 (벡터 내적 기반)
+	// 기존: CurrentX - TargetX (직선 전용)
+	// 개선: (PlayerPos - TargetPos) • PathTangnet
+	// 경로의 진행 방향(Tangent) 성분만큼 얼마나 앞서가고 있는지 판단
+	
+	// 현재 플레이어 위치 (트레드밀 상의 절대 위치가 아니라, 화면/월드 상의 상대 위치)
+	FVector CurrentPos = PlayerPawn->GetActorLocation();
+	FVector OffsetVec = CurrentPos - TargetLocation;
+
+	// 현재 경로의 접선 방향 (CurveConfig가 있다면 PathManager에서 조회, 없다면 X축)
+	FVector PathDirVector = FVector::ForwardVector;
+	if (PathManager && CurveConfig)
+	{
+		// 플레이어 위치에서의 접선 방향 조회 (이미 UpdateCharacterRotation 등에서 계산됨)
+		// 효율을 위해 여기서 다시 계산하거나 캐싱된 값 사용
+		// 가장 정확한 건 PlayerPathDist에서의 접선
+		// 그러나 Tick 순서 상 아직 UpdateCharacterRotation 전일 수 있음.
+		// CurrentPathDistance 기준 접선은 "월드가 이동할 방향" (반대)
+		// 플레이어가 이동해야 할 방향은 PathManager->GetDirectionAtDistance(RealPlayerPathDist)
+		// 편의상 CurrentPathDistance(0,0,0 근처)의 접선을 사용해도 무방 (TargetLocation이 0,0,0 근처라면)
+		
+		// ★ 중요: TargetLocation 근처의 접선을 써야 함.
+		// Player가 멀리 갔다면 접선이 달라질 수 있음.
+		// 하지만 "Treadmill"은 Player를 TargetLocation(고정점)에 묶어두는 것이 목표.
+		// 따라서 "TargetLocation에서의 접선 방향"으로 투영하는 것이 타당함?
+		// 아니, Player가 90도 꺾인 곳에 있다면 Player 쪽 접선을 써야 함.
+		// Player가 진행해야 할 방향으로 얼마나 더 갔는가?
+		
+		// 1안: TargetLocation에서의 접선. (직관적)
+		// 2안: PlayerLocation에서의 접선. (곡선 정밀도)
+		
+		// 여기서는 CurrentPathDistance(화면 중앙/TargetLocation 근처)의 접선을 사용.
+		// 왜냐하면 월드 시프트는 CurrentPathDistance의 접선 반대 방향으로 일어나기 때문.
+		PathDirVector = PathManager->GetDirectionAtDistance(CurrentPathDistance).Vector();
+	}
+
+	float Offset = FVector::DotProduct(OffsetVec, PathDirVector);
 
 	// 3. 목표 속도 계산 (P-Control)
-	// BaseSpeed를 기준으로 오프셋만큼 가감속
 	float TargetSpeed = BaseTreadmillSpeed + (Offset * CorrectionStrength);
 
 	// 최소 속도 0 보장

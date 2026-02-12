@@ -81,9 +81,20 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Runner")
 	float GetCurrentTreadmillSpeed() const { return CurrentTreadmillSpeed; }
 
-	/** 현재 경로 누적 거리 반환 */
-	UFUNCTION(BlueprintPure, Category = "Runner")
+	// 현재 트레드밀의 누적 이동 거리 (가상 거리)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ExRunner|Status")
+	float CurrentPathDistance = 0.f;
+
+	// ★ 실제 플레이어의 경로상 위치 (Chunk 삭제 판단용)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ExRunner|Status")
+	float RealPlayerPathDistance = 0.f;
+
+	UFUNCTION(BlueprintCallable, Category = "ExRunner|Status")
 	float GetCurrentPathDistance() const { return CurrentPathDistance; }
+
+	// 플레이어 실제 위치 기반 거리 반환
+	UFUNCTION(BlueprintCallable, Category = "ExRunner|Status")
+	float GetPlayerPathDistance() const { return RealPlayerPathDistance; }
 
 	/** 러너 게임 시작 */
 	UFUNCTION(BlueprintCallable, Category = "Runner")
@@ -119,9 +130,10 @@ private:
 	TObjectPtr<UExCurveConfig> CurveConfig;
 
 	// ========== 오프셋 추적 (트레드밀 핵심) ==========
-
-	/** 캐릭터 기준 X 좌표 (스폰 위치) */
-	float TargetX = 0.f;
+	
+	/** 캐릭터 기준 위치 (스폰 위치, 0,0,0 근처) - 커브 대응을 위해 벡터로 변경 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner|Treadmill", meta = (AllowPrivateAccess = "true"))
+	FVector TargetLocation = FVector::ZeroVector;
 
 	/** 오프셋 추적 초기화 완료 여부 */
 	bool bTrackingInitialized = false;
@@ -138,9 +150,9 @@ private:
 	 * 캐릭터 회전 갱신 (경로 접선 방향)
 	 * 향후 PlayerController/카메라 기반 회전으로 확장 가능하도록 분리
 	 */
+	/** 캐릭터 회전 갱신 (경로 접선 방향)
+	 * 향후 PlayerController/카메라 기반 회전으로 확장 가능하도록 분리
+	 */
 	void UpdateCharacterRotation(float DeltaTime);
-
-	/** 경로 상 현재 누적 거리 */
-	float CurrentPathDistance = 0.f;
 
 };
