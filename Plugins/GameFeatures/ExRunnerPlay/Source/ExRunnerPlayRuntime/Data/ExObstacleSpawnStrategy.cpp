@@ -89,24 +89,52 @@ void UExObstacleSpawnStrategy::ConfigureObstacle_Implementation(
 // ──────────────────────────────────────────────
 // 기존 로직과 동일: 스폰 위치 계산 (Pivot Adjustment 포함)
 // ──────────────────────────────────────────────
-FVector UExObstacleSpawnStrategy::CalculateSpawnPosition_Implementation(
+// ──────────────────────────────────────────────
+// 기존 로직과 수정된 커브 로직 분기: 스폰 위치 및 회전 계산
+// ──────────────────────────────────────────────
+FTransform UExObstacleSpawnStrategy::CalculateSpawnPosition_Implementation(
 	const UExObstacleDefinition* Def,
 	AExFloorChunk* Chunk,
 	float SafeStartX)
 {
-	if (!Chunk || !Def) return FVector::ZeroVector;
+	if (!Chunk || !Def) return FTransform::Identity;
 
-	const FVector ChunkLoc = Chunk->GetActorLocation();
-	const float SpawnX = SafeStartX + 200.f; // Buffer
+	const float ChunkLength = Chunk->ChunkLength;
+	// [변경] World X가 아닌 Path Distance 기반 계산
+	// SafeStartX 인자는 이제 SafeStartDist(경로 누적 거리)를 의미함
+	// PathDistance는 청크의 Center Distance. StartDist는 HalfLength를 빼야 함
+	const float ChunkStartDist = Chunk->PathDistance - (ChunkLength * 0.5f);
+	
+	// 로컬 거리 계산
+	// SafeStartX(이전 장애물 끝 거리) + Buffer - 청크 시작 거리
+	float LocalDist = (SafeStartX + 200.f) - ChunkStartDist;
 
-	// 바닥 너비로 Y 피벗 오프셋 계산 (기존 GetVisualBounds 사용)
+	// 범위 체크 (청크 길이 초과 시?)
+	// 초과해도 GetLocalTransformAtDistance에서 Clamp 하거나 처리함.
+
+	// 1. 청크 로컬 트랜스폼 계산 (커브 포함)
+	FTransform CurveTrans = Chunk->GetLocalTransformAtDistance(LocalDist);
+
+	// 2. Y 오프셋 적용 (기존 로직: 바닥 너비 관련)
+	// 기존: ChunkLoc.Y - (TargetWidth * 0.5f) -> 왼쪽 정렬
+	// 장애물 Pivot이 Edge에 있다고 가정하고 오프셋 적용
 	FBoxSphereBounds FloorBounds = GetVisualBoundsOf(Chunk);
 	float FloorHalfWidth = FloorBounds.BoxExtent.Y;
 	if (FloorHalfWidth < 10.f) FloorHalfWidth = 500.f;
 	float TargetWidth = FloorHalfWidth * 2.0f;
+	
+	// Curve Center에서 왼쪽으로 Width/2 만큼 이동 (Edge Pivot 보정)
+	float YOffset = -(TargetWidth * 0.5f);
+	
+	// 3. 커브 로컬 변환에 오프셋 적용
+	// CurveTrans.GetLocation()은 (X, 0, Z) 형태 (Pitch/Yaw 회전 포함)
+	// 로컬 Y축으로 이동
+	CurveTrans.AddToTranslation(FVector(0.f, YOffset, 0.f));
+	
+	// 3. World 변환 (Chunk Actor Transform 적용)
+	FTransform WorldTrans = CurveTrans * Chunk->GetActorTransform();
 
-	// Pivot Adjustment: 바닥 너비 절반만큼 Y 오프셋 (기존 로직)
-	return FVector(SpawnX, ChunkLoc.Y - (TargetWidth * 0.5f), ChunkLoc.Z);
+	return WorldTrans;
 }
 
 // ──────────────────────────────────────────────

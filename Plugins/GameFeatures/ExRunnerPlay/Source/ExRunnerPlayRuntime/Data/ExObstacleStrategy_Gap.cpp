@@ -44,29 +44,36 @@ static FBoxSphereBounds GetVisualBoundsOf_Gap(AActor* Actor)
 // CalculateSpawnPosition: 바닥 레벨에 배치
 // Gap은 높이 오프셋 없음, Y 오프셋 없음 (전체 폭)
 // ──────────────────────────────────────────────
-FVector UExObstacleStrategy_Gap::CalculateSpawnPosition_Implementation(
+// ──────────────────────────────────────────────
+// CalculateSpawnPosition: 바닥 레벨에 배치
+// Gap은 높이 오프셋 없음, Y 오프셋 없음 (전체 폭)
+// ──────────────────────────────────────────────
+FTransform UExObstacleStrategy_Gap::CalculateSpawnPosition_Implementation(
 	const UExObstacleDefinition* Def,
 	AExFloorChunk* Chunk,
 	float SafeStartX)
 {
-	if (!Chunk || !Def) return FVector::ZeroVector;
+	if (!Chunk || !Def) return FTransform::Identity;
 
-	const FVector ChunkLoc = Chunk->GetActorLocation();
-	const float SpawnX = SafeStartX + 200.f;
+	const float ChunkLength = Chunk->ChunkLength;
+	// PathDistance는 Chunk Center 기준이므로 StartDist 계산 시 HalfLength를 뻼
+	const float ChunkStartDist = Chunk->PathDistance - (ChunkLength * 0.5f);
 
-	// ConfigureObstacle에서 사용할 X 좌표 캐시
-	CachedSpawnX = SpawnX;
+	// 로컬 거리 (ArcLength 기준)
+	float LocalDist = (SafeStartX + 200.f) - ChunkStartDist;
 
-	// ★ Y 피봇 보정 (Base/Slide Strategy와 동일)
-	// 장애물 메시의 피봇이 끝(edge)에 있으므로 바닥 너비 절반만큼 Y 오프셋
-	// NOTE: Gap 장애물 BP의 피봇이 중앙이면 이 보정이 불필요할 수 있음
-	//       BP 메시 구성에 따라 조정 필요
-	FBoxSphereBounds FloorBounds = GetVisualBoundsOf_Gap(Chunk);
-	float FloorHalfWidth = FloorBounds.BoxExtent.Y;
-	if (FloorHalfWidth < 10.f) FloorHalfWidth = 500.f;
-	float TargetWidth = FloorHalfWidth * 2.0f;
+	// 커브 로컬 변환 계산
+	FTransform CurveTrans = Chunk->GetLocalTransformAtDistance(LocalDist);
+	
+	// 월드 변환
+	FTransform WorldTrans = CurveTrans * Chunk->GetActorTransform();
 
-	return FVector(SpawnX, ChunkLoc.Y - (TargetWidth * 0.5f), ChunkLoc.Z);
+	// ConfigureObstacle에서 사용할 X 좌표 캐시 (월드 X)
+	// Gap 전략은 이 값을 역변환하여 Local X를 구하고, 이를 Gap Slicing에 사용함.
+	// 커브의 경우 Local X != ArcLength 이지만, ApplyGap이 StaticMesh Slicing을 하므로 Local X가 맞음.
+	CachedSpawnX = WorldTrans.GetLocation().X;
+
+	return WorldTrans;
 }
 
 // ──────────────────────────────────────────────

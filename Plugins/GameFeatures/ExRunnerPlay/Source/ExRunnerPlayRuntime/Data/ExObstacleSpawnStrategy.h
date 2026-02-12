@@ -69,10 +69,10 @@ public:
 	 * @return             최종 월드 스폰 위치
 	 */
 	UFUNCTION(BlueprintNativeEvent, Category = "Obstacle|Strategy")
-	FVector CalculateSpawnPosition(const UExObstacleDefinition* Def,
+	FTransform CalculateSpawnPosition(const UExObstacleDefinition* Def,
 	                               AExFloorChunk* Chunk,
 	                               float SafeStartX);
-	virtual FVector CalculateSpawnPosition_Implementation(const UExObstacleDefinition* Def,
+	virtual FTransform CalculateSpawnPosition_Implementation(const UExObstacleDefinition* Def,
 	                                                      AExFloorChunk* Chunk,
 	                                                      float SafeStartX);
 

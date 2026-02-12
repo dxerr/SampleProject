@@ -130,24 +130,39 @@ void UExObstacleStrategy_Slide::ConfigureObstacle_Implementation(
 // CalculateSpawnPosition: Slide 전용 위치 계산
 // Z = Floor.Z + CrouchPassHeight (런타임 캐릭터 데이터 기반)
 // ──────────────────────────────────────────────
-FVector UExObstacleStrategy_Slide::CalculateSpawnPosition_Implementation(
+FTransform UExObstacleStrategy_Slide::CalculateSpawnPosition_Implementation(
 	const UExObstacleDefinition* Def,
 	AExFloorChunk* Chunk,
 	float SafeStartX)
 {
-	if (!Chunk || !Def) return FVector::ZeroVector;
+	if (!Chunk || !Def) return FTransform::Identity;
 
-	const FVector ChunkLoc = Chunk->GetActorLocation();
-	const float SpawnX = SafeStartX + 200.f;
+	const float ChunkLength = Chunk->ChunkLength;
+	// PathDistance는 Chunk Center 기준이므로 StartDist 계산 시 HalfLength를 뻼
+	const float ChunkStartDist = Chunk->PathDistance - (ChunkLength * 0.5f);
 
-	// Y: 바닥 너비로 피벗 오프셋 (기본 로직)
+	// 로컬 거리 계산
+	float LocalDist = (SafeStartX + 200.f) - ChunkStartDist;
+
+	// 1. 커브 로컬 변환 계산
+	FTransform CurveTrans = Chunk->GetLocalTransformAtDistance(LocalDist);
+
+	// 2. Y 오프셋 계산 (장애물 피벗 보정)
 	FBoxSphereBounds FloorBounds = GetVisualBoundsOf_Slide(Chunk);
 	float FloorHalfWidth = FloorBounds.BoxExtent.Y;
 	if (FloorHalfWidth < 10.f) FloorHalfWidth = 500.f;
 	float TargetWidth = FloorHalfWidth * 2.0f;
+	float YOffset = -(TargetWidth * 0.5f);
 
-	// ★ Z: 실제 캐릭터의 CrouchHalfHeight + 여유 마진으로 통과 높이 계산
+	// 3. Z 오프셋 계산 (Crouch 통과 높이)
 	float PassHeight = GetCrouchPassHeight(Chunk, ClearanceMargin);
 
-	return FVector(SpawnX, ChunkLoc.Y - (TargetWidth * 0.5f), ChunkLoc.Z + PassHeight);
+	// 4. 로컬 변환에 오프셋 적용
+	// CurveTrans는 경로 중심/바닥면 기준.
+	// 여기에 Y(횡방향), Z(높이) 오프셋을 더함.
+	// CurveTrans의 회전(Yaw)이 적용된 상태에서 더해지므로, 경로 수직 방향으로 이동됨.
+	CurveTrans.AddToTranslation(FVector(0.f, YOffset, PassHeight));
+
+	// 5. 월드 변환
+	return CurveTrans * Chunk->GetActorTransform();
 }

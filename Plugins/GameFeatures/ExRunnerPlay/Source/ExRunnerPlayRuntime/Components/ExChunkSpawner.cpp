@@ -8,6 +8,8 @@
 
 #include "ExChunkSpawner.h"
 #include "../Actors/ExFloorChunk.h"
+#include "ExPathManager.h"
+#include "../Data/ExCurveConfig.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -45,14 +47,32 @@ void UExChunkSpawner::InitializeSpawner()
 	// 기존 청크 모두 정리
 	ClearAllChunks();
 	
-	// 초기 청크 배치
-	for (int32 i = 0; i < MaxActiveChunks; ++i)
+	// GameMode에서 PathManager 가져오기
+	UExPathManager* PM = nullptr;
+	if (AActor* Owner = GetOwner())
 	{
-		SpawnNextChunk();
+		PM = Owner->FindComponentByClass<UExPathManager>();
+	}
+
+	// [Fix] 초기 세그먼트(0,0,0 위치) 스폰
+	// PathManager가 InitializePath()에서 생성한 첫 세그먼트는 
+	// GenerateNextSegment() 호출 시 건너뛰어지므로, 여기서 명시적으로 스폰
+	int32 SpawnCount = 0;
+	if (PM && PM->GetSegments().Num() > 0)
+	{
+		// 0번 세그먼트 스폰 (보통 플레이어 시작 위치)
+		SpawnNextChunk(0);
+		SpawnCount++;
+	}
+
+	// 나머지 청크 채우기 (새 세그먼트 생성)
+	for (int32 i = SpawnCount; i < MaxActiveChunks; ++i)
+	{
+		SpawnNextChunk(-1);
 	}
 }
 
-AExFloorChunk* UExChunkSpawner::SpawnNextChunk()
+AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
 {
 	// 서버 권한 체크 (멀티플레이어 환경 고려)
 	if (GetOwner() && !GetOwner()->HasAuthority())
@@ -65,31 +85,109 @@ AExFloorChunk* UExChunkSpawner::SpawnNextChunk()
 	{
 		return nullptr;
 	}
-	
-	// 스폰 위치 계산 (마지막 청크 기준)
-	float SpawnX = SpawnStartX;
-	if (ActiveChunks.Num() > 0)
+
+	// ── PathManager 연동: 경로 기반 스폰 ──
+
+	// GameMode에서 PathManager 가져오기
+	UExPathManager* PM = nullptr;
+	if (AActor* Owner = GetOwner())
 	{
-		AExFloorChunk* LastChunk = ActiveChunks.Last();
-		if (IsValid(LastChunk))
-		{
-			SpawnX = LastChunk->GetActorLocation().X + ChunkSpacing;
-		}
+		PM = Owner->FindComponentByClass<UExPathManager>();
 	}
-	
-	// 청크 활성화
-	FVector SpawnLocation(SpawnX, 0.f, 0.f);
-	Chunk->ActivateChunk(SpawnLocation);
-	
+
+	if (PM && PM->CurveConfig)
+	{
+		// ── 경로 기반 배치 ──
+		
+		const FExPathSegment* CurrentSeg = nullptr;
+
+		// 1) 세그먼트 확보 (Override 또는 신규 생성)
+		if (OverrideSegmentIndex >= 0)
+		{
+			// 특정 인덱스 세그먼트 사용 (초기화용)
+			if (PM->GetSegments().IsValidIndex(OverrideSegmentIndex))
+			{
+				CurrentSeg = &PM->GetSegments()[OverrideSegmentIndex];
+			}
+			else
+			{
+				// 인덱스 오류 시 그냥 다음 생성? 혹은 실패?
+				// 안전하게 다음 생성 시도
+				CurrentSeg = &PM->GenerateNextSegment();
+			}
+		}
+		else
+		{
+			// 다음 세그먼트 생성
+			CurrentSeg = &PM->GenerateNextSegment();
+		}
+
+		if (!CurrentSeg) return nullptr;
+
+		const FExPathSegment& Seg = *CurrentSeg;
+
+		// 2) 스폰 위치/회전 = 세그먼트 중심점 (Pivot = Center)
+		// SplineMesh가 Center Pivot으로 생성되므로, Actor는 세그먼트의 **중간**에 위치해야 함
+		// Alpha=0.5 지점이 세그먼트의 중심
+		FVector SpawnPos = Seg.GetPositionAtAlpha(0.5f);
+		FRotator SpawnRot = Seg.GetRotationAtAlpha(0.5f);
+
+		// 3) 청크 활성화 (회전 포함)
+		// ★ 중요: 커브(나선형)의 경우, Actor가 Pitch를 가지면 로컬 좌표계가 기울어져 
+		//    ApplyCurve의 Z축 변위와 중첩되어 의도치 않은 비틀림 발생.
+		//    따라서 커브일 때는 Actor 회전을 수평(Yaw Only)으로 고정하고, 
+		//    높이 변화는 온전히 ApplyCurve의 Z 오프셋으로 처리.
+		if (Seg.Type != EExPathSegmentType::Straight)
+		{
+			SpawnRot.Pitch = 0.f;
+			SpawnRot.Roll = 0.f;
+		}
+
+		Chunk->ActivateChunkWithRotation(SpawnPos, SpawnRot);
+
+		// 4) 경로 정보 설정 (Actor의 중심 거리)
+		const float MidDistance = Seg.CumulativeStartDistance + (Seg.ArcLength * 0.5f);
+		Chunk->PathDistance = MidDistance; // 중심 거리 저장
+		Chunk->SegmentType = Seg.Type;
+
+		// 5) 모든 청크에 Spline Mesh 적용 (Straight 포함 통일감 부여)
+		// Straight: Angle=0, Radius=0. Radius는 무시됨.
+		const bool bIsLeft = (Seg.Type == EExPathSegmentType::CurveLeft);
+		
+		Chunk->ApplyCurve(Seg.CurveAngle, Seg.CurveRadius, 
+			PM->CurveConfig->SplineSegmentCount, bIsLeft, Seg.HeightOffset);
+
+		UE_LOG(LogExChunkSpawner, Log, TEXT("경로 기반 스폰: [%s] Type=%d, PathDist=%.1f (Mid), Pos=%s"),
+			*Chunk->GetName(), (int32)Seg.Type, MidDistance, *SpawnPos.ToString());
+	}
+	else
+	{
+		// ── 레거시 직선 배치 (기존 로직) ──
+		float SpawnX = SpawnStartX;
+		if (ActiveChunks.Num() > 0)
+		{
+			AExFloorChunk* LastChunk = ActiveChunks.Last();
+			if (IsValid(LastChunk))
+			{
+				SpawnX = LastChunk->GetActorLocation().X + ChunkSpacing;
+			}
+		}
+
+		FVector SpawnLocation(SpawnX, 0.f, 0.f);
+		Chunk->ActivateChunk(SpawnLocation);
+		Chunk->SegmentType = EExPathSegmentType::Straight;
+		Chunk->PathDistance = 0.f;
+	}
+
 	// 활성 목록에 추가
 	ActiveChunks.Add(Chunk);
-	
+
 	// 델리게이트를 통해 청크 생성 알림
 	if (OnChunkSpawned.IsBound())
 	{
 		OnChunkSpawned.Broadcast(Chunk);
 	}
-	
+
 	return Chunk;
 }
 
@@ -214,5 +312,45 @@ AExFloorChunk* UExChunkSpawner::CreateNewChunk()
 	}
 	
 	return NewChunk;
+}
+
+// ──────────────────────────────────────────────
+// 경로 기반 월드 시프트 (커브 지원)
+// ──────────────────────────────────────────────
+// ──────────────────────────────────────────────
+// 경로 기반 월드 시프트 (Global Vector Shift)
+// ──────────────────────────────────────────────
+void UExChunkSpawner::ShiftWorldByVector(const FVector& ShiftAmount)
+{
+	// 서버 권한 체크
+	if (GetOwner() && !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	for (AExFloorChunk* Chunk : ActiveChunks)
+	{
+		if (IsValid(Chunk))
+		{
+			Chunk->AddActorWorldOffset(ShiftAmount);
+			Chunk->UpdateOverlaps();
+			// PathDistance는 절대 거리이므로 줄이지 않음
+		}
+	}
+
+	// PathManager의 원점도 시프트 필요? -> GameMode 관리 영역
+	
+	// 외부 시스템(장애물 관리자)에 알림
+	// 레거시 호환성을 위해 X축 이동량만 전송하거나, 벡터 크기를 전송해야 함.
+	// 기존 로직: ShiftWorld(Delta) -> AddOffset(Delta) -> Broadcast(Delta).
+	// 여기서 ShiftAmount는 실제 이동 벡터.
+	// ObstacleManager는 SpawnX(거리)를 체크함.
+	// 만약 Y축으로 이동 중이라면 X는 안 바뀜. -> 장애물 스폰 안 됨?
+	// 장애물 시스템이 "거리 기반"이면 괜찮음.
+	// 일단 X축 변위만 전달. (장애물 매니저 보완 필요)
+	if (OnWorldShifted.IsBound())
+	{
+		OnWorldShifted.Broadcast(ShiftAmount.X);
+	}
 }
 

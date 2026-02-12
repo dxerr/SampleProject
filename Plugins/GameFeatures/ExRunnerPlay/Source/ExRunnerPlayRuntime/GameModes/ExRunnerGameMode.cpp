@@ -4,12 +4,128 @@
 #include "ExRunnerGameMode.h"
 #include "../Components/ExChunkSpawner.h"
 #include "../Components/ExObstacleManager.h"
+#include "../Components/ExPathManager.h"
+#include "../Data/ExCurveConfig.h"
 #include "../Actors/ExFloorChunk.h"
 #include "ExGameplayTags.h"
 #include "ExGameplayEventSubsystem.h"
 #include "Kismet/GameplayStatics.h"
 
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "DrawDebugHelpers.h" // 디버그 드로잉용
+
 DEFINE_LOG_CATEGORY_STATIC(LogExRunnerPlay, Log, All);
+
+// ... (Existing Include)
+
+void AExRunnerGameMode::UpdateCharacterRotation(float DeltaTime)
+{
+	if (!PathManager || !CurveConfig) return;
+
+	APawn* PlayerPawn = GetCachedPlayerPawn();
+	if (!PlayerPawn) return;
+
+	AController* Controller = PlayerPawn->GetController();
+	if (!Controller) return;
+
+	// ★ 각도 계산 보정: 캐릭터가 (0,0,0)이 아닌 오프셋 위치(TargetX 전후)에 있을 수 있음.
+	// 기존: CurrentPathDistance + X (직선 가정, 곡선에서 부정확)
+	// 개선: 실제 월드 위치를 경로에 투영하여 정확한 경로 거리 산출
+	float PlayerPathDist = PathManager->GetClosestDistanceAtLocation(PlayerPawn->GetActorLocation(), CurrentPathDistance, 3000.f);
+
+	// 현재 경로 거리에서의 접선 방향 및 위치 조회
+	FRotator PathDirection = PathManager->GetDirectionAtDistance(PlayerPathDist);
+	FVector ExpectedPos = PathManager->GetPositionAtDistance(PlayerPathDist);
+	FVector ActualPos = PlayerPawn->GetActorLocation();
+
+	// ★ 디버그 드로잉 (빨강=실제, 초록=계산된 경로 위치)
+	if (bRunnerModeEnabled) // 너무 많으면 정신없으니 모드 체크
+	{
+		DrawDebugCoordinateSystem(GetWorld(), ActualPos, PlayerPawn->GetActorRotation(), 100.f, false, -1.f, 0, 2.f);
+		DrawDebugCoordinateSystem(GetWorld(), ExpectedPos, PathDirection, 100.f, false, -1.f, 0, 2.f);
+		DrawDebugLine(GetWorld(), ActualPos, ExpectedPos, FColor::Yellow, false, -1.f, 0, 2.f);
+
+		// 화면 출력 디버깅
+		if (GEngine)
+		{
+			FString DebugMsg = FString::Printf(TEXT("Dist: %.0f | Err: %.0f | PathYaw: %.1f | PlayerYaw: %.1f"), 
+				PlayerPathDist, FVector::Dist(ActualPos, ExpectedPos), PathDirection.Yaw, PlayerPawn->GetActorRotation().Yaw);
+			GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Cyan, DebugMsg);
+		}
+	}
+
+	// ★ Controller Yaw 회전 처리 (카메라 연동)
+	// 캐릭터 자체 회전 대신 컨트롤러 회전을 사용해야 SpringArm 등 카메라가 따라옴.
+	FRotator CurrentControlRot = Controller->GetControlRotation();
+
+	// [Fix] 캐릭터가 Controller 회전을 따르도록 설정 강제
+	PlayerPawn->bUseControllerRotationYaw = true;
+	PlayerPawn->bUseControllerRotationPitch = false;
+	PlayerPawn->bUseControllerRotationRoll = false;
+
+	// ACharacter인 경우, Movement 컴포넌트 설정도 확인
+	if (ACharacter* Character = Cast<ACharacter>(PlayerPawn))
+	{
+		if (UCharacterMovementComponent* CMC = Character->GetCharacterMovement())
+		{
+			CMC->bOrientRotationToMovement = false;
+		}
+	}
+
+	// ──────────────────────────────────────────────
+	// [Steering Correction] 조향 보정 로직
+	// ──────────────────────────────────────────────
+	// 1. Lookahead: 반응 지연 보상을 위해 조금 앞의 경로를 조회
+	const float LookAheadAmount = CurrentTreadmillSpeed * 0.3f; // 0.3초 앞
+	const float LookAheadDist = PlayerPathDist + LookAheadAmount;
+
+	FRotator TargetRot = PathManager->GetDirectionAtDistance(LookAheadDist);
+
+	// 2. Lateral Error(횡방향 오차) 계산
+	// 현재 위치에서 가장 가까운 경로상의 점
+	FVector PathPos = PathManager->GetPositionAtDistance(PlayerPathDist);
+	// 경로의 오른쪽 벡터 (Yaw + 90)
+	FVector PathRight = FRotationMatrix(PathDirection).GetScaledAxis(EAxis::Y);
+	// 플레이어가 경로 중심에서 얼마나 오른쪽/왼쪽에 있는지 (Right +, Left -)
+	FVector ErrorVec = PlayerPawn->GetActorLocation() - PathPos;
+	float LateralOffset = FVector::DotProduct(ErrorVec, PathRight);
+
+	// 3. P-Control Steering
+	// 오차에 비례하여 반대 방향으로 회전 보정
+	// Gain: 클수록 강하게 보정하지만, 너무 크면 진동 발생 (-0.1 ~ -0.5 추천)
+	const float SteeringGain = -0.15f; 
+	float SteeringYaw = LateralOffset * SteeringGain;
+	
+	// 과도한 회전 방지 (Clamp)
+	SteeringYaw = FMath::Clamp(SteeringYaw, -15.f, 15.f);
+
+	// 최종 목표 회전에 보정값 적용
+	TargetRot.Yaw += SteeringYaw;
+
+	// 4. 부드러운 보간 (RInterpTo)
+	// Steering을 적용했으므로 보간 속도를 조금 더 빠르게 해도 됨
+	FRotator NewControlRot = FMath::RInterpTo(
+		CurrentControlRot,
+		TargetRot,
+		DeltaTime,
+		CurveConfig->CharacterRotationInterpSpeed * 1.5f // 반응성 향상
+	);
+
+	// Yaw만 적용 (Pitch/Roll은 카메라 제어권 유지)
+	NewControlRot.Pitch = CurrentControlRot.Pitch;
+	NewControlRot.Roll = CurrentControlRot.Roll;
+
+	Controller->SetControlRotation(NewControlRot);
+
+	// 디버그 출력 업데이트
+	if (bRunnerModeEnabled && GEngine)
+	{
+		FString SteeringMsg = FString::Printf(TEXT("Offset: %.1f | Steer: %.1f | FinalYaw: %.1f"), 
+			LateralOffset, SteeringYaw, TargetRot.Yaw);
+		GEngine->AddOnScreenDebugMessage(2, 0.f, FColor::Orange, SteeringMsg);
+	}
+}
 
 AExRunnerGameMode::AExRunnerGameMode()
 {
@@ -19,6 +135,7 @@ AExRunnerGameMode::AExRunnerGameMode()
 
 	ChunkSpawner = CreateDefaultSubobject<UExChunkSpawner>(TEXT("ChunkSpawner"));
 	ObstacleManager = CreateDefaultSubobject<UExObstacleManager>(TEXT("ObstacleManager"));
+	PathManager = CreateDefaultSubobject<UExPathManager>(TEXT("PathManager"));
 }
 
 void AExRunnerGameMode::BeginPlay()
@@ -46,7 +163,19 @@ void AExRunnerGameMode::StartRunnerGame()
 	bTreadmillPaused = false;
 	bTreadmillDisabled = false;
 	bTrackingInitialized = false;
+	CurrentPathDistance = 0.f;
 
+	// PathManager 초기화
+	if (PathManager)
+	{
+		if (CurveConfig)
+		{
+			PathManager->CurveConfig = CurveConfig;
+		}
+		PathManager->InitializePath(FVector::ZeroVector, FRotator::ZeroRotator);
+		UE_LOG(LogExRunnerPlay, Log, TEXT("PathManager 초기화 완료 (CurveConfig=%s)"),
+			CurveConfig ? *CurveConfig->GetName() : TEXT("None"));
+	}
 
 	if (ChunkSpawner)
 	{
@@ -161,14 +290,43 @@ void AExRunnerGameMode::Tick(float DeltaTime)
 	// 급격한 속도 변화를 방지하여 부드러운 움직임 구현
 	CurrentTreadmillSpeed = FMath::FInterpTo(CurrentTreadmillSpeed, TargetSpeed, DeltaTime, 2.0f);
 
-	// 5. Floor 이동
+	// 5. Floor 이동 (경로 기반 또는 레거시)
+	const float DeltaDistance = CurrentTreadmillSpeed * DeltaTime;
 	if (ChunkSpawner)
 	{
-		ChunkSpawner->ShiftWorld(-CurrentTreadmillSpeed * DeltaTime);
+		if (PathManager && CurveConfig)
+		{
+			// 경로 기반 이동
+			// 경로 기반 이동 (Global Shift)
+			// 플레이어 위치(CurrentPathDistance)에서의 접선 방향으로 전체 월드를 반대로 이동
+			FRotator PathDirection = PathManager->GetDirectionAtDistance(CurrentPathDistance);
+			FVector ShiftVector = PathDirection.Vector() * (-DeltaDistance);
+			
+			// Z축 이동(Pitch)은 램프/경사로 구현되므로, 월드 전체를 내리는 것보다는
+			// 수평 이동 + 높이차(Z)는 Player Movement가 처리?
+			// 아니, 트레드밀에서 경사를 오르려면 월드가 내려가야 함?
+			// PathDirection에 Pitch가 포함되어 있다면 Z축도 이동됨.
+			// 4분면 시스템에서 Pitch는 Spiral Ramp를 위해 사용됨.
+			// 따라서 ShiftVector에 Z가 포함되면 월드가 내려가면서 캐릭터가 상대적으로 올라가는 효과.
+			
+			ChunkSpawner->ShiftWorldByVector(ShiftVector);
+			
+			// ★ PathManager의 원점도 함께 이동해야 다음 세그먼트가 올바른 위치(플레이어 근처)에 생성됨
+			PathManager->ShiftPathOrigin(ShiftVector);
+		}
+		else
+		{
+			// 레거시 직선 이동
+			ChunkSpawner->ShiftWorld(-DeltaDistance);
+		}
 	}
 
 	// 6. 거리 누적
-	TotalDistance += CurrentTreadmillSpeed * DeltaTime;
+	TotalDistance += DeltaDistance;
+	CurrentPathDistance += DeltaDistance;
+
+	// 7. 캐릭터 회전 갱신 (경로 접선 방향)
+	UpdateCharacterRotation(DeltaTime);
 }
 
 // ──────────────────────────────────────────────
@@ -203,3 +361,5 @@ void AExRunnerGameMode::OnClimbEnd(FGameplayTag EventTag, const FExGameplayEvent
 		Payload.Instigator ? *Payload.Instigator->GetName() : TEXT("Unknown"));
 	SetTreadmillPaused(false);
 }
+
+

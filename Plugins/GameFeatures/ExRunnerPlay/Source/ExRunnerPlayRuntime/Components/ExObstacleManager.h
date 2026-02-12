@@ -4,12 +4,14 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "../Struct/FExPathSegment.h"
 #include "ExObstacleManager.generated.h"
 
 class AExFloorChunk;
 class UExChunkSpawner;
 class UExObstacleDefinition;
 class UExObstacleSpawnStrategy;
+class UExPathManager;
 enum class EExObstacleType : uint8;
 
 /**
@@ -86,4 +88,16 @@ protected:
 
 	// Helper
 	static FBoxSphereBounds GetVisualBounds(AActor* Actor);
+
+	// ── 커브 구간 특수 배치 ──
+
+	/**
+	 * 커브 구간에서의 장애물 배치 제한 체크
+	 * @param Chunk 배치 대상 청크
+	 * @return 장애물 배치 허용 여부
+	 */
+	bool ShouldSpawnObstaclesOnCurve(AExFloorChunk* Chunk) const;
+
+	/** 경로 거리 기반 안전 배치 거리 */
+	float LastObstacleSafeEndDistance = -99999.f;
 };

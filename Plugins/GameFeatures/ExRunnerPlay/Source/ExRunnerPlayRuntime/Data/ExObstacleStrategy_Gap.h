@@ -33,7 +33,7 @@ public:
 	                                              AExFloorChunk* Chunk) override;
 
 	// 스폰 위치 계산 (바닥 레벨)
-	virtual FVector CalculateSpawnPosition_Implementation(const UExObstacleDefinition* Def,
+	virtual FTransform CalculateSpawnPosition_Implementation(const UExObstacleDefinition* Def,
 	                                                      AExFloorChunk* Chunk,
 	                                                      float SafeStartX) override;
 

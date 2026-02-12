@@ -9,6 +9,8 @@
 
 class UExChunkSpawner;
 class UExObstacleManager;
+class UExPathManager;
+class UExCurveConfig;
 struct FExGameplayEventPayload;
 
 /**
@@ -16,6 +18,7 @@ struct FExGameplayEventPayload;
  * 러너 게임 전용 모드
  * 오프셋 기반 트레드밀: BaseSpeed로 Floor를 이동하되,
  * 캐릭터 위치 오프셋에 따라 속도를 부드럽게 가변 조정
+ * 커브 경로 지원: PathManager를 통한 경로 기반 이동 + 캐릭터 회전
  */
 UCLASS()
 class EXRUNNERPLAYRUNTIME_API AExRunnerGameMode : public AExCoreGameMode
@@ -78,6 +81,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Runner")
 	float GetCurrentTreadmillSpeed() const { return CurrentTreadmillSpeed; }
 
+	/** 현재 경로 누적 거리 반환 */
+	UFUNCTION(BlueprintPure, Category = "Runner")
+	float GetCurrentPathDistance() const { return CurrentPathDistance; }
+
 	/** 러너 게임 시작 */
 	UFUNCTION(BlueprintCallable, Category = "Runner")
 	void StartRunnerGame();
@@ -104,6 +111,13 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UExObstacleManager> ObstacleManager;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UExPathManager> PathManager;
+
+	/** 커브 설정 데이터 에셋 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Runner|Curve", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UExCurveConfig> CurveConfig;
+
 	// ========== 오프셋 추적 (트레드밀 핵심) ==========
 
 	/** 캐릭터 기준 X 좌표 (스폰 위치) */
@@ -120,5 +134,13 @@ private:
 	/** 캐싱된 PlayerPawn 반환 */
 	APawn* GetCachedPlayerPawn();
 
+	/**
+	 * 캐릭터 회전 갱신 (경로 접선 방향)
+	 * 향후 PlayerController/카메라 기반 회전으로 확장 가능하도록 분리
+	 */
+	void UpdateCharacterRotation(float DeltaTime);
+
+	/** 경로 상 현재 누적 거리 */
+	float CurrentPathDistance = 0.f;
 
 };

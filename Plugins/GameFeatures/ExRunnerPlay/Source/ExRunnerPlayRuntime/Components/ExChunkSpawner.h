@@ -14,10 +14,13 @@
 
 class AExFloorChunk;
 class AExCoreGameMode;
+class UExPathManager;
+class UExCurveConfig;
 
 /**
  * UExChunkSpawner
  * 러너 게임의 청크 스폰 및 오브젝트 풀 관리 컴포넌트
+ * 경로 기반 배치 지원: PathManager와 연동하여 커브 청크 배치
  * GameMode에 부착하여 사용
  */
 UCLASS(ClassGroup=(ExCore), meta=(BlueprintSpawnableComponent))
@@ -66,10 +69,11 @@ public:
 
 	/**
 	 * 새 청크를 다음 위치에 스폰
+	 * @param OverrideSegmentIndex (Optional) 특정 인덱스의 세그먼트를 스폰할 경우 (초기화 시 0번 세그먼트용). -1이면 다음 세그먼트 생성.
 	 * @return 스폰된 청크, 실패 시 nullptr
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Spawner")
-	AExFloorChunk* SpawnNextChunk();
+	AExFloorChunk* SpawnNextChunk(int32 OverrideSegmentIndex = -1);
 
 	/**
 	 * 청크를 풀로 반환
@@ -85,11 +89,18 @@ public:
 	void ClearAllChunks();
 
 	/**
-	 * 모든 활성 청크를 X축으로 이동 (World Shift)
+	 * 모든 활성 청크를 X축으로 이동 (World Shift) - 레거시 (직선 전용)
 	 * @param DeltaX 이동할 X 거리
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Spawner")
 	void ShiftWorld(float DeltaX);
+
+	/**
+	 * 모든 활성 청크를 지정된 벡터만큼 이동 (Global Shift)
+	 * @param ShiftAmount 이동할 월드 벡터 (보통 -PlayerDirection * Speed * DeltaTime)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Spawner")
+	void ShiftWorldByVector(const FVector& ShiftAmount);
 
 	/**
 	 * 청크 생성 시 이벤트 (장애물 매니저 등 외부 시스템 연동용)
@@ -139,9 +150,14 @@ private:
 	TArray<TObjectPtr<AExFloorChunk>> ActiveChunks;
 
 	/**
-	 * 다음 청크 스폰 위치
+	 * 다음 청크 스폰 위치 (X축 기반 - 레거시)
 	 */
 	float NextSpawnX = 0.f;
+
+	/**
+	 * 다음 청크 스폰 위치 (경로 누적 거리 기반)
+	 */
+	float NextSpawnDistance = 0.f;
 
 	/**
 	 * 풀에서 청크 가져오기 (없으면 새로 생성)

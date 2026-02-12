@@ -34,7 +34,7 @@ public:
 	                                              AExFloorChunk* Chunk) override;
 
 	// 스폰 위치 계산 (Z = Floor.Z + MaxPassHeight)
-	virtual FVector CalculateSpawnPosition_Implementation(const UExObstacleDefinition* Def,
+	virtual FTransform CalculateSpawnPosition_Implementation(const UExObstacleDefinition* Def,
 	                                                      AExFloorChunk* Chunk,
 	                                                      float SafeStartX) override;
 };

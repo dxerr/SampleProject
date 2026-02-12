@@ -37,23 +37,34 @@ void UExObstacleManager::BindToSpawner(UExChunkSpawner* Spawner)
 
 void UExObstacleManager::OnWorldShifted(float DeltaX)
 {
-	// 월드 시프트에 맞춰 좌표 보정
-	// LastObstacleSafeEndX는 월드 좌표이므로, 모든 액터가 이동한 만큼 함께 이동해야 함.
-	// Spawner::ShiftWorld에서 DeltaX만큼 액터를 이동시키므로(Current += Delta), 여기서도 더해줌.
-	if (LastObstacleSafeEndX > -50000.f) // 초기값(-99999)이 아닐 때만
+	// [변경] 이제 LastObstacleSafeEndX는 "Path Distance"를 의미하므로 WorldShift의 영향을 받지 않음
+	// PathDistance는 월드 원점이 이동해도 불변 (누적 거리)
+	/*
+	if (LastObstacleSafeEndX > -50000.f)
 	{
 		LastObstacleSafeEndX += DeltaX;
 		UE_LOG(LogExObstacleManager, Verbose, TEXT("World Shifted by %.2f. New SafeEnd: %.2f"), DeltaX, LastObstacleSafeEndX);
 	}
+	*/
 }
 
 void UExObstacleManager::OnChunkSpawned(AExFloorChunk* Chunk)
 {
 	if (!Chunk) return;
 
-	// 바닥 청크의 길이를 가정 (기본 1000)하거나, Chunk에서 가져옴.
-	// 여기서는 ChunkLength가 ExFloorChunk에 있다고 가정.
-	float Length = Chunk->ChunkLength; // public member accessed
+	// 커브 구간 청크인 경우 특수 배치 정책 적용
+	if (Chunk->SegmentType != EExPathSegmentType::Straight)
+	{
+		if (!ShouldSpawnObstaclesOnCurve(Chunk))
+		{
+			UE_LOG(LogExObstacleManager, Log, TEXT("[%s] 커브 진입부 청크 - 장애물 배치 제한"),
+				*Chunk->GetName());
+			return;
+		}
+	}
+
+	// 바닥 청크의 길이 참조
+	float Length = Chunk->ChunkLength;
 	
 	SpawnObstaclesOnChunk(Chunk, 0.f, Length);
 }
@@ -131,18 +142,27 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 	}
 
 	// ── 공통 로직: 배치 가능성 검사 ──
-	float ChunkWorldStartX = Chunk->GetActorLocation().X - (ChunkLength * 0.5f);
-	float SafeStartX = LastObstacleSafeEndX;
-	if (SafeStartX < ChunkWorldStartX) SafeStartX = ChunkWorldStartX;
+	// [변경] World X가 아닌 Path Distance 기반 계산
+	// ExChunkSpawner에서 PathDistance를 Center 기준으로 설정하므로, StartDist는 HalfLength를 뻼
+	float ChunkStartDist = Chunk->PathDistance - (ChunkLength * 0.5f);
+	float SafeStartDist = LastObstacleSafeEndX;
+	
+	// 이전 장애물 끝 지점이 현재 청크 시작보다 전이면, 현재 청크 시작부터
+	if (SafeStartDist < ChunkStartDist) SafeStartDist = ChunkStartDist;
 
 	float ObsLen = SelectedDef->MaxSize.X;
-	float ChunkWorldEndX = Chunk->GetActorLocation().X + (ChunkLength * 0.5f);
+	float ChunkEndDist = ChunkStartDist + ChunkLength;
+	
+	// 실제 스폰 예정 거리 (Buffer 200.f 포함)
+	float ActualSpawnDist = SafeStartDist + 200.f;
+
+	// 청크 범위 초과 체크 (미리 검사)
+	if (ActualSpawnDist + ObsLen > ChunkEndDist) return;
 
 	// ── Strategy 위임: 스폰 위치 계산 ──
-	FVector SpawnPos = Strategy->CalculateSpawnPosition(SelectedDef, Chunk, SafeStartX);
-
-	// 청크 범위 초과 체크
-	if (SpawnPos.X + ObsLen > ChunkWorldEndX) return;
+	// SafeStartX 인자에 SafeStartDist(거리) 전달
+	FTransform SpawnTrans = Strategy->CalculateSpawnPosition(SelectedDef, Chunk, SafeStartDist);
+	FVector SpawnPos = SpawnTrans.GetLocation();
 
 	// ── 공통 로직: 풀에서 가져오기 ──
 	AActor* Obstacle = GetObstacleFromPool(SelectedDef->ObstacleClass);
@@ -151,11 +171,18 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 	// ── Strategy 위임: 장애물 설정 (스케일, 크기 등) ──
 	Strategy->ConfigureObstacle(Obstacle, SelectedDef, Chunk);
 
+	// [Fix] ConfigureObstacle에서 설정한 스케일 유지
+	// CalculateSpawnPosition은 Scale=(1,1,1)을 반환하므로, 이를 그대로 SetActorTransform하면 스케일이 초기화됨.
+	FVector ConfiguredScale = Obstacle->GetActorScale3D();
+	SpawnTrans.SetScale3D(ConfiguredScale);
 
 	// ── 공통 로직: 위치 결정 및 어태치 ──
-	FVector RelLoc = Chunk->GetActorTransform().InverseTransformPosition(SpawnPos);
+	// World Transform을 그대로 적용 후 Attach (KeepWorld)
+	Obstacle->SetActorTransform(SpawnTrans);
 	Obstacle->AttachToActor(Chunk, FAttachmentTransformRules::KeepWorldTransform);
-	Obstacle->SetActorRelativeLocation(RelLoc);
+	
+	// SetActorHiddenInGame(false)는 ActivateObstacle에서 이미 수행됨 (Pool 사용 시)
+	// 하지만 새로 생성된 경우를 위해 안전장치
 	Obstacle->SetActorHiddenInGame(false);
 
 	// ── Strategy 위임: 복귀 거리 계산 ──
@@ -166,12 +193,14 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 	}
 
 	float RecoveryDist = Strategy->GetRecoveryDistance(SelectedDef, RunSpeed);
-	LastObstacleSafeEndX = SpawnPos.X + (ObsLen * 0.5f) + RecoveryDist;
+	
+	// [변경] 거리 기반 누적
+	LastObstacleSafeEndX = ActualSpawnDist + (ObsLen * 0.5f) + RecoveryDist;
 
 	UE_LOG(LogExObstacleManager, Verbose,
-		TEXT("Obstacle Spawned [Type:%d]: %s at (%.2f, %.2f, %.2f)"),
+		TEXT("Obstacle Spawned [Type:%d]: %s at Dist=%.1f (Loc: %.2f, %.2f)"),
 		(int32)SelectedDef->Type, *Obstacle->GetName(),
-		SpawnPos.X, SpawnPos.Y, SpawnPos.Z);
+		ActualSpawnDist, SpawnPos.X, SpawnPos.Y);
 }
 
 UExObstacleDefinition* UExObstacleManager::SelectRandomDefinition() const
@@ -265,4 +294,30 @@ void UExObstacleManager::ReturnObstacleToPool(AActor* Obstacle)
 		ObstaclePool.Add(Key, TArray<AActor*>());
 	}
 	ObstaclePool[Key].Add(Obstacle);
+}
+
+// ──────────────────────────────────────────────
+// 커브 구간 장애물 배치 제한 체크
+// 커브 진입부에는 장애물 배치를 제한하여 플레이어 반응 시간 확보
+// 커브 중반~탈출부에서만 배치 허용
+// ──────────────────────────────────────────────
+bool UExObstacleManager::ShouldSpawnObstaclesOnCurve(AExFloorChunk* Chunk) const
+{
+	if (!Chunk) return false;
+
+	// 직선 청크는 항상 배치 허용
+	if (Chunk->SegmentType == EExPathSegmentType::Straight)
+	{
+		return true;
+	}
+
+	// TODO: 향후 커브 구간에서의 특수 배치 전략 구현
+	// - 커브 외측에 벽 장애물
+	// - 커브 내측에 아이템/보너스
+	// - UExObstacleSpawnStrategy 서브클래스로 확장 가능
+
+	// 현재는 커브 청크에서도 기본 배치 허용
+	// 커브 첫 번째 청크(진입부)만 제한하는 로직은
+	// 청크 순서 추적이 필요하므로 향후 구현
+	return true;
 }
