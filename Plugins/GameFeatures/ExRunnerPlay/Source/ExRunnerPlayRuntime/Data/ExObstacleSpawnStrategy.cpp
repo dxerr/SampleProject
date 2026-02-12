@@ -6,6 +6,7 @@
 #include "../Actors/ExFloorChunk.h"
 #include "ExObstacleDefinition.h"
 #include "Components/StaticMeshComponent.h"
+#include "../Interfaces/ExObstacleInterface.h"
 
 // ──────────────────────────────────────────────
 // 기존 UExObstacleManager::GetVisualBounds와 동일한 헬퍼
@@ -118,3 +119,27 @@ float UExObstacleSpawnStrategy::GetRecoveryDistance_Implementation(
 	if (!Def) return 200.f;
 	return Def->RecoveryTime * RunSpeed;
 }
+
+// ──────────────────────────────────────────────
+// 장애물 정보 주입 헬퍼 (Interface 호출)
+// ──────────────────────────────────────────────
+void UExObstacleSpawnStrategy::ApplyObstacleInfo(AActor* Obstacle, const FExObstacleInfo& Info)
+{
+	if (!IsValid(Obstacle))
+	{
+		return;
+	}
+
+	// 인터페이스 구현 여부 확인
+	if (Obstacle->GetClass()->ImplementsInterface(UExObstacleInterface::StaticClass()))
+	{
+		// 단위 변환: cm -> m, 소수점 2자리 반올림
+		FExObstacleInfo ModifiedInfo = Info;
+		float MeterValue = Info.Value * 0.01f; // / 100.0f
+		ModifiedInfo.Value = FMath::RoundToFloat(MeterValue * 100.0f) / 100.0f;
+
+		// BlueprintNativeEvent 호출 (Execute_ 접두사 사용)
+		IExObstacleInterface::Execute_SetupObstacleInfo(Obstacle, ModifiedInfo);
+	}
+}
+

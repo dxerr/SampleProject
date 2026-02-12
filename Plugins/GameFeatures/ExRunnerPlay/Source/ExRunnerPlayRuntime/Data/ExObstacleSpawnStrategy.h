@@ -6,11 +6,29 @@
 
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
+#include "../Data/ExObstacleDefinition.h"
 #include "ExObstacleSpawnStrategy.generated.h"
 
 class AActor;
 class AExFloorChunk;
 class UExObstacleDefinition;
+
+/**
+ * 장애물 정보 구조체
+ * BP에서 장애물의 타입과 주요 수치를 전달받기 위해 사용
+ */
+USTRUCT(BlueprintType)
+struct FExObstacleInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Obstacle")
+	EExObstacleType Type = EExObstacleType::None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Obstacle")
+	float Value = 0.0f; // Gap/Slide: Width, Climb: Height
+};
+
 
 /**
  * UExObstacleSpawnStrategy
@@ -70,4 +88,13 @@ public:
 	float GetRecoveryDistance(const UExObstacleDefinition* Def, float RunSpeed);
 	virtual float GetRecoveryDistance_Implementation(const UExObstacleDefinition* Def,
 	                                                 float RunSpeed);
+
+protected:
+	/**
+	 * 장애물 액터에 타입 및 크기 정보를 주입합니다.
+	 * 해당 액터가 IExObstacleInterface를 구현하고 있어야 합니다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Obstacle|Strategy")
+	void ApplyObstacleInfo(AActor* Obstacle, const FExObstacleInfo& Info);
+
 };

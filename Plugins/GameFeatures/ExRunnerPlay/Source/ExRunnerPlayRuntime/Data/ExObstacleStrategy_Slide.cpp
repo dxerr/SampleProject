@@ -118,6 +118,12 @@ void UExObstacleStrategy_Slide::ConfigureObstacle_Implementation(
 		TargetWidth  / BaseSize.Y,  // Y: 바닥 폭
 		TargetHeight / BaseSize.Z   // Z: 장애물 높이
 	));
+
+	// 4. 장애물 정보 주입 (Interface)
+	FExObstacleInfo Info;
+	Info.Type = EExObstacleType::Slide;
+	Info.Value = TargetDepth; // X축 길이(두께)
+	ApplyObstacleInfo(Obstacle, Info);
 }
 
 // ──────────────────────────────────────────────

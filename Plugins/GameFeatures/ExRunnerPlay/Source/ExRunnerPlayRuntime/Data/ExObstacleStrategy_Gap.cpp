@@ -120,4 +120,10 @@ void UExObstacleStrategy_Gap::ConfigureObstacle_Implementation(
 		TargetWidth  / BaseSize.Y,  // Y: ChunkFloor 너비
 		TargetHeight / BaseSize.Z   // Z: 높이
 	));
+
+	// 6. 장애물 정보 주입 (Interface)
+	FExObstacleInfo Info;
+	Info.Type = EExObstacleType::Gap;
+	Info.Value = GapWidth;
+	ApplyObstacleInfo(Obstacle, Info);
 }

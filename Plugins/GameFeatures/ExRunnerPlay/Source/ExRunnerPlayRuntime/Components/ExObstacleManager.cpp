@@ -5,7 +5,6 @@
 #include "../Actors/ExFloorChunk.h"
 #include "../Data/ExObstacleDefinition.h"
 #include "../Data/ExObstacleSpawnStrategy.h"
-#include "ExObstacleInteractionComponent.h"
 
 #include "Kismet/GameplayStatics.h"
 #include "Components/BoxComponent.h"
@@ -152,15 +151,6 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 	// ── Strategy 위임: 장애물 설정 (스케일, 크기 등) ──
 	Strategy->ConfigureObstacle(Obstacle, SelectedDef, Chunk);
 
-	// ── 공통 로직: Interaction Component 설정 ──
-	UExObstacleInteractionComponent* InteractionComp = Obstacle->FindComponentByClass<UExObstacleInteractionComponent>();
-	if (InteractionComp)
-	{
-		FVector Origin, BaseExtent;
-		Obstacle->GetActorBounds(true, Origin, BaseExtent);
-		InteractionComp->SetBoxExtent(BaseExtent);
-		InteractionComp->SetRelativeLocation(FVector::ZeroVector);
-	}
 
 	// ── 공통 로직: 위치 결정 및 어태치 ──
 	FVector RelLoc = Chunk->GetActorTransform().InverseTransformPosition(SpawnPos);

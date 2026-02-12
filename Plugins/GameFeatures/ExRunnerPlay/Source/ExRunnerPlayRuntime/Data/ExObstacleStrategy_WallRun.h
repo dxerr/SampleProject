@@ -18,6 +18,6 @@ class EXRUNNERPLAYRUNTIME_API UExObstacleStrategy_WallRun : public UExObstacleSp
 {
 	GENERATED_BODY()
 
-	// TODO: 향후 ConfigureObstacle / CalculateSpawnPosition 오버라이드하여
-	//       WallRun 전용 로직 (측면 벽, Y축 오프셋) 구현 예정
+	// WallRun 전용 로직 (Info 주입 추가)
+	virtual void ConfigureObstacle_Implementation(AActor* Obstacle, const UExObstacleDefinition* Def, AExFloorChunk* Chunk) override;
 };

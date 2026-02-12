@@ -18,6 +18,6 @@ class EXRUNNERPLAYRUNTIME_API UExObstacleStrategy_Climb : public UExObstacleSpaw
 {
 	GENERATED_BODY()
 
-	// TODO: 향후 ConfigureObstacle / CalculateSpawnPosition 오버라이드하여
-	//       Climb 전용 로직 (머리 높이, ClimbHeight 기반) 구현 예정
+	// Climb 전용 로직 (머리 높이, ClimbHeight 기반)
+	virtual void ConfigureObstacle_Implementation(AActor* Obstacle, const UExObstacleDefinition* Def, AExFloorChunk* Chunk) override;
 };

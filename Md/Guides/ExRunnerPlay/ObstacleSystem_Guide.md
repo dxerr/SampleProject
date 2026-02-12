@@ -281,3 +281,39 @@ UExObstacleManager
 | `ExObstacleManager.h/cpp` | `TMap<Type, Strategy*>`, Strategy 위임 리팩토링 |
 | `ExObstacleDefinition.h` | 타입별 조건부 프로퍼티 (`EditConditionHides`) |
 | `ExFloorChunk.h/cpp` | `ApplyGap()` / `ClearGap()` Gap 바닥 제거 기능 |
+
+---
+
+## 8. 장애물 정보 연동 (Interface)
+
+Strategy에서 랜덤으로 결정된 장애물의 크기나 타입 정보를 **장애물 액터(BP)**가 알 수 있도록 인터페이스를 통해 정보를 전달합니다.
+
+### 8-1. 구조
+
+- **`FExObstacleInfo` (Struct)**
+  - `Type`: 장애물 타입 (`Gap`, `Slide`, `Climb` 등)
+  - `Value`: 핵심 크기 정보 (**미터(m) 단위**, 소수점 2자리 반올림)
+    - `Gap` / `Slide` / `WallRun`: **X축 길이 (폭/두께)**
+    - `Climb`: **Z축 높이**
+
+- **`IExObstacleInterface` (Interface)**
+  - `SetupObstacleInfo(const FExObstacleInfo& Info)`: 정보 전달 함수
+
+### 8-2. BP 구현 가이드
+
+장애물 블루프린트(`BP_ExLevelBlock` 등)에서 이 정보를 받아 텍스트 렌더링이나 로직에 활용하려면 다음 절차를 따릅니다.
+
+1.  **인터페이스 추가**:
+    -   Class Settings -> Interfaces -> Add -> **`ExObstacleInterface`** 검색 및 추가
+
+2.  **이벤트 구현**:
+    -   이벤트 그래프(Event Graph)에서 우클릭 -> **`Event Setup Obstacle Info`** 추가 (빨간색 이벤트 노드)
+
+3.  **정보 활용**:
+    -   노드의 **`Info` 핀**을 분해(Break)하여 `Type`과 `Value`를 얻습니다.
+    -   `Value`는 **미터(m)** 단위이므로, TextRender에 바로 연결하여 표시하거나 스케일 조정 로직에 활용할 수 있습니다.
+
+> [!TIP]
+> **왜 인터페이스를 사용하나요?**
+> 장애물의 크기는 스폰 시점의 `Strategy` 로직 내부에서 랜덤으로 결정됩니다. 액터 스스로는 자신이 얼마만한 크기로 스폰되었는지 알 수 없으므로, Strategy가 `SetupObstacleInfo`를 호출하여 정보를 **주입(Push)**해주는 방식이 필요합니다.
+
