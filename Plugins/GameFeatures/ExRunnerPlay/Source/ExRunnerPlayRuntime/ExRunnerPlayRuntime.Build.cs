@@ -10,7 +10,7 @@ public class ExRunnerPlayRuntime : ModuleRules
 		
 		PublicIncludePaths.AddRange(
 			new string[] {
-				// ... add public include paths required here ...
+				System.IO.Path.Combine(ModuleDirectory, "Debug"),
 			}
 			);
 				
@@ -43,7 +43,7 @@ public class ExRunnerPlayRuntime : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				// ... add private dependencies that you statically link with here ...	
+				"GameplayDebugger", // ExRunnerDebuggerCategory용
 			}
 			);
 		

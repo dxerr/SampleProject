@@ -8,6 +8,9 @@
 
 #include "ExPathManager.h"
 #include "../Data/ExCurveConfig.h"
+#include "ExDebugStateSubsystem.h"
+#include "ExGameplayTags.h"
+#include "Engine/GameInstance.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExPathManager, Log, All);
 
@@ -153,8 +156,35 @@ FExPathSegment UExPathManager::CreateSegment()
 
 	float TargetPitch = 0.f;
 
+	// --- 디버그 치트 강제 개입 (TAG_Ex_Debug_Slope) ---
+	bool bCheatForceTurn = false;
+	if (UWorld* World = GetWorld())
+	{
+		if (UGameInstance* GI = World->GetGameInstance())
+		{
+			if (UExDebugStateSubsystem* DS = GI->GetSubsystem<UExDebugStateSubsystem>())
+			{
+				if (DS->IsCheatEnabled(TAG_Ex_Debug_Slope))
+				{
+					float TriggerOverride = DS->GetCheatValue(TAG_Ex_Debug_Slope);
+					if (TriggerOverride > 0.0f)
+					{
+						if (ConsecutiveTurnCount >= FMath::RoundToInt(TriggerOverride))
+						{
+							bCheatForceTurn = true;
+						}
+					}
+					else if (ConsecutiveTurnCount >= 1)
+					{
+						bCheatForceTurn = true;
+					}
+				}
+			}
+		}
+	}
+
 	// 설정된 횟수 이상 같은 방향으로 회전하면 경사 적용
-	if (ConsecutiveTurnCount >= CurveConfig->SlopeTriggerCount)
+	if (ConsecutiveTurnCount >= CurveConfig->SlopeTriggerCount || bCheatForceTurn)
 	{
 		// 상승? 하강?
 		// 360도 루프를 피하려면 위나 아래로 보내야 함.
@@ -173,6 +203,9 @@ FExPathSegment UExPathManager::CreateSegment()
 	{
 		const float PitchRad = FMath::DegreesToRadians(TargetPitch);
 		Segment.HeightOffset = Segment.ArcLength * FMath::Tan(PitchRad);
+		
+		// 치트가 활성화 중이라면 추가로 높이 오프셋 관련 로그를 출력합니다.
+		UE_LOG(LogExPathManager, Log, TEXT("[Cheat/Slope] 꽈배기(경사) 활성화! HeightOffset: %.1f, Pitch: %.1f"), Segment.HeightOffset, TargetPitch);
 	}
 	else
 	{

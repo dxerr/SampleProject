@@ -1,12 +1,13 @@
+/.gemini
 /.git
-/.github
-/.vs
 /.vscode
+/Bug
 /Content
 /DerivedDataCache
 /Intermediate
 /Md
 /Saved
-/Tools
 /Plugins/GameFeatures/ExCore/Content
 /Plugins/GameFeatures/ExCore/Intermediate
+/Plugins/GameFeatures/ExRunnerPlay/Content
+/Plugins/GameFeatures/ExRunnerPlay/Intermediate

@@ -5,6 +5,10 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/SplineMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "ExDebugStateSubsystem.h"
+#include "ExGameplayTags.h"
+#include "Engine/GameInstance.h"
+#include "DrawDebugHelpers.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExFloorChunk, Log, All);
 
@@ -113,6 +117,32 @@ void AExFloorChunk::Tick(float DeltaTime)
 		{
 			// 바인딩된 스포너가 없는 경우에만 스스로 처리 (안전장치)
 			ReturnToPool();
+		}
+	}
+
+	// ──────────────────────────────────────────────
+	// 디버그 시각화 (TAG_Ex_Debug_Chunk)
+	// ──────────────────────────────────────────────
+	if (UWorld* World = GetWorld())
+	{
+		if (UGameInstance* GI = World->GetGameInstance())
+		{
+			if (UExDebugStateSubsystem* DS = GI->GetSubsystem<UExDebugStateSubsystem>())
+			{
+				if (DS->IsCheatEnabled(TAG_Ex_Debug_Chunk))
+				{
+					FBox Bounds = GetFloorBounds();
+					FVector Center = Bounds.GetCenter();
+					FVector Extent = Bounds.GetExtent();
+					
+					// 바운딩 박스를 그립니다.
+					DrawDebugBox(World, Center, Extent, FColor::Green, false, -1.f, 0, 5.f);
+					
+					// 바운드 최상단 약간 위쪽에 스탯 정보를 문자로 출력합니다.
+					FString ChunkDebugStr = FString::Printf(TEXT("Dist: %.0f"), PathDistance);
+					DrawDebugString(World, Center + FVector(0.0f, 0.0f, Extent.Z + 50.f), ChunkDebugStr, nullptr, FColor::White, 0.0f, false);
+				}
+			}
 		}
 	}
 }

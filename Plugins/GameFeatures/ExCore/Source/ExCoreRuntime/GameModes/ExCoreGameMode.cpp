@@ -2,6 +2,7 @@
 
 #include "ExCoreGameMode.h"
 #include "../Data/ExCoreSpawnDataAsset.h"
+#include "ExPlayerController.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
@@ -16,7 +17,8 @@ AExCoreGameMode::AExCoreGameMode()
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.bStartWithTickEnabled = false; // bRunnerModeEnabled에 따라 활성화
 
-
+	// AExPlayerController 사용 → 생성자에서 CheatClass 자동 설정됨
+	PlayerControllerClass = AExPlayerController::StaticClass();
 }
 
 void AExCoreGameMode::BeginPlay()
@@ -32,7 +34,7 @@ void AExCoreGameMode::BeginPlay()
 void AExCoreGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
 {
 	UE_LOG(LogExCoreGameMode, Log, TEXT("HandleStartingNewPlayer: %s"), *GetNameSafe(NewPlayer));
-	
+
 	// 부모 구현 호출 - SpawnDefaultPawnAtTransform 등이 호출됨
 	Super::HandleStartingNewPlayer_Implementation(NewPlayer);
 }

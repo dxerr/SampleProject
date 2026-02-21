@@ -87,6 +87,9 @@
     - 대신 `CreateDefaultSubobject<>`를 사용하거나, 값만 설정하는 `Init...` 계열 함수(`InitBoxExtent` 등)를 사용해야 합니다.
     - **이유**: 생성자 단계에서 불완전한 객체가 엔진 시스템(Physics 등)과 상호작용하려 하면 `NewObject with empty name` 등의 치명적 크래시가 발생합니다.
 
+### 1.11 디버깅 기능 (Debugging Features)
+- **Cheat 기능 고려**: 새로운 기능 클래스를 구현할 때는 디버깅 환경을 쉽게 구축하고 테스트할 수 있도록, 항상 Cheat 기능 연동(예: 디버그 태그 구독, 상태 시각화 등)을 고려하여 개발해야 합니다.
+
 
 ## 2. 문서 관리
 

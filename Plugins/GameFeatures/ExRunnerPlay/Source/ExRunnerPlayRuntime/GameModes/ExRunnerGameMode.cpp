@@ -9,6 +9,7 @@
 #include "../Actors/ExFloorChunk.h"
 #include "ExGameplayTags.h"
 #include "ExGameplayEventSubsystem.h"
+#include "ExDebugStateSubsystem.h"
 #include "Kismet/GameplayStatics.h"
 
 #include "GameFramework/Character.h"
@@ -366,6 +367,23 @@ void AExRunnerGameMode::Tick(float DeltaTime)
 
 	// 7. 캐릭터 회전 갱신 (경로 접선 방향)
 	UpdateCharacterRotation(DeltaTime);
+
+	// 8. 디버그 시각화 (TAG_Ex_Debug_Speed)
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UExDebugStateSubsystem* DS = GI->GetSubsystem<UExDebugStateSubsystem>())
+		{
+			if (DS->IsCheatEnabled(TAG_Ex_Debug_Speed))
+			{
+				if (GEngine)
+				{
+					FString SpeedMsg = FString::Printf(TEXT("[Cheat] Treadmill Speed: Cur=%.1f / Base=%.1f"), CurrentTreadmillSpeed, BaseTreadmillSpeed);
+					// 키 777을 사용하여 같은 라인 갱신되도록 처리, 지속시간 0.0f
+					GEngine->AddOnScreenDebugMessage(777, 0.0f, FColor::Green, SpeedMsg, false, FVector2D(1.5f, 1.5f));
+				}
+			}
+		}
+	}
 }
 
 // ──────────────────────────────────────────────

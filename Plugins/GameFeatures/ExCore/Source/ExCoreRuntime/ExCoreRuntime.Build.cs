@@ -20,6 +20,7 @@ public class ExCoreRuntime : ModuleRules
 				Path.Combine(ModuleDirectory, "Events"),
 				Path.Combine(ModuleDirectory, "Util"),
 				Path.Combine(ModuleDirectory, "Util", "Events"),
+				Path.Combine(ModuleDirectory, "Debug"),
 			}
 			);
 
