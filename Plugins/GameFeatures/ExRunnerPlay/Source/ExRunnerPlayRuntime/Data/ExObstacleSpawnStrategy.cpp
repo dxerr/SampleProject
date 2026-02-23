@@ -143,8 +143,42 @@ FTransform UExObstacleSpawnStrategy::CalculateSpawnPosition_Implementation(
 	// CurveTrans.GetLocation()은 (X, 0, Z) 형태 (Pitch/Yaw 회전 포함)
 	// 로컬 Y축으로 이동
 	CurveTrans.AddToTranslation(FVector(0.f, YOffset, 0.f));
+
+	// ★ 중요 (Fix): 장애물이 직선 형태이므로, 곡선 위에서는 단순 접선(Tangent) 기준 기울기보다 
+	// 장애물의 시작점(Pivot)과 끝점(End)이 닿는 실제 바닥 좌푯값을 기반으로 한 직접적인 기울기(Pitch)가 
+	// 파고들거나 뜨는 현상 없이 평행을 유지하는 데 가장 정확합니다.
+	if (Chunk && !FMath::IsNearlyZero(Chunk->CachedHeightOffset) && !FMath::IsNearlyZero(Chunk->CachedCurveAngle))
+	{
+		float ObsLen = Def ? Def->MaxSize.X : 500.f; // 장애물의 길이(X축 스케일 및 바운드 기준)
+		if (ObsLen < 10.f) ObsLen = 100.f; // 최소 길이 보장
+
+		// 1. 앞쪽 기준점 좌표 파악 (YOffset 적용 완료된 CurveTrans 위치)
+		FVector FrontPos = CurveTrans.GetLocation();
+		
+		// 2. 뒤쪽 끝점의 궤도 반환값 계산
+		float RearLocalDist = LocalDist + ObsLen;
+		FTransform RearTrans = Chunk->GetLocalTransformAtDistance(RearLocalDist);
+		RearTrans.AddToTranslation(FVector(0.f, YOffset, 0.f)); // 동일하게 측면 오프셋 적용
+		FVector RearPos = RearTrans.GetLocation();
+
+		// 3. 앞점과 뒷점을 관통하는 기하학적 직선 벡터 도출 (현, Chord)
+		FVector DirVec = RearPos - FrontPos;
+
+		// 4. 장애물의 회전(Pitch, Yaw)을 이 직선 벡터에 완전히 일치되게 덮어씌움
+		FRotator NewLocalRot = CurveTrans.GetRotation().Rotator();
+		float Size2D = DirVec.Size2D();
+		if (Size2D > KINDA_SMALL_NUMBER)
+		{
+			// 바닥에 완벽히 밀착되는 Pitch 재계산
+			NewLocalRot.Pitch = FMath::RadiansToDegrees(FMath::Atan2(DirVec.Z, Size2D));
+			
+			// 긴 장애물이 커브 바깥으로 튀어나가지 않도록 방향(Yaw)도 현(Chord) 각도로 보정
+			NewLocalRot.Yaw = FMath::RadiansToDegrees(FMath::Atan2(DirVec.Y, DirVec.X));
+		}
+		CurveTrans.SetRotation(NewLocalRot.Quaternion());
+	}
 	
-	// 3. World 변환 (Chunk Actor Transform 적용)
+	// 4. World 변환 (Chunk Actor Transform 적용)
 	FTransform WorldTrans = CurveTrans * Chunk->GetActorTransform();
 
 	return WorldTrans;

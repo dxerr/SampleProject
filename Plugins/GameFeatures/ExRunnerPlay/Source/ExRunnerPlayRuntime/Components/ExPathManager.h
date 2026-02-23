@@ -150,6 +150,11 @@ private:
 	/** 현재 적용 중인 Pitch (경사) 각도 */
 	float CurrentPitch = 0.f;
 
+	// ── 치트 상태 관리용 변수 ──
+	float CheatCurrentHeight = 0.f;
+	bool bCheatAscending = true;
+	EExPathSegmentType CheatCurrentCurve = EExPathSegmentType::CurveLeft;
+
 	// ── 내부 함수 ──
 
 	/** 커브/직선 결정 및 세그먼트 데이터 생성 */

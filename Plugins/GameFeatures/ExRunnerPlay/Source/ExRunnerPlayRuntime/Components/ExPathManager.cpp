@@ -31,10 +31,13 @@ void UExPathManager::InitializePath(const FVector& StartPosition, const FRotator
 {
 	PathSegments.Empty();
 	ConsecutiveStraightCount = 0;
-	// 4분면 시스템 상태 초기화
 	LastTurnType = EExPathSegmentType::Straight;
 	ConsecutiveTurnCount = 0;
 	CurrentPitch = 0.f;
+
+	CheatCurrentHeight = 0.f;
+	bCheatAscending = true;
+	CheatCurrentCurve = EExPathSegmentType::CurveLeft;
 
 	// 초기 직선 세그먼트 추가 (시작 구간은 항상 직선)
 	// 초기 직선 세그먼트 추가 (시작 구간은 항상 직선)
@@ -105,6 +108,73 @@ FExPathSegment UExPathManager::CreateSegment()
 		return Segment;
 	}
 
+	// --- 디버그 치트 강제 개입 (TAG_Ex_Debug_Slope) ---
+	bool bCheatSlopeActive = false;
+	if (UWorld* World = GetWorld())
+	{
+		if (UGameInstance* GI = World->GetGameInstance())
+		{
+			if (UExDebugStateSubsystem* DS = GI->GetSubsystem<UExDebugStateSubsystem>())
+			{
+				bCheatSlopeActive = DS->IsCheatEnabled(TAG_Ex_Debug_Slope);
+			}
+		}
+	}
+
+	if (bCheatSlopeActive)
+	{
+		// 1. 치트 활성화 시 무조건 커브 생성 (다른 확률 무시)
+		ConsecutiveStraightCount = 0;
+		float HeightLimit = 2000.f; // 임의의 상/하 높이 한계치
+
+		// 2. 한계 도달 시 방향 및 상승/하강 반전
+		if (bCheatAscending && CheatCurrentHeight >= HeightLimit)
+		{
+			bCheatAscending = false;
+			CheatCurrentCurve = (CheatCurrentCurve == EExPathSegmentType::CurveLeft) ? EExPathSegmentType::CurveRight : EExPathSegmentType::CurveLeft;
+			UE_LOG(LogExPathManager, Warning, TEXT("[Cheat/Slope] 상방 한계 도달! 하강 및 방향 반전."));
+		}
+		else if (!bCheatAscending && CheatCurrentHeight <= -HeightLimit)
+		{
+			bCheatAscending = true;
+			CheatCurrentCurve = (CheatCurrentCurve == EExPathSegmentType::CurveLeft) ? EExPathSegmentType::CurveRight : EExPathSegmentType::CurveLeft;
+			UE_LOG(LogExPathManager, Warning, TEXT("[Cheat/Slope] 하방 한계 도달! 상승 및 방향 반전."));
+		}
+
+		Segment.Type = CheatCurrentCurve;
+		Segment.CurveAngle = 90.f;
+		Segment.CurveRadius = CurveConfig->FixedCurveRadius;
+		Segment.ArcLength = PI * Segment.CurveRadius * 0.5f;
+
+		// 3. 피치 적용 (상승/하강)
+		float TargetPitch = CurveConfig->SlopePitchAngle;
+		if (!bCheatAscending)
+		{
+			TargetPitch = -TargetPitch;
+		}
+
+		// 4. 높이 오프셋 계산 및 누적
+		if (!FMath::IsNearlyZero(TargetPitch))
+		{
+			const float PitchRad = FMath::DegreesToRadians(TargetPitch);
+			Segment.HeightOffset = Segment.ArcLength * FMath::Tan(PitchRad);
+		}
+		else
+		{
+			Segment.HeightOffset = 0.f;
+		}
+		
+		CheatCurrentHeight += Segment.HeightOffset;
+
+		LastTurnType = Segment.Type;
+		ConsecutiveTurnCount++;
+
+		UE_LOG(LogExPathManager, Log, TEXT("[Cheat/Slope] 꽈배기 유지: %s, Pitch: %.1f, 누적높이: %.1f"), 
+			(Segment.Type == EExPathSegmentType::CurveLeft) ? TEXT("좌") : TEXT("우"), TargetPitch, CheatCurrentHeight);
+
+		return Segment;
+	}
+
 	// 1. 커브/직선 결정
 	const float Probability = CurveConfig->GetCurveProbability(ConsecutiveStraightCount);
 	const bool bShouldCurve = FMath::FRand() < Probability;
@@ -156,35 +226,8 @@ FExPathSegment UExPathManager::CreateSegment()
 
 	float TargetPitch = 0.f;
 
-	// --- 디버그 치트 강제 개입 (TAG_Ex_Debug_Slope) ---
-	bool bCheatForceTurn = false;
-	if (UWorld* World = GetWorld())
-	{
-		if (UGameInstance* GI = World->GetGameInstance())
-		{
-			if (UExDebugStateSubsystem* DS = GI->GetSubsystem<UExDebugStateSubsystem>())
-			{
-				if (DS->IsCheatEnabled(TAG_Ex_Debug_Slope))
-				{
-					float TriggerOverride = DS->GetCheatValue(TAG_Ex_Debug_Slope);
-					if (TriggerOverride > 0.0f)
-					{
-						if (ConsecutiveTurnCount >= FMath::RoundToInt(TriggerOverride))
-						{
-							bCheatForceTurn = true;
-						}
-					}
-					else if (ConsecutiveTurnCount >= 1)
-					{
-						bCheatForceTurn = true;
-					}
-				}
-			}
-		}
-	}
-
 	// 설정된 횟수 이상 같은 방향으로 회전하면 경사 적용
-	if (ConsecutiveTurnCount >= CurveConfig->SlopeTriggerCount || bCheatForceTurn)
+	if (ConsecutiveTurnCount >= CurveConfig->SlopeTriggerCount)
 	{
 		// 상승? 하강?
 		// 360도 루프를 피하려면 위나 아래로 보내야 함.
@@ -203,9 +246,6 @@ FExPathSegment UExPathManager::CreateSegment()
 	{
 		const float PitchRad = FMath::DegreesToRadians(TargetPitch);
 		Segment.HeightOffset = Segment.ArcLength * FMath::Tan(PitchRad);
-		
-		// 치트가 활성화 중이라면 추가로 높이 오프셋 관련 로그를 출력합니다.
-		UE_LOG(LogExPathManager, Log, TEXT("[Cheat/Slope] 꽈배기(경사) 활성화! HeightOffset: %.1f, Pitch: %.1f"), Segment.HeightOffset, TargetPitch);
 	}
 	else
 	{

@@ -122,6 +122,11 @@ void AExRunnerGameMode::UpdateCharacterRotation(float DeltaTime)
 
 	Controller->SetControlRotation(NewControlRot);
 
+	// 캐릭터 자체는 상하 기울어지지 않고 이동 방향(Yaw)만 바라보도록 강제 회전
+	FRotator PawnFlatRot = PlayerPawn->GetActorRotation();
+	PawnFlatRot.Yaw = NewControlRot.Yaw;
+	PlayerPawn->SetActorRotation(PawnFlatRot);
+
 	// 디버그 출력 업데이트
 	if (bRunnerModeEnabled && GEngine)
 	{
