@@ -139,10 +139,9 @@ FTransform UExObstacleSpawnStrategy::CalculateSpawnPosition_Implementation(
 	// Curve Center에서 왼쪽으로 Width/2 만큼 이동 (Edge Pivot 보정)
 	float YOffset = -(TargetWidth * 0.5f);
 	
-	// 3. 커브 로컬 변환에 오프셋 적용
-	// CurveTrans.GetLocation()은 (X, 0, Z) 형태 (Pitch/Yaw 회전 포함)
-	// 로컬 Y축으로 이동
-	CurveTrans.AddToTranslation(FVector(0.f, YOffset, 0.f));
+	// ★ 수정: 고정된 Y축이 아닌, 현재 곡선 지점의 올바른 우측 벡터(RightVector)를 기준으로 측면 이동
+	FVector RightDirFront = CurveTrans.GetRotation().GetRightVector();
+	CurveTrans.AddToTranslation(RightDirFront * YOffset);
 
 	// ★ 중요 (Fix): 장애물이 직선 형태이므로, 곡선 위에서는 단순 접선(Tangent) 기준 기울기보다 
 	// 장애물의 시작점(Pivot)과 끝점(End)이 닿는 실제 바닥 좌푯값을 기반으로 한 직접적인 기울기(Pitch)가 
@@ -158,7 +157,8 @@ FTransform UExObstacleSpawnStrategy::CalculateSpawnPosition_Implementation(
 		// 2. 뒤쪽 끝점의 궤도 반환값 계산
 		float RearLocalDist = LocalDist + ObsLen;
 		FTransform RearTrans = Chunk->GetLocalTransformAtDistance(RearLocalDist);
-		RearTrans.AddToTranslation(FVector(0.f, YOffset, 0.f)); // 동일하게 측면 오프셋 적용
+		FVector RightDirRear = RearTrans.GetRotation().GetRightVector();
+		RearTrans.AddToTranslation(RightDirRear * YOffset); // ★ 수정: 끝점도 해당 지점의 우측 벡터 기준 이동
 		FVector RearPos = RearTrans.GetLocation();
 
 		// 3. 앞점과 뒷점을 관통하는 기하학적 직선 벡터 도출 (현, Chord)
