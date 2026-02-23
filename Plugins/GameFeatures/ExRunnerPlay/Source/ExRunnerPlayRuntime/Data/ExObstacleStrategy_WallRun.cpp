@@ -42,13 +42,10 @@ void UExObstacleStrategy_WallRun::ConfigureObstacle_Implementation(
 	float TargetHeight = FMath::RandRange(Def->MinSize.Z, Def->MaxSize.Z);
 	float TargetWidth = 1000.f;
 
-	// 바닥 너비 구하기
+	// ★ 바닥 너비: 로컬 Bounds 기반 (회전에 의한 월드 AABB 왜곡 방지)
 	if (Chunk)
 	{
-		FBoxSphereBounds FloorBounds = GetVisualBoundsOf_WallRun(Chunk);
-		float FloorHalfWidth = FloorBounds.BoxExtent.Y;
-		if (FloorHalfWidth < 10.f) FloorHalfWidth = 500.f;
-		TargetWidth = FloorHalfWidth * 2.0f;
+		TargetWidth = GetFloorWidth(Chunk);
 	}
 
 	// 2. 스케일 적용

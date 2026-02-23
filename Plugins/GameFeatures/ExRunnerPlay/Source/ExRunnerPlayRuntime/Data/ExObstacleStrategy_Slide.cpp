@@ -93,12 +93,10 @@ void UExObstacleStrategy_Slide::ConfigureObstacle_Implementation(
 	float TargetWidth  = 1000.f;
 
 	// Y: 바닥 너비에 맞춤
+	// ★ 로컬 Bounds 기반 (회전에 의한 월드 AABB 왜곡 방지)
 	if (Chunk)
 	{
-		FBoxSphereBounds FloorBounds = GetVisualBoundsOf_Slide(Chunk);
-		float FloorHalfWidth = FloorBounds.BoxExtent.Y;
-		if (FloorHalfWidth < 10.f) FloorHalfWidth = 500.f;
-		TargetWidth = FloorHalfWidth * 2.0f;
+		TargetWidth = GetFloorWidth(Chunk);
 	}
 
 	// 2. 기본 메시 크기 측정
@@ -148,10 +146,8 @@ FTransform UExObstacleStrategy_Slide::CalculateSpawnPosition_Implementation(
 	FTransform CurveTrans = Chunk->GetLocalTransformAtDistance(LocalDist);
 
 	// 2. Y 오프셋 계산 (장애물 피벗 보정)
-	FBoxSphereBounds FloorBounds = GetVisualBoundsOf_Slide(Chunk);
-	float FloorHalfWidth = FloorBounds.BoxExtent.Y;
-	if (FloorHalfWidth < 10.f) FloorHalfWidth = 500.f;
-	float TargetWidth = FloorHalfWidth * 2.0f;
+	// ★ 로컬 Bounds 기반 폭 사용 (회전에 의한 월드 AABB 왜곡 방지)
+	float TargetWidth = GetFloorWidth(Chunk);
 	float YOffset = -(TargetWidth * 0.5f);
 
 	// 3. Z 오프셋 계산 (Crouch 통과 높이)

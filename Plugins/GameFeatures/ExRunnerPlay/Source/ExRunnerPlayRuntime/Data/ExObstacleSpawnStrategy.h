@@ -97,4 +97,13 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "Obstacle|Strategy")
 	void ApplyObstacleInfo(AActor* Obstacle, const FExObstacleInfo& Info);
 
+	/**
+	 * FloorChunk의 실제 바닥 폭(Y축)을 반환합니다.
+	 * ★ 로컬 메시 Bounds × 컴포넌트 스케일로 계산하여
+	 *   커브 청크의 회전에 의한 월드 AABB 왜곡 문제를 방지합니다.
+	 * @param Chunk 바닥 청크 액터
+	 * @return 바닥 폭 (cm 단위, 전체 너비)
+	 */
+	static float GetFloorWidth(const AExFloorChunk* Chunk);
+
 };

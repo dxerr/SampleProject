@@ -42,6 +42,29 @@ static FBoxSphereBounds GetVisualBoundsOf(AActor* Actor)
 }
 
 // ──────────────────────────────────────────────
+// FloorChunk의 실제 바닥 폭(Y축)을 로컬 Bounds 기반으로 반환
+// ★ Mesh->Bounds(월드 AABB)는 커브 청크 회전 시 왜곡되므로,
+//   로컬 메시 Bounds × 컴포넌트 스케일을 사용하여 정확한 폭 계산
+// ──────────────────────────────────────────────
+float UExObstacleSpawnStrategy::GetFloorWidth(const AExFloorChunk* Chunk)
+{
+	if (!Chunk || !Chunk->FloorMesh || !Chunk->FloorMesh->GetStaticMesh())
+	{
+		return 1000.f; // Fallback 기본값
+	}
+
+	// 로컬 메시 Bounds (회전 영향 없음)
+	FBoxSphereBounds LocalBounds = Chunk->FloorMesh->GetStaticMesh()->GetBounds();
+	FVector MeshScale = Chunk->FloorMesh->GetRelativeScale3D();
+
+	// 실제 폭 = 로컬 반폭 × Y스케일 × 2
+	float FloorWidth = LocalBounds.BoxExtent.Y * FMath::Abs(MeshScale.Y) * 2.0f;
+
+	if (FloorWidth < 10.f) FloorWidth = 1000.f; // 안전 Fallback
+	return FloorWidth;
+}
+
+// ──────────────────────────────────────────────
 // 기존 로직과 동일: 장애물 스케일/크기 설정
 // ──────────────────────────────────────────────
 void UExObstacleSpawnStrategy::ConfigureObstacle_Implementation(
@@ -54,16 +77,9 @@ void UExObstacleSpawnStrategy::ConfigureObstacle_Implementation(
 	// 1. 랜덤 크기 생성
 	float TargetLength = FMath::RandRange(Def->MinSize.X, Def->MaxSize.X);
 	float TargetHeight = FMath::RandRange(Def->MinSize.Z, Def->MaxSize.Z);
-	float TargetWidth = 1000.f;
 
-	// 바닥 너비 구하기 (기존 GetVisualBounds 사용)
-	if (Chunk)
-	{
-		FBoxSphereBounds FloorBounds = GetVisualBoundsOf(Chunk);
-		float FloorHalfWidth = FloorBounds.BoxExtent.Y;
-		if (FloorHalfWidth < 10.f) FloorHalfWidth = 500.f;
-		TargetWidth = FloorHalfWidth * 2.0f;
-	}
+	// ★ 바닥 너비: 로컬 Bounds 기반 (회전에 의한 월드 AABB 왜곡 방지)
+	float TargetWidth = GetFloorWidth(Chunk);
 
 	// 2. 스케일 적용 (기존 스케일 초기화 후 메시 기본 크기 측정)
 	Obstacle->SetActorScale3D(FVector::OneVector);
@@ -115,13 +131,10 @@ FTransform UExObstacleSpawnStrategy::CalculateSpawnPosition_Implementation(
 	// 1. 청크 로컬 트랜스폼 계산 (커브 포함)
 	FTransform CurveTrans = Chunk->GetLocalTransformAtDistance(LocalDist);
 
-	// 2. Y 오프셋 적용 (기존 로직: 바닥 너비 관련)
-	// 기존: ChunkLoc.Y - (TargetWidth * 0.5f) -> 왼쪽 정렬
+	// 2. Y 오프셋 적용 (바닥 너비 관련)
 	// 장애물 Pivot이 Edge에 있다고 가정하고 오프셋 적용
-	FBoxSphereBounds FloorBounds = GetVisualBoundsOf(Chunk);
-	float FloorHalfWidth = FloorBounds.BoxExtent.Y;
-	if (FloorHalfWidth < 10.f) FloorHalfWidth = 500.f;
-	float TargetWidth = FloorHalfWidth * 2.0f;
+	// ★ 로컬 Bounds 기반 폭 사용 (회전에 의한 월드 AABB 왜곡 방지)
+	float TargetWidth = GetFloorWidth(Chunk);
 	
 	// Curve Center에서 왼쪽으로 Width/2 만큼 이동 (Edge Pivot 보정)
 	float YOffset = -(TargetWidth * 0.5f);

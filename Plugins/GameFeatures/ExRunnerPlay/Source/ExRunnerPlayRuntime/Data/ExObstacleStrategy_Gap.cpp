@@ -90,11 +90,8 @@ void UExObstacleStrategy_Gap::ConfigureObstacle_Implementation(
 	float GapWidth = FMath::RandRange(Def->MinSize.X, Def->MaxSize.X);
 
 	// 2. ChunkFloor 너비 계산 (Y축 스케일 용)
-	float TargetWidth = 1000.f;
-	FBoxSphereBounds FloorBounds = GetVisualBoundsOf_Gap(Chunk);
-	float FloorHalfWidth = FloorBounds.BoxExtent.Y;
-	if (FloorHalfWidth < 10.f) FloorHalfWidth = 500.f;
-	TargetWidth = FloorHalfWidth * 2.0f;
+	// ★ 로컬 Bounds 기반 (회전에 의한 월드 AABB 왜곡 방지)
+	float TargetWidth = GetFloorWidth(Chunk);
 
 	// 3. 장애물 메시 기본 크기 측정 (스케일 1에서)
 	Obstacle->SetActorScale3D(FVector::OneVector);
