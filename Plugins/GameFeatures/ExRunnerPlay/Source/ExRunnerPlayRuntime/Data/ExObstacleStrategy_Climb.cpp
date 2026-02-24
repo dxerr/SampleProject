@@ -67,59 +67,8 @@ void UExObstacleStrategy_Climb::ConfigureObstacle_Implementation(
 	float ScaleY = TargetWidth / BaseSize.Y;
 	float ScaleZ = TargetHeight / BaseSize.Z;
 
-	// [버그 수정] SetActorScale3D를 사용하면 AC_TraversalLogic 내 Spline 거리 계산 노드에서
-	// 오차가 발생하여 WarpTarget이 우측으로 지나치게 이동하는 고질적인 버그가 발생함.
-	// 따라서 외부 Actor Scale은 1.0으로 고정하고, 내부의 부품 컴포넌트들만 스케일/위치를 조작함.
-	Obstacle->SetActorScale3D(FVector::OneVector);
-
-	// 2-1. 기존 컴포넌트 스케일 백업 (오브젝트 풀링 '눈덩이 현상' 방지)
-	FVector PreviousScale = FVector::OneVector;
-	TArray<UStaticMeshComponent*> MeshComps;
-	Obstacle->GetComponents<UStaticMeshComponent>(MeshComps);
-
-	if (MeshComps.Num() > 0 && MeshComps[0] != nullptr)
-	{
-		PreviousScale = MeshComps[0]->GetRelativeScale3D();
-	}
-
-	// 0 나누기 방어
-	PreviousScale.X = FMath::IsNearlyZero(PreviousScale.X) ? 1.0f : PreviousScale.X;
-	PreviousScale.Y = FMath::IsNearlyZero(PreviousScale.Y) ? 1.0f : PreviousScale.Y;
-	PreviousScale.Z = FMath::IsNearlyZero(PreviousScale.Z) ? 1.0f : PreviousScale.Z;
-
-	// 방금 전(PreviousScale) 대비 이번 스폰에서 곱해야 할 '추가 비율 계수'
-	FVector ScaleMultiplier(ScaleX / PreviousScale.X, ScaleY / PreviousScale.Y, ScaleZ / PreviousScale.Z);
-
-	// 2-2. StaticMeshComponent 스케일 직접 변경
-	for (UStaticMeshComponent* MeshComp : MeshComps)
-	{
-		MeshComp->SetRelativeScale3D(FVector(ScaleX, ScaleY, ScaleZ));
-	}
-
-	// 2-3. SplineComponent 포인트 위치 스케일 적용 및 이중 스케일 방지
-	TArray<USplineComponent*> Splines;
-	Obstacle->GetComponents<USplineComponent>(Splines);
-	for (USplineComponent* Spline : Splines)
-	{
-		// [핵심] SplineComponent가 StaticMeshComponent의 자식인 경우, 
-		// 부모의 스케일이 그대로 상속됨! 언리얼 계산 노드 버그를 피하려면 스플라인 자체의 월드 스케일은 1.0이어야 함.
-		// 따라서 부모 스케일의 역수를 구해서 로컬 스케일로 적용하여 상쇄함.
-		float SafeScaleX = FMath::IsNearlyZero(ScaleX) ? 1.0f : ScaleX;
-		float SafeScaleY = FMath::IsNearlyZero(ScaleY) ? 1.0f : ScaleY;
-		float SafeScaleZ = FMath::IsNearlyZero(ScaleZ) ? 1.0f : ScaleZ;
-		
-		Spline->SetRelativeScale3D(FVector(1.0f / SafeScaleX, 1.0f / SafeScaleY, 1.0f / SafeScaleZ));
-
-		int32 NumPoints = Spline->GetNumberOfSplinePoints();
-		for (int32 i = 0; i < NumPoints; ++i)
-		{
-			FVector OrigLocalPos = Spline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::Local);
-			// 스플라인 포인트를 이전 풀링 상태 대비 현재 확대되어야 할 비율만큼만 조절 (눈덩이 현상 해결)
-			FVector ScaledLocalPos = OrigLocalPos * ScaleMultiplier;
-			Spline->SetLocationAtSplinePoint(i, ScaledLocalPos, ESplineCoordinateSpace::Local, true);
-		}
-		Spline->UpdateSpline();
-	}
+	// 기존처럼 직관적으로 액터 전체 루트 스케일 적용으로 원복
+	Obstacle->SetActorScale3D(FVector(ScaleX, ScaleY, ScaleZ));
 
 	// 3. 장애물 정보 주입 (Interface)
 	FExObstacleInfo Info;
