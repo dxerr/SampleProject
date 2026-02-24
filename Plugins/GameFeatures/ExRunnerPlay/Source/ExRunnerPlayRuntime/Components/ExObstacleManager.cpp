@@ -29,24 +29,12 @@ void UExObstacleManager::BindToSpawner(UExChunkSpawner* Spawner)
 	{
 		Spawner->OnChunkSpawned.AddDynamic(this, &UExObstacleManager::OnChunkSpawned);
 		Spawner->OnChunkDespawned.AddDynamic(this, &UExObstacleManager::OnChunkDespawned);
-		Spawner->OnWorldShifted.AddDynamic(this, &UExObstacleManager::OnWorldShifted);
 		
 		UE_LOG(LogExObstacleManager, Log, TEXT("Bound to ChunkSpawner: %s"), *Spawner->GetName());
 	}
 }
 
-void UExObstacleManager::OnWorldShifted(float DeltaX)
-{
-	// [변경] 이제 LastObstacleSafeEndX는 "Path Distance"를 의미하므로 WorldShift의 영향을 받지 않음
-	// PathDistance는 월드 원점이 이동해도 불변 (누적 거리)
-	/*
-	if (LastObstacleSafeEndX > -50000.f)
-	{
-		LastObstacleSafeEndX += DeltaX;
-		UE_LOG(LogExObstacleManager, Verbose, TEXT("World Shifted by %.2f. New SafeEnd: %.2f"), DeltaX, LastObstacleSafeEndX);
-	}
-	*/
-}
+
 
 void UExObstacleManager::OnChunkSpawned(AExFloorChunk* Chunk)
 {
@@ -189,7 +177,14 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 	float RunSpeed = 600.f;
 	if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(UGameplayStatics::GetGameMode(this)))
 	{
-		RunSpeed = GM->GetCurrentTreadmillSpeed();
+		if (APawn* PlayerPawn = GM->GetCachedPlayerPawn())
+		{
+			RunSpeed = PlayerPawn->GetVelocity().Size();
+			if (RunSpeed < 10.f)
+			{
+				RunSpeed = 600.f; // 움직이지 않을 때는 기본 속도 가정
+			}
+		}
 	}
 
 	float RecoveryDist = Strategy->GetRecoveryDistance(SelectedDef, RunSpeed);
@@ -254,6 +249,15 @@ AActor* UExObstacleManager::GetObstacleFromPool(UClass* ObstacleClass)
 {
 	if (!ObstacleClass) return nullptr;
 
+	// 오브젝트 풀링 미사용 시 무조건 바로 새로 스폰
+	if (!bUsePooling)
+	{
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = GetOwner();
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		return GetWorld()->SpawnActor<AActor>(ObstacleClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+	}
+
 	if (ObstaclePool.Contains(ObstacleClass))
 	{
 		TArray<AActor*>& Pool = ObstaclePool[ObstacleClass];
@@ -284,6 +288,13 @@ AActor* UExObstacleManager::GetObstacleFromPool(UClass* ObstacleClass)
 void UExObstacleManager::ReturnObstacleToPool(AActor* Obstacle)
 {
 	if (!IsValid(Obstacle)) return;
+
+	// 풀링 사용 안 하면 아예 액터 소멸
+	if (!bUsePooling)
+	{
+		Obstacle->Destroy();
+		return;
+	}
 
 	DeactivateObstacle(Obstacle);
 

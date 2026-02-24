@@ -38,6 +38,12 @@ public:
 	TSubclassOf<AExFloorChunk> ChunkClass;
 
 	/**
+	 * 오브젝트 풀 사용 여부 (true = 성능 향상 모드, false = 즉각 Spawn/Destroy 모드)
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Spawner")
+	bool bUsePooling = false;
+
+	/**
 	 * 초기 풀 크기
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Spawner")
@@ -88,19 +94,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Spawner")
 	void ClearAllChunks();
 
-	/**
-	 * 모든 활성 청크를 X축으로 이동 (World Shift) - 레거시 (직선 전용)
-	 * @param DeltaX 이동할 X 거리
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Spawner")
-	void ShiftWorld(float DeltaX);
-
-	/**
-	 * 모든 활성 청크를 지정된 벡터만큼 이동 (Global Shift)
-	 * @param ShiftAmount 이동할 월드 벡터 (보통 -PlayerDirection * Speed * DeltaTime)
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Spawner")
-	void ShiftWorldByVector(const FVector& ShiftAmount);
 
 	/**
 	 * 청크 생성 시 이벤트 (장애물 매니저 등 외부 시스템 연동용)
@@ -112,14 +105,6 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Spawner")
 	FOnChunkEvent OnChunkDespawned;
-
-	/**
-	 * 월드 시프트(좌표 이동) 발생 시 이벤트 (DeltaX 만큼 이동)
-	 */
-	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWorldShifted, float, DeltaX);
-
-	UPROPERTY(BlueprintAssignable, Category = "Spawner")
-	FOnWorldShifted OnWorldShifted;
 
 	/** 활성 청크 목록 접근자 */
 	const TArray<TObjectPtr<AExFloorChunk>>& GetActiveChunks() const { return ActiveChunks; }

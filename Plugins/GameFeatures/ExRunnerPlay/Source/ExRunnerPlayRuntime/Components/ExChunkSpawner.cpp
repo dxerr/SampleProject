@@ -28,13 +28,16 @@ void UExChunkSpawner::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	// 초기 풀 크기만큼 청크 생성 보관
-	for (int32 i = 0; i < InitialPoolSize; ++i)
+	// 초기 풀 크기만큼 청크 생성 보관 (풀링 사용 시에만)
+	if (bUsePooling)
 	{
-		AExFloorChunk* NewChunk = CreateNewChunk();
-		if (NewChunk)
+		for (int32 i = 0; i < InitialPoolSize; ++i)
 		{
-			ReturnChunkToPool(NewChunk);
+			AExFloorChunk* NewChunk = CreateNewChunk();
+			if (NewChunk)
+			{
+				ReturnChunkToPool(NewChunk);
+			}
 		}
 	}
 	
@@ -204,21 +207,24 @@ void UExChunkSpawner::ReturnChunkToPool(AExFloorChunk* Chunk)
 		return;
 	}
 
-	// 청크 비활성화
+	// 비활성화 및 소멸 알림
 	Chunk->DeactivateChunk();
-	
-	// 활성 목록에서 제거
 	ActiveChunks.Remove(Chunk);
 	
-	// 소멸 알림
 	if (OnChunkDespawned.IsBound())
 	{
 		OnChunkDespawned.Broadcast(Chunk);
 	}
 
+	// 풀링 사용 안 하면 아예 액터 소멸
+	if (!bUsePooling)
+	{
+		Chunk->Destroy();
+		return;
+	}
+
 	// 풀에 반환 (앞에 삽입 - FIFO 방식)
 	// Pop()은 뒤에서 꺼내므로, 앞에 삽입하면 최소 1사이클 딜레이 확보
-	// 이를 통해 방금 반환된 청크가 즉시 재사용되는 것을 방지
 	ChunkPool.Insert(Chunk, 0);
 }
 
@@ -234,29 +240,6 @@ void UExChunkSpawner::ClearAllChunks()
 	ActiveChunks.Empty();
 }
 
-void UExChunkSpawner::ShiftWorld(float DeltaX)
-{
-	// 서버 권한 체크
-	if (GetOwner() && !GetOwner()->HasAuthority())
-	{
-		return;
-	}
-
-	for (AExFloorChunk* Chunk : ActiveChunks)
-	{
-		if (IsValid(Chunk))
-		{
-			Chunk->AddActorWorldOffset(FVector(DeltaX, 0.f, 0.f));
-			Chunk->UpdateOverlaps();
-		}
-	}
-
-	// 외부 시스템에 시프트 알림
-	if (OnWorldShifted.IsBound())
-	{
-		OnWorldShifted.Broadcast(DeltaX);
-	}
-}
 
 void UExChunkSpawner::OnChunkReachedKillZ(AExFloorChunk* Chunk)
 {
@@ -275,6 +258,12 @@ void UExChunkSpawner::OnChunkReachedKillZ(AExFloorChunk* Chunk)
 
 AExFloorChunk* UExChunkSpawner::GetChunkFromPool()
 {
+	// 오브젝트 풀링 미사용 시 무조건 바로 새로 스폰
+	if (!bUsePooling)
+	{
+		return CreateNewChunk();
+	}
+
 	// FIFO (First-In, First-Out) 방식
 	// Insert(0)으로 앞에 추가, Pop()으로 뒤에서 제거
 	// 이를 통해 반환된 청크가 최소 1사이클 이상 대기 후 재사용됨
@@ -312,45 +301,5 @@ AExFloorChunk* UExChunkSpawner::CreateNewChunk()
 	}
 	
 	return NewChunk;
-}
-
-// ──────────────────────────────────────────────
-// 경로 기반 월드 시프트 (커브 지원)
-// ──────────────────────────────────────────────
-// ──────────────────────────────────────────────
-// 경로 기반 월드 시프트 (Global Vector Shift)
-// ──────────────────────────────────────────────
-void UExChunkSpawner::ShiftWorldByVector(const FVector& ShiftAmount)
-{
-	// 서버 권한 체크
-	if (GetOwner() && !GetOwner()->HasAuthority())
-	{
-		return;
-	}
-
-	for (AExFloorChunk* Chunk : ActiveChunks)
-	{
-		if (IsValid(Chunk))
-		{
-			Chunk->AddActorWorldOffset(ShiftAmount);
-			Chunk->UpdateOverlaps();
-			// PathDistance는 절대 거리이므로 줄이지 않음
-		}
-	}
-
-	// PathManager의 원점도 시프트 필요? -> GameMode 관리 영역
-	
-	// 외부 시스템(장애물 관리자)에 알림
-	// 레거시 호환성을 위해 X축 이동량만 전송하거나, 벡터 크기를 전송해야 함.
-	// 기존 로직: ShiftWorld(Delta) -> AddOffset(Delta) -> Broadcast(Delta).
-	// 여기서 ShiftAmount는 실제 이동 벡터.
-	// ObstacleManager는 SpawnX(거리)를 체크함.
-	// 만약 Y축으로 이동 중이라면 X는 안 바뀜. -> 장애물 스폰 안 됨?
-	// 장애물 시스템이 "거리 기반"이면 괜찮음.
-	// 일단 X축 변위만 전달. (장애물 매니저 보완 필요)
-	if (OnWorldShifted.IsBound())
-	{
-		OnWorldShifted.Broadcast(ShiftAmount.X);
-	}
 }
 

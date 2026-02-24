@@ -34,6 +34,12 @@ public:
 	TArray<UExObstacleDefinition*> ObstacleDefinitions;
 
 	/**
+	 * 오브젝트 풀 사용 여부 (true = 원본 풀링 로직 사용, false = 매번 Spawn/Destroy 수행)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Obstacle")
+	bool bUsePooling = false;
+
+	/**
 	 * 타입별 스폰 전략 매핑 (Strategy Pattern)
 	 * 에디터에서 각 EExObstacleType에 대응하는 전략을 인라인 편집 가능
 	 */
@@ -64,8 +70,6 @@ protected:
 	/**
 	 * 월드 시프트 이벤트 핸들러 (좌표 보정)
 	 */
-	UFUNCTION()
-	void OnWorldShifted(float DeltaX);
 
 protected:
 	// 장애물 풀: 클래스별로 스택 관리
