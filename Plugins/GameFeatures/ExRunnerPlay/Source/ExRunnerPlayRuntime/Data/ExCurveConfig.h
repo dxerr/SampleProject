@@ -66,6 +66,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Curve|Frequency", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float CurveProbabilityGrowth = 0.2f;
 
+	// ========== Bounding Box (월드 한계) ==========
+
+	/** 월드 이탈 방지를 위한 X축 한계점 (Min, Max) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Curve|Bounds")
+	FVector2D WorldBoundsX = FVector2D(-50000.f, 50000.f);
+
+	/** 월드 이탈 방지를 위한 Y축 한계점 (Min, Max) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Curve|Bounds")
+	FVector2D WorldBoundsY = FVector2D(-50000.f, 50000.f);
+
 	// ========== Spline Mesh ==========
 
 	/** 커브 1개당 Spline Mesh 분할 수 (많을수록 부드럽지만 비용 증가) */

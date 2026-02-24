@@ -139,7 +139,6 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 
 	// [Debug] 상태 모니터링 코드 제거(불필요)
 }
-
 void UExRunnerMovementComponent::MoveLeft()
 {
 	if (CurrentLaneIndex > -1)
@@ -160,10 +159,7 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
 {
 	if (!TargetPawn) return;
 	
-	// [DEBUG] 이동 전 위치 저장
-	FVector PrevLocation = TargetPawn->GetActorLocation();
-	
-	// 목표 오프셋 계산
+	// 목표 레인 오프셋 계산 (가운데: 0, 왼쪽: -LaneWidth, 오른쪽: +LaneWidth)
 	float TargetY = CurrentLaneIndex * LaneWidth;
 	
 	// 현재 오프셋 보간
@@ -172,64 +168,19 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
 	
 	float DeltaY = CurrentLaneYOffset - OldY;
 	
-	// [DEBUG] 매 프레임 위치 변화 감지
-	FVector CurrentLocation = TargetPawn->GetActorLocation();
-	static FVector LastFrameLocation = CurrentLocation;
-	FVector FrameDelta = CurrentLocation - LastFrameLocation;
-	
-	// 큰 이동이 감지되면 무조건 로그 (순간이동 의심)
-	if (FrameDelta.Size() > 100.f || FMath::Abs(FrameDelta.X) > 50.f)
-	{
-		UE_LOG(LogExRunnerMovement, Error, 
-			TEXT("[TELEPORT] PrevFrame: %s | Current: %s | FrameDelta: %s | LaneIdx: %d | DeltaY: %.4f"),
-			*LastFrameLocation.ToString(),
-			*CurrentLocation.ToString(),
-			*FrameDelta.ToString(),
-			CurrentLaneIndex,
-			DeltaY);
-	}
-	LastFrameLocation = CurrentLocation;
-
 	if (!FMath::IsNearlyZero(DeltaY))
 	{
-		// 횡이동: RightVector * DeltaY 만큼 이동
+		// 횡이동: 캐릭터의 로컬 우측 벡터 기준 DeltaY 만큼 이동
 		FVector RightDir = TargetPawn->GetActorRightVector();
 		FVector DeltaMove = RightDir * DeltaY;
 		
-		// [DEBUG] Sweep 히트 정보 캡처
 		FHitResult SweepHit;
 		TargetPawn->AddActorWorldOffset(DeltaMove, true, &SweepHit);
 		
-		// [DEBUG] 이동 후 위치
-		FVector NewLocation = TargetPawn->GetActorLocation();
-		FVector ActualDelta = NewLocation - PrevLocation;
-		
-		// [DEBUG] 로그 출력
 		if (SweepHit.bBlockingHit)
 		{
-			UE_LOG(LogExRunnerMovement, Warning, 
-				TEXT("[LaneMove] SWEEP HIT! Actor: %s | Intended: %s | Actual: %s | HitActor: %s | HitComp: %s | ImpactNormal: %s"),
-				*TargetPawn->GetName(),
-				*DeltaMove.ToString(),
-				*ActualDelta.ToString(),
-				SweepHit.GetActor() ? *SweepHit.GetActor()->GetName() : TEXT("None"),
-				SweepHit.GetComponent() ? *SweepHit.GetComponent()->GetName() : TEXT("None"),
-				*SweepHit.ImpactNormal.ToString());
-		}
-		
-		// [DEBUG] 큰 위치 변화 감지 (순간이동 의심)
-		if (ActualDelta.Size() > 100.f || FMath::Abs(ActualDelta.X) > 50.f)
-		{
-			UE_LOG(LogExRunnerMovement, Error, 
-				TEXT("[LaneMove] TELEPORT DETECTED! PrevLoc: %s | NewLoc: %s | Delta: %s | LaneIdx: %d | Offset: %.2f | TargetY: %.2f"),
-				*PrevLocation.ToString(),
-				*NewLocation.ToString(),
-				*ActualDelta.ToString(),
-				CurrentLaneIndex,
-				CurrentLaneYOffset,
-				TargetY);
+			// 레인 이동 중 충돌 시 로그 (옵션)
+			// UE_LOG(LogExRunnerMovement, Warning, TEXT("[LaneMove] Blocked by %s"), *SweepHit.GetActor()->GetName());
 		}
 	}
 }
-
-

@@ -51,7 +51,7 @@ void AExFloorChunk::BeginPlay()
 	}
 	else
 	{
-		UE_LOG(LogExFloorChunk, Log, TEXT("ExFloorChunk: GameMode found, CurrentSpeed=%.2f"), CachedGameMode->GetCurrentTreadmillSpeed());
+		UE_LOG(LogExFloorChunk, Log, TEXT("ExFloorChunk: GameMode found."));
 	}
 
 	// 레벨에 직접 배치된 청크는 자동으로 활성화
@@ -75,32 +75,15 @@ void AExFloorChunk::Tick(float DeltaTime)
 	// Floor 이동은 GameMode::Tick → ChunkSpawner에서 처리
 	// FloorChunk는 KillZ 도달 체크만 수행
 
-	// KillZ 도달 체크 (경로 거리 기반 또는 레거시 X좌표 기반)
+	// KillZ 도달 체크 (경로 거리 기반 또는 상대 X좌표 기반)
 	bool bReachedKillZ = false;
 
-	if (SegmentType != EExPathSegmentType::Straight || PathDistance != 0.f)
+	if (CachedGameMode)
 	{
-		// 경로 기반: PathDistance가 (실제 플레이어 거리 + KillZ) 미만이면 회수
-		// KillZ는 플레이어 뒤쪽 거리(음수)로 가정
-		if (CachedGameMode)
-		{
-			// ★ 개선: 가상 거리(CurrentPathDistance)가 아닌 실제 플레이어 위치(RealPlayerPathDistance) 사용
-			// 플레이어가 뒤쳐져 있을 때 바닥이 먼저 삭제되는 낙하 사고 방지
-			float PlayerDist = CachedGameMode->GetPlayerPathDistance();
-			
-			// 첫 프레임 등에서 PlayerDist가 0일 수 있으므로(보정 전), CurrentPathDistance와 큰 차이가 나면 보정?
-			// 아니, RealPlayerPathDistance는 GameMode Tick에서 갱신됨.
-			// 만약 0이라면 안전하게 삭제하지 않음.
-			if (PlayerDist > 0.1f)
-			{
-				bReachedKillZ = (PathDistance < PlayerDist + KillZ);
-			}
-		}
-	}
-	else
-	{
-		// 레거시 직선: X좌표 기반 (PathManager가 없을 때)
-		bReachedKillZ = (GetActorLocation().X < KillZ);
+		// 경로 기반 삭제 로직. 트레드밀이 아닌 캐릭터 주행 기반 시스템.
+		float PlayerDist = CachedGameMode->GetPlayerPathDistance();
+		// KillZ는 스폰 오프셋(음수값)으로, 캐릭터 뒤쪽 범위를 의미
+		bReachedKillZ = (PathDistance < PlayerDist + KillZ);
 	}
 
 	if (bReachedKillZ)

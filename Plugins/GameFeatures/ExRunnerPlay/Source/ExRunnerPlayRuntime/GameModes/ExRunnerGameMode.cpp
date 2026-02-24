@@ -113,20 +113,19 @@ void AExRunnerGameMode::UpdateCharacterRotation(float DeltaTime)
 	}
 	float LateralError = LateralOffset - DesiredLateralOffset;
 
-	// 3. P-Control Steering
-	// 오차에 비례하여 반대 방향으로 회전 보정
-	// Gain: 클수록 강하게 보정하지만, 너무 크면 진동 발생 (-0.1 ~ -0.5 추천)
+	// 3. P-Control Steering (회전 조향)
+	// [수정] 기존에는 횡방향 오차(LateralError)를 줄이려고 캐릭터를 경로 중앙으로 비스듬히 틀어버리는(SteeringYaw) 로직이 있었습니다.
+	// 하지만 러너 게임에서는 캐릭터가 항상 '진행 방향의 정면(Spline Tangent, 빨간색 X축)'을 바라보는 것이 자연스럽습니다.
+	// 횡이동은 캐릭터의 로컬 우측(ActorRightVector)을 통해 이루어지므로, 회전은 오직 경로의 방향(TargetRot)만 순수하게 따라가도록 변경합니다.
+	
+	/*
 	const float SteeringGain = -0.15f; 
 	float SteeringYaw = LateralError * SteeringGain;
-	
-	// 과도한 회전 방지 (Clamp)
 	SteeringYaw = FMath::Clamp(SteeringYaw, -15.f, 15.f);
-
-	// 최종 목표 회전에 보정값 적용
-	TargetRot.Yaw += SteeringYaw;
+	TargetRot.Yaw += SteeringYaw;  // <- 이 부분 때문에 캐릭터가 비스듬하게 회전하는 문제 발생
+	*/
 
 	// 4. 부드러운 보간 (RInterpTo)
-	// Steering을 적용했으므로 보간 속도를 조금 더 빠르게 해도 됨
 	FRotator NewControlRot = FMath::RInterpTo(
 		CurrentControlRot,
 		TargetRot,
@@ -134,22 +133,34 @@ void AExRunnerGameMode::UpdateCharacterRotation(float DeltaTime)
 		CurveConfig->CharacterRotationInterpSpeed * 1.5f // 반응성 향상
 	);
 
-	// Yaw만 적용 (Pitch/Roll은 카메라 제어권 유지)
+	// Yaw만 적용 (Pitch/Roll은 카메라이거나 고정)
 	NewControlRot.Pitch = CurrentControlRot.Pitch;
 	NewControlRot.Roll = CurrentControlRot.Roll;
 
+	// [Fix] 강제 회전 로직 복원 및 개선
 	Controller->SetControlRotation(NewControlRot);
 
-	// 캐릭터 자체는 상하 기울어지지 않고 이동 방향(Yaw)만 바라보도록 강제 회전
-	FRotator PawnFlatRot = PlayerPawn->GetActorRotation();
-	PawnFlatRot.Yaw = NewControlRot.Yaw;
-	PlayerPawn->SetActorRotation(PawnFlatRot);
+	// 5. 물리적 횡이동(Drift) 원심력 보정
+	// 캐릭터 머리와 몸통의 회전(Steering)을 완전히 앞쪽으로 고정했기 때문에, 곡선 구간에서는 탄젠트 직진성에 의해
+	// 자연스레 트랙 바닥 중심으로부터 바깥으로 밀려나가게(Drift) 됩니다.
+	// 따라서 몸을 틀지 않고도 선로 중앙을 유지할 수 있도록, 오차(LateralError)만큼 부드럽게 위치를 땡겨줍니다.
+	if (FMath::Abs(LateralError) > 1.0f)
+	{
+		const float DriftCorrectionSpeed = 15.0f; // 밀려나는 것을 잡아주는 인력 강도
+		FVector CorrectionDelta = -PathRight * (LateralError * DriftCorrectionSpeed * DeltaTime);
+		
+		// 스윕(Sweep)을 켜서 혹시라도 벽이 있으면 뚫고 가지 않도록 안전하게 이동
+		PlayerPawn->AddActorWorldOffset(CorrectionDelta, true);
+	}
+
+	// 캐릭터 자체는 bUseControllerRotationYaw 옵션에 의해 자동으로 Controller의 Yaw를 따라가게 되므로,
+	// 별도의 SetActorRotation 호출은 불필요하고 충돌을 일으킬 수 있어 제거합니다.
 
 	// 디버그 출력 업데이트
 	if (bRunnerModeEnabled && GEngine)
 	{
 		FString SteeringMsg = FString::Printf(TEXT("Offset: %.1f | Steer: %.1f | FinalYaw: %.1f"), 
-			LateralOffset, SteeringYaw, TargetRot.Yaw);
+			LateralOffset, 0.0f, TargetRot.Yaw);
 		GEngine->AddOnScreenDebugMessage(2, 0.f, FColor::Orange, SteeringMsg);
 	}
 }

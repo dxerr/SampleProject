@@ -42,6 +42,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Runner|Movement")
 	void MoveRight();
 
+	/** 현재 레인의 목표 좌우 오프셋 반환 */
+	UFUNCTION(BlueprintPure, Category = "Runner|Lane")
+	float GetCurrentLaneYOffset() const { return CurrentLaneYOffset; }
+
 protected:
 	/** 제어 대상 폰 (Mover) - Pawn 기반 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner")
