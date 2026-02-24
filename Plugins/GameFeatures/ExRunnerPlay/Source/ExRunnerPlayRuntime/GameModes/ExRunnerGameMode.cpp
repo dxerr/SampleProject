@@ -169,6 +169,16 @@ void AExRunnerGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// 게임 이벤트 시스템(상승/하강, Climb) 구독
+	if (UWorld* World = GetWorld())
+	{
+		if (UExGameplayEventSubsystem* EventSubsystem = World->GetSubsystem<UExGameplayEventSubsystem>())
+		{
+			EventSubsystem->GetEventDelegate(TAG_Ex_Action_Climb_Start).AddDynamic(this, &AExRunnerGameMode::OnTraversalStart);
+			EventSubsystem->GetEventDelegate(TAG_Ex_Action_Climb_End).AddDynamic(this, &AExRunnerGameMode::OnTraversalEnd);
+		}
+	}
+
 	if (bRunnerModeEnabled)
 	{
 		StartRunnerGame();
@@ -237,7 +247,12 @@ void AExRunnerGameMode::Tick(float DeltaTime)
 	CurrentPathDistance = RealPlayerPathDistance;
 
 	// 1. 캐릭터 회전 갱신 (경로 접선 방향으로 커브 제어)
-	UpdateCharacterRotation(DeltaTime);
+	// ★ 중요: 등반(Climb) 등 Traversal 액션 중에는 
+	// 캐릭터가 장애물의 로컬 표면에 워핑/밀착해야 하므로 GameMode의 전체 회전 통제를 잠시 해제합니다.
+	if (!bIsTraversing)
+	{
+		UpdateCharacterRotation(DeltaTime);
+	}
 	
 	// 2. 디버그 및 진행 모니터링 기능은 별도 갱신 필요시 추가
 }
@@ -258,6 +273,27 @@ APawn* AExRunnerGameMode::GetCachedPlayerPawn()
 		CachedPlayerPawn = Pawn;
 	}
 	return Pawn;
+}
+
+// ──────────────────────────────────────────────
+// Traversal Event Callbacks
+// ──────────────────────────────────────────────
+void AExRunnerGameMode::OnTraversalStart(FGameplayTag EventTag, const FExGameplayEventPayload& Payload)
+{
+	if (EventTag == TAG_Ex_Action_Climb_Start)
+	{
+		bIsTraversing = true;
+		UE_LOG(LogExRunnerPlay, Log, TEXT("ExRunnerGameMode: Traversal Started - Rotation Override Paused"));
+	}
+}
+
+void AExRunnerGameMode::OnTraversalEnd(FGameplayTag EventTag, const FExGameplayEventPayload& Payload)
+{
+	if (EventTag == TAG_Ex_Action_Climb_End)
+	{
+		bIsTraversing = false;
+		UE_LOG(LogExRunnerPlay, Log, TEXT("ExRunnerGameMode: Traversal Ended - Rotation Override Resumed"));
+	}
 }
 
 
