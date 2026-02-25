@@ -11,11 +11,11 @@
  * UExObstacleStrategy_Slide
  * 슬라이딩/Crouch 통과 장애물 배치 전략
  *
- * - 장애물 하단: Floor.Z + MaxPassHeight (Crouch 캡슐 높이보다 약간 높게)
+ * - 장애물 하단: Floor.Z + (Def->MinSize.Z ~ Def->MaxSize.Z 랜덤 통과 높이)
  * - 아래 공간으로 슬라이딩/웅크려서 통과
  * - X축: 두께 (MinSize.X ~ MaxSize.X 랜덤)
- * - Z축: 장애물 높이 (MinSize.Z ~ MaxSize.Z 랜덤)
  * - Y축: ChunkFloor 너비에 자동 맞춤
+ * - Z축(두께): 1.0 ~ 1.5배 랜덤 스케일
  */
 UCLASS(Blueprintable, EditInlineNew, DefaultToInstanced, DisplayName = "Slide 전략")
 class EXRUNNERPLAYRUNTIME_API UExObstacleStrategy_Slide : public UExObstacleSpawnStrategy
@@ -23,17 +23,13 @@ class EXRUNNERPLAYRUNTIME_API UExObstacleStrategy_Slide : public UExObstacleSpaw
 	GENERATED_BODY()
 
 public:
-	/** Crouch 캡슐 상단과 장애물 하단 사이 여유 공간 (cm) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Obstacle|Slide",
-		meta = (ClampMin = "0", UIMin = "0", ForceUnits = "cm"))
-	float ClearanceMargin = 15.f;
 
-	// 장애물 스케일 설정 (X: 두께 랜덤, Y: 바닥 폭, Z: 높이 랜덤)
+	// 장애물 스케일 설정 (X: 길이 랜덤, Y: 바닥 폭, Z: 두께 1~1.5 고정)
 	virtual void ConfigureObstacle_Implementation(AActor* Obstacle,
 	                                              const UExObstacleDefinition* Def,
 	                                              AExFloorChunk* Chunk) override;
 
-	// 스폰 위치 계산 (Z = Floor.Z + MaxPassHeight)
+	// 스폰 위치 계산 (Z = Floor.Z + PassHeight)
 	virtual FTransform CalculateSpawnPosition_Implementation(const UExObstacleDefinition* Def,
 	                                                      AExFloorChunk* Chunk,
 	                                                      float SafeStartX) override;

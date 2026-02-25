@@ -620,15 +620,21 @@ void AExFloorChunk::ClearCurve()
 
 FTransform AExFloorChunk::GetLocalTransformAtDistance(float LocalDistance) const
 {
-	// 1. Clamp Input
+	// 1. 유효 거리 클램프
 	LocalDistance = FMath::Clamp(LocalDistance, 0.f, ChunkLength);
 
-	// 2. 직선 처리
+	// 2. 직선 모델
 	if (SegmentType == EExPathSegmentType::Straight || FMath::IsNearlyZero(CachedCurveAngle))
 	{
-		// 직선: X축 이동 (Local X)
-		FVector Pos(LocalDistance, 0.f, 0.f);
+		// ★ 수정됨: ApplyCurve의 직선 모델은 중심점을 0으로 기준하여
+		// 시작점을 -HalfLength, 끝점을 +HalfLength로 배치합니다.
+		const float HalfLength = ChunkLength * 0.5f;
+		const float X = -HalfLength + LocalDistance;
+
+		FVector Pos(X, 0.f, 0.f);
+
 		// 높이 보간 (HeightOffset이 있다면)
+		// ApplyCurve에서 직선 모델의 Z는 0부터 HeightOffset까지 증가합니다.
 		if (!FMath::IsNearlyZero(CachedHeightOffset))
 		{
 			float Alpha = LocalDistance / ChunkLength;
@@ -645,66 +651,43 @@ FTransform AExFloorChunk::GetLocalTransformAtDistance(float LocalDistance) const
 	}
 
 	// 3. 커브 처리 (원호 수학)
-	// ArcLength = Radius * AngleRad
-	// 근데 ChunkLength가 곧 ArcLength임.
 	const float AngleRad = FMath::DegreesToRadians(CachedCurveAngle);
-	// 진행 비율
 	const float Alpha = LocalDistance / ChunkLength;
-	const float CurrentAngle = AngleRad * Alpha;
 
-	// 좌/우 부호
-	// 좌커브: -Yaw 회전, Y좌표는 - (왼쪽)
-	// 우커브: +Yaw 회전, Y좌표는 + (오른쪽)
+	// ★ 수정됨: ApplyCurve의 커브 모델은 중심 각도를 0으로 기준하여
+	// 시작 각도를 -HalfTotalAngle, 끝 각도를 +HalfTotalAngle로 배치합니다.
+	const float HalfTotalAngle = AngleRad * 0.5f;
+	const float CurrentAngle = -HalfTotalAngle + (AngleRad * Alpha); 
+
 	const float DirSign = bCachedIsLeftCurve ? -1.f : 1.f;
 
-	// 로컬 회전 (Yaw)
-	// 좌커브: -Theta, 우커브: +Theta
-	float YawDeg = CachedCurveAngle * Alpha * DirSign;
-	float ThetaRad = FMath::DegreesToRadians(YawDeg); // 부호 포함
+	// 로컬 회전 중심 (Actor Pivot 기준)
+	const FVector LocalCenter = FVector(0.f, CachedCurveRadius * DirSign, 0.f);
+	const FVector RadialStart = -LocalCenter;
 
-	// 로컬 위치 (X, Y)
-	// 원점(0,0)에서 시작.
-	// X = R * sin(|Theta|)
-	// Y = R * (1 - cos(|Theta|)) * DirSign
-	// (우커브면 Y>0, 좌커브면 Y<0)
-	
-	// ★ 중요: ParentsScale 역보정 필요 여부?
-	// Obstacle은 ExFloorChunk의 Child로 붙음.
-	// ExFloorChunk 자체가 Scale이 되어 있다면? (보통 1,1,1)
-	// 하지만 SceneRoot가 Scale이 되어 있다면?
-	// "Local Transform"은 SceneRoot 아래에서의 좌표여야 함.
-	// 그래야 AttachToComponent(Root) 했을 때 맞음.
-	// 하지만 ApplyCurve에서는 "MeshScale"을 역보정해서 "Actual Size"를 맞췄음.
-	// Obstacle은 스케일링되지 않은 좌표계(Meter 단위)를 원함?
-	// 아니면 부모 스케일을 따름?
-	// 보통 Obstacle은 (1,1,1)로 붙음.
-	// 따라서 여기서 "부모 스케일이 적용된 후의 좌표"를 주면 안되고,
-	// "부모 스케일을 고려하지 않은 미터 단위 좌표"를 주면 -> 부모 스케일에 의해 왜곡됨.
-	// ★ 결론: LocalTransform은 "부모 스케일이 1일 때의 좌표"를 리턴해야 함.
-	// 그리고 부모 스케일이 있다면, 그에 맞춰 역보정된 좌표를 줘야 하나?
-	// 복잡함... "Chunk의 Local Space"는 이미 Scaled Space임.
-	// ExFloorChunk Root의 Scale이 (1,1,1)이라고 가정. (보통 그렇다)
-	// 만약 (1,1,1)이라면 R * sin(theta) 그대로 쓰면 됨.
+	// 보간된 각도만큼 회전 수행
+	float DegAngle = FMath::RadiansToDegrees(CurrentAngle);
+	FVector RadialPos = RadialStart.RotateAngleAxis(DegAngle * DirSign, FVector::UpVector);
 
-	float X = CachedCurveRadius * FMath::Sin(FMath::Abs(ThetaRad));
-	float Y = CachedCurveRadius * (1.f - FMath::Cos(FMath::Abs(ThetaRad))) * DirSign;
+	FVector Pos = LocalCenter + RadialPos;
 	
-	// 높이 보간
-	float Z = 0.f;
+	// ★ 수정됨: 높이(Z) 보간
+	// ApplyCurve의 커브 모델에서 Z는 세그먼트의 중심을 기준으로
+	// 시작 지점이 -0.5 * HeightOffset, 끝 지점이 +0.5 * HeightOffset가 됩니다.
 	if (!FMath::IsNearlyZero(CachedHeightOffset))
 	{
-		Z = CachedHeightOffset * Alpha;
+		Pos.Z = (CachedHeightOffset * Alpha) - (CachedHeightOffset * 0.5f);
 	}
 
-	FVector Pos(X, Y, Z);
-
-	// 회전 구성
-	FRotator Rot(0.f, YawDeg, 0.f);
-	// Pitch (Slope)
+	// 방향(Tangent)을 구하여 회전값 도출
+	FVector Tangent = FVector::CrossProduct(FVector::UpVector, (Pos - LocalCenter)).GetSafeNormal() * DirSign;
 	if (!FMath::IsNearlyZero(CachedHeightOffset))
 	{
-		Rot.Pitch = FMath::RadiansToDegrees(FMath::Atan2(CachedHeightOffset, ChunkLength));
+		Tangent.Z = CachedHeightOffset / ChunkLength;
+		Tangent.Normalize();
 	}
+
+	FRotator Rot = Tangent.Rotation();
 
 	return FTransform(Rot, Pos, FVector::OneVector);
 }

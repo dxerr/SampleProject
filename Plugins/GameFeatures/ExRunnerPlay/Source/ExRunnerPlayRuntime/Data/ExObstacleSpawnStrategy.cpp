@@ -116,70 +116,65 @@ FTransform UExObstacleSpawnStrategy::CalculateSpawnPosition_Implementation(
 	if (!Chunk || !Def) return FTransform::Identity;
 
 	const float ChunkLength = Chunk->ChunkLength;
-	// [변경] World X가 아닌 Path Distance 기반 계산
-	// SafeStartX 인자는 이제 SafeStartDist(경로 누적 거리)를 의미함
-	// PathDistance는 청크의 Center Distance. StartDist는 HalfLength를 빼야 함
 	const float ChunkStartDist = Chunk->PathDistance - (ChunkLength * 0.5f);
 	
-	// 로컬 거리 계산
-	// SafeStartX(이전 장애물 끝 거리) + Buffer - 청크 시작 거리
+	// 로컬 기준 (중심점) 거리
 	float LocalDist = (SafeStartX + 200.f) - ChunkStartDist;
 
-	// 범위 체크 (청크 길이 초과 시?)
-	// 초과해도 GetLocalTransformAtDistance에서 Clamp 하거나 처리함.
+	// 1. Chunk 중점(Center)에서의 Local Transform (순수한 높이 Location 계산)
+	FTransform CenterCurveTrans = Chunk->GetLocalTransformAtDistance(LocalDist);
 
-	// 1. 청크 로컬 트랜스폼 계산 (커브 포함)
-	FTransform CurveTrans = Chunk->GetLocalTransformAtDistance(LocalDist);
-
-	// 2. Y 오프셋 적용 (바닥 너비 관련)
-	// 장애물 Pivot이 Edge에 있다고 가정하고 오프셋 적용
-	// ★ 로컬 Bounds 기반 폭 사용 (회전에 의한 월드 AABB 왜곡 방지)
-	float TargetWidth = GetFloorWidth(Chunk);
-	
-	// Curve Center에서 왼쪽으로 Width/2 만큼 이동 (Edge Pivot 보정)
-	float YOffset = -(TargetWidth * 0.5f);
-	
-	// ★ 수정: 고정된 Y축이 아닌, 현재 곡선 지점의 올바른 우측 벡터(RightVector)를 기준으로 측면 이동
-	FVector RightDirFront = CurveTrans.GetRotation().GetRightVector();
-	CurveTrans.AddToTranslation(RightDirFront * YOffset);
-
-	// ★ 중요 (Fix): 장애물이 직선 형태이므로, 곡선 위에서는 단순 접선(Tangent) 기준 기울기보다 
-	// 장애물의 시작점(Pivot)과 끝점(End)이 닿는 실제 바닥 좌푯값을 기반으로 한 직접적인 기울기(Pitch)가 
-	// 파고들거나 뜨는 현상 없이 평행을 유지하는 데 가장 정확합니다.
-	if (Chunk && !FMath::IsNearlyZero(Chunk->CachedHeightOffset) && !FMath::IsNearlyZero(Chunk->CachedCurveAngle))
+	// 2. 곡선/경사도에 따른 회전(Rotation) 계산
+	if (!FMath::IsNearlyZero(Chunk->CachedHeightOffset) && !FMath::IsNearlyZero(Chunk->CachedCurveAngle))
 	{
-		float ObsLen = Def ? Def->MaxSize.X : 500.f; // 장애물의 길이(X축 스케일 및 바운드 기준)
-		if (ObsLen < 10.f) ObsLen = 100.f; // 최소 길이 보장
+		float ObsLen = Def ? Def->MaxSize.X : 500.f; // 장애물의 길이
+		if (ObsLen < 10.f) ObsLen = 100.f;
 
-		// 1. 앞쪽 기준점 좌표 파악 (YOffset 적용 완료된 CurveTrans 위치)
-		FVector FrontPos = CurveTrans.GetLocation();
+		// 중앙축 앞/끝 계산
+		FVector FrontPos = CenterCurveTrans.GetLocation();
 		
-		// 2. 뒤쪽 끝점의 궤도 반환값 계산
 		float RearLocalDist = LocalDist + ObsLen;
-		FTransform RearTrans = Chunk->GetLocalTransformAtDistance(RearLocalDist);
-		FVector RightDirRear = RearTrans.GetRotation().GetRightVector();
-		RearTrans.AddToTranslation(RightDirRear * YOffset); // ★ 수정: 끝점도 해당 지점의 우측 벡터 기준 이동
+		float ClampRearDist = FMath::Min(RearLocalDist, Chunk->ChunkLength);
+		float OverflowDist = RearLocalDist - ClampRearDist;
+
+		FTransform RearTrans = Chunk->GetLocalTransformAtDistance(ClampRearDist);
+
+		if (OverflowDist > 0.f)
+		{
+			FVector ForwardDirRear = RearTrans.GetRotation().GetForwardVector();
+			RearTrans.AddToTranslation(ForwardDirRear * OverflowDist);
+		}
+
 		FVector RearPos = RearTrans.GetLocation();
 
-		// 3. 앞점과 뒷점을 관통하는 기하학적 직선 벡터 도출 (현, Chord)
+		// 현(Chord) 벡터 (앞점 -> 뒷점)
 		FVector DirVec = RearPos - FrontPos;
 
-		// 4. 장애물의 회전(Pitch, Yaw)을 이 직선 벡터에 완전히 일치되게 덮어씌움
-		FRotator NewLocalRot = CurveTrans.GetRotation().Rotator();
+		FRotator NewLocalRot = CenterCurveTrans.GetRotation().Rotator();
 		float Size2D = DirVec.Size2D();
+		
 		if (Size2D > KINDA_SMALL_NUMBER)
 		{
-			// 바닥에 완벽히 밀착되는 Pitch 재계산
+			// 중앙축의 실제 경사도(Pitch)와 방향(Yaw)
 			NewLocalRot.Pitch = FMath::RadiansToDegrees(FMath::Atan2(DirVec.Z, Size2D));
-			
-			// 긴 장애물이 커브 바깥으로 튀어나가지 않도록 방향(Yaw)도 현(Chord) 각도로 보정
 			NewLocalRot.Yaw = FMath::RadiansToDegrees(FMath::Atan2(DirVec.Y, DirVec.X));
 		}
-		CurveTrans.SetRotation(NewLocalRot.Quaternion());
+		
+		// 회전을 먼저 완벽히 적용
+		CenterCurveTrans.SetRotation(NewLocalRot.Quaternion());
 	}
+
+	// 3. 측면 X, Y Offset Location 계산
+	// ★ 회전이 먼저 적용된 Axis(Pitch 포함)의 RightVector를 따라 이동해야
+	// 측면으로 빗겨날 때에도 바닥 경사면을 따라 대각선으로 자연스럽게 고도가 유지됩니다.
+	float TargetWidth = GetFloorWidth(Chunk);
+	float YOffset = -(TargetWidth * 0.5f); // 장애물 축이 좌측 가장자리라고 가정
 	
+	FVector RightDir = CenterCurveTrans.GetRotation().GetRightVector();
+	CenterCurveTrans.AddToTranslation(RightDir * YOffset);
+
 	// 4. World 변환 (Chunk Actor Transform 적용)
-	FTransform WorldTrans = CurveTrans * Chunk->GetActorTransform();
+	FTransform WorldTrans = CenterCurveTrans * Chunk->GetActorTransform();
 
 	return WorldTrans;
 }

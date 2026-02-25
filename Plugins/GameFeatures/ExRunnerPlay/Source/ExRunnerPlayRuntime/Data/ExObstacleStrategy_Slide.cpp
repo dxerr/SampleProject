@@ -78,7 +78,7 @@ static float GetCrouchPassHeight(const UObject* WorldContext, float Margin)
 // ConfigureObstacle: Slide 전용 스케일 설정
 // X: 두께(Depth) = MinSize.X ~ MaxSize.X 랜덤
 // Y: 바닥 폭 = ChunkFloor 너비에 맞춤
-// Z: 높이(Height) = MinSize.Z ~ MaxSize.Z 랜덤
+// Z: 두께(Height) = 원본 크기 대비 1.0 ~ 1.5배 랜덤
 // ──────────────────────────────────────────────
 void UExObstacleStrategy_Slide::ConfigureObstacle_Implementation(
 	AActor* Obstacle,
@@ -89,7 +89,6 @@ void UExObstacleStrategy_Slide::ConfigureObstacle_Implementation(
 
 	// 1. 타겟 크기 결정
 	float TargetDepth  = FMath::RandRange(Def->MinSize.X, Def->MaxSize.X);
-	float TargetHeight = FMath::RandRange(Def->MinSize.Z, Def->MaxSize.Z);
 	float TargetWidth  = 1000.f;
 
 	// Y: 바닥 너비에 맞춤
@@ -110,11 +109,14 @@ void UExObstacleStrategy_Slide::ConfigureObstacle_Implementation(
 	if (BaseSize.Y < 1.f) BaseSize.Y = 100.f;
 	if (BaseSize.Z < 1.f) BaseSize.Z = 100.f;
 
+	// 주인님 지시사항: 박스의 스케일 크기(두께)는 1 ~ 1.5배로 랜덤 처리
+	float TargetHeightScale = FMath::RandRange(1.0f, 1.5f);
+
 	// 3. 최종 스케일 적용
 	Obstacle->SetActorScale3D(FVector(
 		TargetDepth  / BaseSize.X,  // X: 두께
 		TargetWidth  / BaseSize.Y,  // Y: 바닥 폭
-		TargetHeight / BaseSize.Z   // Z: 장애물 높이
+		TargetHeightScale           // Z: 장애물 두께 스케일
 	));
 
 	// 4. 장애물 정보 주입 (Interface)
@@ -126,39 +128,59 @@ void UExObstacleStrategy_Slide::ConfigureObstacle_Implementation(
 
 // ──────────────────────────────────────────────
 // CalculateSpawnPosition: Slide 전용 위치 계산
-// Z = Floor.Z + CrouchPassHeight (런타임 캐릭터 데이터 기반)
+// Z = Floor.Z + PassHeight (데이터 애셋의 MinSize.Z ~ MaxSize.Z 랜덤값 기준)
 // ──────────────────────────────────────────────
 FTransform UExObstacleStrategy_Slide::CalculateSpawnPosition_Implementation(
 	const UExObstacleDefinition* Def,
 	AExFloorChunk* Chunk,
 	float SafeStartX)
 {
-	if (!Chunk || !Def) return FTransform::Identity;
+	// 1. 부모 클래스의 기본 스폰 위치 계산 로직 실행 (Pitch 보정 반영)
+	FTransform WorldTrans = Super::CalculateSpawnPosition_Implementation(Def, Chunk, SafeStartX);
+	if (!Chunk) return WorldTrans;
 
-	const float ChunkLength = Chunk->ChunkLength;
-	// PathDistance는 Chunk Center 기준이므로 StartDist 계산 시 HalfLength를 뻼
-	const float ChunkStartDist = Chunk->PathDistance - (ChunkLength * 0.5f);
+	// 2. 데이터 애셋에서 읽은 슬라이드 필요 공간 (통과 높이)
+	// 주인님 지시사항: 캐릭터 캡슐 정보를 무시하고 Def->MinSize.Z ~ MaxSize.Z를 띄워줄 높이(Z) 기준으로 사용합니다.
+	float PassHeight = 130.f;
+	if (Def)
+	{
+		PassHeight = FMath::RandRange(Def->MinSize.Z, Def->MaxSize.Z);
+	}
 
-	// 로컬 거리 계산
+	// 3. 순수 바닥(TrueFloorZ)의 정확한 수직(Z) 위치 도출
+	float ChunkStartDist = Chunk->PathDistance - (Chunk->ChunkLength * 0.5f);
 	float LocalDist = (SafeStartX + 200.f) - ChunkStartDist;
-
-	// 1. 커브 로컬 변환 계산
-	FTransform CurveTrans = Chunk->GetLocalTransformAtDistance(LocalDist);
-
-	// 2. Y 오프셋 계산 (장애물 피벗 보정)
-	// ★ 로컬 Bounds 기반 폭 사용 (회전에 의한 월드 AABB 왜곡 방지)
+	
+	FTransform PureCurveTrans = Chunk->GetLocalTransformAtDistance(LocalDist);
+	
+	// Y 오프셋(너비) 반영
 	float TargetWidth = GetFloorWidth(Chunk);
 	float YOffset = -(TargetWidth * 0.5f);
+	FVector RightDirFront = PureCurveTrans.GetRotation().GetRightVector();
+	PureCurveTrans.AddToTranslation(RightDirFront * YOffset);
 
-	// 3. Z 오프셋 계산 (Crouch 통과 높이)
-	float PassHeight = GetCrouchPassHeight(Chunk, ClearanceMargin);
+	// 월드 기준 순수 바닥면 위치
+	FTransform PureWorldTrans = PureCurveTrans * Chunk->GetActorTransform();
+	float TrueFloorZ = PureWorldTrans.GetLocation().Z;
 
-	// 4. 로컬 변환에 오프셋 적용
-	// CurveTrans는 경로 중심/바닥면 기준.
-	// 여기에 Y(횡방향), Z(높이) 오프셋을 더함.
-	// CurveTrans의 회전(Yaw)이 적용된 상태에서 더해지므로, 경로 수직 방향으로 이동됨.
-	CurveTrans.AddToTranslation(FVector(0.f, YOffset, PassHeight));
+	// 4. 월드 트랜스폼의 수직 방향(UpVector)을 기준으로 Z 오프셋 1차 추가
+	FVector UpDir = WorldTrans.GetRotation().GetUpVector();
+	WorldTrans.AddToTranslation(UpDir * PassHeight);
 
-	// 5. 월드 변환
-	return CurveTrans * Chunk->GetActorTransform();
+	// 5. [절대 검증] 실제 수직 확보 거리(장애물 바닥 - 실제 바닥)가 PassHeight와 일치하는지 확인
+	float CurrentObstacleZ = WorldTrans.GetLocation().Z;
+	float ExactVerticalClearance = CurrentObstacleZ - TrueFloorZ;
+
+	// 강제 보정 로직
+	if (FMath::Abs(ExactVerticalClearance - PassHeight) > 1.0f)
+	{
+		FVector CorrectedLocation = WorldTrans.GetLocation();
+		CorrectedLocation.Z = TrueFloorZ + PassHeight;
+		WorldTrans.SetLocation(CorrectedLocation);
+		
+		UE_LOG(LogTemp, Warning, TEXT("[Slide Strategy] Z Corrected: TrueFloorZ=%.1f, Original Z=%.1f -> Forced Z=%.1f (PassHeight=%.1f)"), 
+			TrueFloorZ, CurrentObstacleZ, CorrectedLocation.Z, PassHeight);
+	}
+
+	return WorldTrans;
 }
