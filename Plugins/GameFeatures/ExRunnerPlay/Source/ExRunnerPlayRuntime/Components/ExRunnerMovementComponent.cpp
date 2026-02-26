@@ -54,21 +54,25 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 	FCharacterDefaultInputs* Inputs = InputCmdResult.InputCollection.FindMutableDataByType<FCharacterDefaultInputs>();
 	if (Inputs)
 	{
-		// 1. 전진 입력 (Runner Game 특성상 항상 전진)
-		// Owner(혹은 TargetPawn)의 Forward Vector를 사용
+		// 1. 순수 전진 입력 (PlayerController의 전방 축 기준)
+		// 곡선 구간이나 카메라 회전 시에도 조작 시점에 '앞(X)'으로 간주되는 방향으로 전진
 		FVector ForwardDir = FVector::ForwardVector;
 		
 		if (TargetPawn)
 		{
-			ForwardDir = TargetPawn->GetActorForwardVector();
-		}
-		else if (AActor* Owner = GetOwner())
-		{
-			ForwardDir = Owner->GetActorForwardVector();
+			if (AController* PawnController = TargetPawn->GetController())
+			{
+				const FRotator Rotation = PawnController->GetControlRotation();
+				const FRotator YawRotation(0, Rotation.Yaw, 0);
+				ForwardDir = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+			}
 		}
 
 		// DirectionalIntent로 이동 입력 설정 (크기 1.0)
 		Inputs->SetMoveInput(EMoveInputType::DirectionalIntent, ForwardDir);
+
+		// [Fix] Mover 시스템이 캐릭터의 모델(Mesh) 방향도 컨트롤러가 바라보는 방향(경로 접선)으로 맞춰 회전시킬 수 있도록 OrientationIntent를 주입합니다.
+		Inputs->OrientationIntent = ForwardDir;
 	}
 }
 
