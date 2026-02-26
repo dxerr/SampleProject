@@ -83,12 +83,12 @@ public:
 	// ── Gap 관련 ──
 
 	/**
-	 * Gap 적용: FloorMesh를 숨기고 양쪽에 바닥 조각 스폰
-	 * @param GapLocalStartX  Gap 시작 위치 (청크 로컬 X, 왼쪽 끝 = -ChunkLength/2 기준)
-	 * @param GapWidth        Gap 폭 (cm)
+	 * Gap 적용: FloorMesh를 숨기고 양쪽에 바닥 조각 스폰, 곡선일 경우 SplineMesh 일부를 투명 처리
+	 * @param GapStartDist  Gap 시작 위치 (청크 Path Distance 누적 기준, 0 ~ ChunkLength)
+	 * @param GapWidth      Gap 폭 (cm)
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Floor|Gap")
-	void ApplyGap(float GapLocalStartX, float GapWidth);
+	void ApplyGap(float GapStartDist, float GapWidth);
 
 	/** Gap 해제: 바닥 조각 제거, FloorMesh 복원 */
 	UFUNCTION(BlueprintCallable, Category = "Floor|Gap")
@@ -98,7 +98,20 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Floor|Gap")
 	bool bHasGap = false;
 
+	// 디버그 드로우용 (실제로 숨겨진 영역의 시작/끝 거리)
+	float DebugGapStartDist = -1.f;
+	float DebugGapEndDist = -1.f;
+	bool bDebugHasGap = false;
+
 	// ── 커브 관련 ──
+
+	/**
+	 * 곡선 구간의 일부분을 위한 SplinePoint 데이터를 계산합니다 (위치, 접선)
+	 * @param LocalDistance 시작 위치 (0 ~ ChunkLength)
+	 * @param SpanDistance 조각의 길이 (Tangent 크기 결정)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Floor|Curve")
+	void CalcCurveSplinePoint(float LocalDistance, float SpanDistance, FVector& OutPos, FVector& OutTangent) const;
 
 	/**
 	 * 커브 적용: FloorMesh를 숨기고 Spline Mesh로 원호 바닥 생성
@@ -172,6 +185,14 @@ private:
 	UPROPERTY()
 	TArray<TObjectPtr<UStaticMeshComponent>> GapFloorPieces;
 
+	/** Gap 적용 시 곡선 구멍을 위해 동적으로 잘라낸 부가 SplineMesh */
+	UPROPERTY()
+	TArray<TObjectPtr<USplineMeshComponent>> GapCurveSplinePieces;
+
+	/** Gap 적용 편의성 헬퍼: 곡선 구간에 동적 SplineMesh 생성 (시작~끝) */
+	USplineMeshComponent* SpawnGapSplineMesh(float StartDist, float EndDist, UMaterialInterface* Material);
+
+public:
 	/** 커브 적용 시 생성된 Spline Mesh 컴포넌트 배열 */
 	UPROPERTY()
 	TArray<TObjectPtr<USplineMeshComponent>> CurveSplineMeshes;

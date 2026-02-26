@@ -152,6 +152,7 @@ AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
 		const float MidDistance = Seg.CumulativeStartDistance + (Seg.ArcLength * 0.5f);
 		Chunk->PathDistance = MidDistance; // 중심 거리 저장
 		Chunk->SegmentType = Seg.Type;
+		Chunk->ChunkLength = Seg.ArcLength; // [Fix] 세그먼트의 실제 호 길이(ArcLength) 동기화
 
 		// 5) 모든 청크에 Spline Mesh 적용 (Straight 포함 통일감 부여)
 		// Straight: Angle=0, Radius=0. Radius는 무시됨.
@@ -180,6 +181,7 @@ AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
 		Chunk->ActivateChunk(SpawnLocation);
 		Chunk->SegmentType = EExPathSegmentType::Straight;
 		Chunk->PathDistance = 0.f;
+		Chunk->ChunkLength = 1000.f; // 레거시 직선 길이 (1000)
 	}
 
 	// 활성 목록에 추가

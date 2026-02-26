@@ -38,7 +38,7 @@ public:
 	                                                      float SafeStartX) override;
 
 private:
-	// CalculateSpawnPosition에서 계산된 X 좌표 캐시
+	// CalculateSpawnPosition에서 계산된 곡선상의 거리(LocalDist) 캐시
 	// ConfigureObstacle에서 사용 (호출 순서 보장)
-	float CachedSpawnX = 0.f;
+	float CachedSpawnDist = 0.f;
 };

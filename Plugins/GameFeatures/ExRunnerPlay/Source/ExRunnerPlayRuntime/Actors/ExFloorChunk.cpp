@@ -114,16 +114,79 @@ void AExFloorChunk::Tick(float DeltaTime)
 			{
 				if (DS->IsCheatEnabled(TAG_Ex_Debug_Chunk))
 				{
-					FBox Bounds = GetFloorBounds();
-					FVector Center = Bounds.GetCenter();
-					FVector Extent = Bounds.GetExtent();
+					// --- 바운드 그리기 (실제 경로 곡률 반영) ---
+					FBox BaseBounds = GetFloorBounds();
+					float FloorExtY = BaseBounds.GetExtent().Y; // 보통 50 * Scale
+					float HalfWidth = FloorExtY * FloorMesh->GetRelativeScale3D().Y; // World 기준 폭 절반
 					
-					// 바운딩 박스를 그립니다.
-					DrawDebugBox(World, Center, Extent, FColor::Green, false, -1.f, 0, 5.f);
+					TArray<FVector> LeftPoints;
+					TArray<FVector> RightPoints;
 					
-					// 바운드 최상단 약간 위쪽에 스탯 정보를 문자로 출력합니다.
+					// 곡선(혹은 직선)을 따라 여러 개의 포인트를 샘플링하여 좌우 가장자리 선형(Polyline) 생성
+					int32 SampleCount = (SegmentType == EExPathSegmentType::Straight) ? 2 : 10;
+					
+					for (int32 i = 0; i <= SampleCount; ++i)
+					{
+						float Dist = (ChunkLength / SampleCount) * i;
+						FTransform LocalTrans = GetLocalTransformAtDistance(Dist);
+						
+						// 중앙 기준 좌측(-Right), 우측(+Right)
+						FVector LeftLocal = LocalTrans.GetLocation() - LocalTrans.GetRotation().GetRightVector() * HalfWidth;
+						FVector RightLocal = LocalTrans.GetLocation() + LocalTrans.GetRotation().GetRightVector() * HalfWidth;
+						
+						LeftPoints.Add(ActorToWorld().TransformPosition(LeftLocal) + FVector(0,0,5.f));
+						RightPoints.Add(ActorToWorld().TransformPosition(RightLocal) + FVector(0,0,5.f));
+					}
+					
+					// 테두리 라인 그리기
+					for (int32 i = 0; i < SampleCount; ++i)
+					{
+						DrawDebugLine(World, LeftPoints[i], LeftPoints[i+1], FColor::Green, false, -1.f, 0, 3.f);
+						DrawDebugLine(World, RightPoints[i], RightPoints[i+1], FColor::Green, false, -1.f, 0, 3.f);
+					}
+					// 시작면과 끝면(앞뒤 절단면 캡)
+					if (SampleCount > 0)
+					{
+						DrawDebugLine(World, LeftPoints[0], RightPoints[0], FColor::Green, false, -1.f, 0, 3.f);
+						DrawDebugLine(World, LeftPoints.Last(), RightPoints.Last(), FColor::Green, false, -1.f, 0, 3.f);
+					}
+					
+					// 중심 스탯 출력 (중앙선)
+					FTransform CenterTrans = GetLocalTransformAtDistance(ChunkLength * 0.5f);
+					FVector WorldCenter = ActorToWorld().TransformPosition(CenterTrans.GetLocation());
 					FString ChunkDebugStr = FString::Printf(TEXT("Dist: %.0f"), PathDistance);
-					DrawDebugString(World, Center + FVector(0.0f, 0.0f, Extent.Z + 50.f), ChunkDebugStr, nullptr, FColor::White, 0.0f, false);
+					DrawDebugString(World, WorldCenter + FVector(0.0f, 0.0f, 50.f), ChunkDebugStr, nullptr, FColor::White, 0.0f, false);
+					
+					// --- [Gap (구멍) 공간 측정선 그리기] ---
+					if (bDebugHasGap && DebugGapStartDist >= 0.f && DebugGapEndDist >= 0.f)
+					{
+						// Transform 구하기 (구멍 앞면 잘린 곳과 뒷면 잘린 곳의 곡선 로컬 궤도)
+						FTransform StartLocal = GetLocalTransformAtDistance(DebugGapStartDist);
+						FTransform EndLocal = GetLocalTransformAtDistance(DebugGapEndDist);
+
+						// 각 잘린 단면의 "가운데(Center)" 지점을 월드 좌표로 변환
+						FVector WorldStart = ActorToWorld().TransformPosition(StartLocal.GetLocation());
+						FVector WorldEnd = ActorToWorld().TransformPosition(EndLocal.GetLocation());
+						
+						// 실제 공간(두 절단면 사이의 직선/현)의 물리적 길이 계산
+						float ActualHoleDistance = FVector::Dist(WorldStart, WorldEnd);
+						
+						// 눈에 띄도록 포인트와 라인을 약간 위로 리프트(띄움)
+						FVector Lift = FVector(0.f, 0.f, 20.f);
+						FVector LineStart = WorldStart + Lift;
+						FVector LineEnd   = WorldEnd   + Lift;
+						FVector LineCenter = (LineStart + LineEnd) * 0.5f;
+
+						DrawDebugLine(World, LineStart, LineEnd, FColor::Red, false, -1.f, 0, 8.f);
+						
+						// 시작 지점과 끝 지점에 포인터 생성
+						DrawDebugPoint(World, LineStart, 15.f, FColor::Orange, false, -1.f, 0);
+						DrawDebugPoint(World, LineEnd, 15.f, FColor::Orange, false, -1.f, 0);
+						
+						// 길이 표시
+						FString GapLengthStr = FString::Printf(TEXT("Gap Length: %.1f"), ActualHoleDistance);
+						DrawDebugString(World, LineCenter + FVector(0.f, 0.f, 30.f), GapLengthStr, nullptr, FColor::Orange, 0.0f, false);
+					}
 				}
 			}
 		}
@@ -195,118 +258,169 @@ void AExFloorChunk::ReturnToPool()
 }
 
 // ──────────────────────────────────────────────
-// Gap 적용: FloorMesh 숨기고 양쪽 바닥 조각 생성
+// Gap 적용: FloorMesh 숨기고 양쪽 바닥 조각 생성 (직선) 또는 SplineMesh 숨김 (곡선)
 // ──────────────────────────────────────────────
-void AExFloorChunk::ApplyGap(float GapLocalStartX, float GapWidth)
+void AExFloorChunk::ApplyGap(float GapStartDist, float GapWidth)
 {
 	// 이미 Gap 적용 중이면 먼저 해제
 	if (bHasGap) ClearGap();
 	if (!FloorMesh || !FloorMesh->GetStaticMesh()) return;
 
-	// 원본 메시/머티리얼 참조
-	UStaticMesh* OrigMesh = FloorMesh->GetStaticMesh();
-	const float HalfLen = ChunkLength * 0.5f;
+	const float GapStart = GapStartDist;
+	const float GapEnd   = GapStartDist + GapWidth;
 
-	// Gap 경계 (로컬 좌표, 청크 중심 = 0)
-	const float GapStartX = GapLocalStartX;
-	const float GapEndX   = GapLocalStartX + GapWidth;
+	UE_LOG(LogExFloorChunk, Log, TEXT("[%s] ApplyGap: StartDist=%.1f, Width=%.1f, isCurve=%d"),
+		*GetName(), GapStart, GapWidth, bHasCurve);
 
-	UE_LOG(LogExFloorChunk, Log, TEXT("[%s] ApplyGap: LocalX=%.1f, Width=%.1f (HalfLen=%.1f)"),
-		*GetName(), GapLocalStartX, GapWidth, HalfLen);
-
-	// ── 1. 원본 FloorMesh 숨기기 ──
-	FloorMesh->SetVisibility(false, true);
-	FloorMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
-	// ── 2. 원본 메시의 로컬 바운드로 기본 크기 계산 ──
-	FBoxSphereBounds MeshBounds = OrigMesh->GetBounds();
-	FVector MeshExtent = MeshBounds.BoxExtent; // 메시 원본 반크기
-	FVector MeshOrigin = MeshBounds.Origin;
-
-	// 원본 FloorMesh의 현재 스케일을 고려
-	FVector FloorScale = FloorMesh->GetRelativeScale3D();
-	float OrigMeshLenX = MeshExtent.X * 2.0f * FloorScale.X; // 실제 월드 X 길이
-
-	// ── 3. 왼쪽 바닥 조각 (ChunkStart ~ GapStart) ──
-	float LeftLen = GapStartX - (-HalfLen); // 왼쪽 조각 길이
-	if (LeftLen > 1.f)
+	if (SegmentType != EExPathSegmentType::Straight && bHasCurve && CurveSplineMeshes.Num() > 0)
 	{
-		UStaticMeshComponent* LeftFloor = NewObject<UStaticMeshComponent>(this, 
-			UStaticMeshComponent::StaticClass(), FName(TEXT("GapFloor_Left")));
-		LeftFloor->SetStaticMesh(OrigMesh);
-
-		// 원본 머티리얼 복사
-		for (int32 i = 0; i < FloorMesh->GetNumMaterials(); ++i)
+		float ArcSegLen = ChunkLength / CurveSplineMeshes.Num();
+		
+		int32 StartSegIndex = FMath::RoundToInt(GapStart / ArcSegLen);
+		
+		for (int32 i = 0; i < CurveSplineMeshes.Num(); ++i)
 		{
-			LeftFloor->SetMaterial(i, FloorMesh->GetMaterial(i));
+			float SegStartDist = i * ArcSegLen;
+			float SegEndDist = (i + 1) * ArcSegLen;
+
+			// 세그먼트 구간과 [GapStart, GapEnd] 구간이 조금이라도 겹치는지 확인
+			if (SegEndDist > GapStart && SegStartDist < GapEnd)
+			{
+				// 원본 스플라인 조각은 무조건 숨김
+				CurveSplineMeshes[i]->SetVisibility(false, true);
+				CurveSplineMeshes[i]->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+				
+				// 세그먼트의 앞부분이 Gap구간 전에 걸쳐 살려야 하는 경우, 앞부분 조각 다시 생성
+				if (SegStartDist < GapStart)
+				{
+					SpawnGapSplineMesh(SegStartDist, GapStart, CurveSplineMeshes[i]->GetMaterial(0));
+				}
+				
+				// 세그먼트의 뒷부분이 Gap구간 뒤에 걸쳐 살려야 하는 경우, 뒷부분 조각 다시 생성
+				if (SegEndDist > GapEnd)
+				{
+					SpawnGapSplineMesh(GapEnd, SegEndDist, CurveSplineMeshes[i]->GetMaterial(0));
+				}
+			}
 		}
 
-		LeftFloor->SetCollisionProfileName(TEXT("BlockAll"));
-		LeftFloor->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
-		LeftFloor->RegisterComponent();
-
-		// ★ 스케일 업데이트: SceneRoot(1,1,1) 아래에 붙으므로
-		//    부모(FloorMesh)의 스케일(10,4,0.1)을 직접 적용해야 함.
-		//    X는 길이 비율 * FloorScale.X가 되어야 함.
-		// ★ 스케일 업데이트: SceneRoot(1,1,1) 아래에 붙으므로
-		//    부모(FloorMesh)의 스케일(10,4,0.1)을 직접 적용해야 함.
-		//    X는 길이 비율 * FloorScale.X가 되어야 함.
-		// FVector FloorScale = FloorMesh->GetRelativeScale3D(); // 상단 선언 사용
-		float FinalScaleX = (LeftLen / OrigMeshLenX) * FloorScale.X;
-		// Y, Z는 FloorMesh 그대로 적용
-		LeftFloor->SetRelativeScale3D(FVector(FinalScaleX, FloorScale.Y, FloorScale.Z));
-
-		// ★ 위치: SceneRoot(1,1,1) 기준이므로 월드 좌표 그대로(Local로 변환 불필요) 사용 가능?
-		//    아니, SceneRoot가 Actor의 (0,0,0)에 있으므로
-		//    LeftCenter X는 로컬 좌표계에서 그대로 사용. 스케일 나눌 필요 없음.
-		float LeftCenterX = (-HalfLen) + (LeftLen * 0.5f);
-		LeftFloor->SetRelativeLocation(FVector(LeftCenterX, 0.f, 0.f));
-
-		GapFloorPieces.Add(LeftFloor);
+		// 곡선의 조각 구멍 파임 로직이 이제 완벽히 GapStart ~ GapEnd구간으로 재단되므로 그대로 디버그 변수에 할당
+		bDebugHasGap = true;
+		DebugGapStartDist = GapStart;
+		DebugGapEndDist = GapEnd;
 	}
-
-	// ── 4. 오른쪽 바닥 조각 (GapEnd ~ ChunkEnd) ──
-	float RightLen = HalfLen - GapEndX; // 오른쪽 조각 길이
-	if (RightLen > 1.f)
+	else
 	{
-		UStaticMeshComponent* RightFloor = NewObject<UStaticMeshComponent>(this,
-			UStaticMeshComponent::StaticClass(), FName(TEXT("GapFloor_Right")));
-		RightFloor->SetStaticMesh(OrigMesh);
-
-		// 원본 머티리얼 복사
-		for (int32 i = 0; i < FloorMesh->GetNumMaterials(); ++i)
+		// === 직선 바닥 처리 ===
+		
+		bDebugHasGap = true;
+		DebugGapStartDist = GapStart;
+		DebugGapEndDist = GapEnd;
+		
+		// 통일성을 위해 ApplyCurve가 불려서 스플라인 메쉬가 생성되어 있더라도
+		// 직선 바닥은 완벽한 길이 재단을 위해 통째로 숨깁니다.
+		if (bHasCurve)
 		{
-			RightFloor->SetMaterial(i, FloorMesh->GetMaterial(i));
+			for (USplineMeshComponent* Spl : CurveSplineMeshes)
+			{
+				if (Spl)
+				{
+					Spl->SetVisibility(false, true);
+					Spl->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+				}
+			}
 		}
 
-		RightFloor->SetCollisionProfileName(TEXT("BlockAll"));
-		RightFloor->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
-		RightFloor->RegisterComponent();
+		// 원본 메시는 통째로 숨기고 Gap 전/후로 잘라진 메쉬 두 개를 생성
+		FloorMesh->SetVisibility(false, true);
+		FloorMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-		// ★ 스케일: 위와 동일
-		// ★ 스케일: 위와 동일
-		// FVector FloorScale = FloorMesh->GetRelativeScale3D(); // 상단 선언 사용
-		float FinalScaleX = (RightLen / OrigMeshLenX) * FloorScale.X;
-		RightFloor->SetRelativeScale3D(FVector(FinalScaleX, FloorScale.Y, FloorScale.Z));
+		UStaticMesh* OrigMesh = FloorMesh->GetStaticMesh();
+		const float HalfLen = ChunkLength * 0.5f;
 
-		// ★ 위치: 스케일 나눌 필요 없음
-		float RightCenterX = GapEndX + (RightLen * 0.5f);
-		RightFloor->SetRelativeLocation(FVector(RightCenterX, 0.f, 0.f));
+		// 피벗이 시작점에 있으므로, 로컬 X좌표(-HalfLen~+HalfLen) 변환은 필요하지 않음.
 
-		GapFloorPieces.Add(RightFloor);
+		FBoxSphereBounds MeshBounds = OrigMesh->GetBounds();
+		FVector MeshExtent = MeshBounds.BoxExtent;  // 보통 50 (100짜리 플레인)
+		FVector FloorScale = FloorMesh->GetRelativeScale3D(); // 원본 메시 스케일 (예: 10, 4, 1)
+		
+		// 스케일 되지 않은 원래 메쉬의 X축 순수 길이 (보통 100)
+		float OrigMeshBaseLenX = MeshExtent.X * 2.0f; 
+		float ActorScaleX = GetActorScale3D().X;
+		if (FMath::IsNearlyZero(ActorScaleX)) ActorScaleX = 1.0f;
+
+		const float HalfLength = ChunkLength * 0.5f;
+
+		// ── 왼쪽 바닥 조각 (0 ~ GapStart) ──
+		float LeftLen = GapStart;
+		if (LeftLen > 1.f)
+		{
+			UStaticMeshComponent* LeftFloor = NewObject<UStaticMeshComponent>(this, 
+				UStaticMeshComponent::StaticClass(), FName(TEXT("GapFloor_Left")));
+			LeftFloor->SetStaticMesh(OrigMesh);
+
+			for (int32 i = 0; i < FloorMesh->GetNumMaterials(); ++i) { LeftFloor->SetMaterial(i, FloorMesh->GetMaterial(i)); }
+
+			LeftFloor->SetCollisionProfileName(TEXT("BlockAll"));
+			LeftFloor->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+			LeftFloor->RegisterComponent();
+
+			// 새로운 스케일 = 필요한월드길이 / (메쉬순수길이 * 부모액터스케일)
+			float FinalScaleX = LeftLen / (OrigMeshBaseLenX * ActorScaleX);
+			LeftFloor->SetRelativeScale3D(FVector(FinalScaleX, FloorScale.Y, FloorScale.Z));
+
+			// 기본 Plane 메시는 피벗이 중앙에 있으므로, 길이에 맞춰 중앙 X 위치를 스케일 역보정하여 배치합니다.
+			float LeftWorldCenterX = -HalfLength + (LeftLen * 0.5f);
+			LeftFloor->SetRelativeLocation(FVector(LeftWorldCenterX / ActorScaleX, FloorMesh->GetRelativeLocation().Y, FloorMesh->GetRelativeLocation().Z));
+			GapFloorPieces.Add(LeftFloor);
+		}
+
+		// ── 오른쪽 바닥 조각 (GapEnd ~ ChunkEnd) ──
+		float RightLen = ChunkLength - GapEnd;
+		if (RightLen > 1.f)
+		{
+			UStaticMeshComponent* RightFloor = NewObject<UStaticMeshComponent>(this,
+				UStaticMeshComponent::StaticClass(), FName(TEXT("GapFloor_Right")));
+			RightFloor->SetStaticMesh(OrigMesh);
+
+			for (int32 i = 0; i < FloorMesh->GetNumMaterials(); ++i) { RightFloor->SetMaterial(i, FloorMesh->GetMaterial(i)); }
+
+			RightFloor->SetCollisionProfileName(TEXT("BlockAll"));
+			RightFloor->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+			RightFloor->RegisterComponent();
+
+			// 새로운 스케일 = 필요한월드길이 / (메쉬순수길이 * 부모액터스케일)
+			float FinalScaleX = RightLen / (OrigMeshBaseLenX * ActorScaleX);
+			RightFloor->SetRelativeScale3D(FVector(FinalScaleX, FloorScale.Y, FloorScale.Z));
+
+			// 기본 Plane 메시는 피벗이 중앙에 있으므로, 길이에 맞춰 중앙 X 위치를 스케일 역보정하여 배치합니다.
+			float RightWorldCenterX = -HalfLength + GapEnd + (RightLen * 0.5f);
+			RightFloor->SetRelativeLocation(FVector(RightWorldCenterX / ActorScaleX, FloorMesh->GetRelativeLocation().Y, FloorMesh->GetRelativeLocation().Z));
+			GapFloorPieces.Add(RightFloor);
+		}
 	}
 
 	bHasGap = true;
 }
 
 // ──────────────────────────────────────────────
-// Gap 해제: 바닥 조각 파괴, FloorMesh 복원
+// Gap 해제: 바닥 조각 파괴, FloorMesh 복원, 곡선 스플라인 복원
 // ──────────────────────────────────────────────
 void AExFloorChunk::ClearGap()
 {
 	if (!bHasGap) return;
 
-	// 동적 생성된 바닥 조각 제거
+	// 곡선 구간 동적 생성된 바닥 조각 파괴
+	for (USplineMeshComponent* Piece : GapCurveSplinePieces)
+	{
+		if (Piece)
+		{
+			Piece->DestroyComponent();
+		}
+	}
+	GapCurveSplinePieces.Empty();
+
+	// 직선 구간 동적 생성된 편평 바닥 조각 제거
 	for (UStaticMeshComponent* Piece : GapFloorPieces)
 	{
 		if (Piece)
@@ -315,6 +429,19 @@ void AExFloorChunk::ClearGap()
 		}
 	}
 	GapFloorPieces.Empty();
+
+	// 커브 스플라인 복원
+	if (bHasCurve)
+	{
+		for (USplineMeshComponent* SplineMesh : CurveSplineMeshes)
+		{
+			if (SplineMesh)
+			{
+				SplineMesh->SetVisibility(true, true);
+				SplineMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			}
+		}
+	}
 
 	// 원본 FloorMesh 복원
 	if (FloorMesh)
@@ -384,8 +511,16 @@ void AExFloorChunk::ApplyCurve(float Angle, float Radius, int32 SegmentCount, bo
 	CachedCurveRadius = Radius;
 	bCachedIsLeftCurve = bIsLeftCurve;
 	CachedHeightOffset = HeightOffset;
-	// SegmentType은 Spawner에서 설정하겠지만, 여기서도 유추 가능
-	SegmentType = bIsLeftCurve ? EExPathSegmentType::CurveLeft : EExPathSegmentType::CurveRight;
+	
+	// SegmentType은 Spawner에서 설정하겠지만, 자체적으로도 정확하게 유추(보완)
+	if (FMath::IsNearlyZero(Angle))
+	{
+		SegmentType = EExPathSegmentType::Straight;
+	}
+	else
+	{
+		SegmentType = bIsLeftCurve ? EExPathSegmentType::CurveLeft : EExPathSegmentType::CurveRight;
+	}
 
 	// ── 2. 원본 FloorMesh 숨기기 ──
 	FloorMesh->SetVisibility(false, true);
@@ -438,8 +573,8 @@ void AExFloorChunk::ApplyCurve(float Angle, float Radius, int32 SegmentCount, bo
 		if (FMath::IsNearlyZero(Angle))
 		{
 			// ── 직선 케이스 (Angle = 0) ──
-			// 월드 길이 1000 가정
-			const float SafeChunkLen = 1000.f;
+			// 월드 길이 동기화 (기존 고정 1000.f -> ChunkLength)
+			const float SafeChunkLen = ChunkLength;
 			const float ScaledLenX = SafeChunkLen / ParentsScale.X;
 			const float SegLen = ScaledLenX / SegmentCount;
 
@@ -623,22 +758,28 @@ FTransform AExFloorChunk::GetLocalTransformAtDistance(float LocalDistance) const
 	// 1. 유효 거리 클램프
 	LocalDistance = FMath::Clamp(LocalDistance, 0.f, ChunkLength);
 
+	// 부모 스케일 (역보정용)
+	FVector ParentsScale = GetActorScale3D();
+	// 안정성을 위해 0.001 이하로 떨어지지 않게 제한
+	ParentsScale.X = FMath::Max(ParentsScale.X, KINDA_SMALL_NUMBER);
+	ParentsScale.Y = FMath::Max(ParentsScale.Y, KINDA_SMALL_NUMBER);
+	ParentsScale.Z = FMath::Max(ParentsScale.Z, KINDA_SMALL_NUMBER);
+
 	// 2. 직선 모델
 	if (SegmentType == EExPathSegmentType::Straight || FMath::IsNearlyZero(CachedCurveAngle))
 	{
-		// ★ 수정됨: ApplyCurve의 직선 모델은 중심점을 0으로 기준하여
-		// 시작점을 -HalfLength, 끝점을 +HalfLength로 배치합니다.
 		const float HalfLength = ChunkLength * 0.5f;
-		const float X = -HalfLength + LocalDistance;
+		// X 좌표 계산 및 역스케일링 적용
+		const float X = (-HalfLength + LocalDistance) / ParentsScale.X;
 
 		FVector Pos(X, 0.f, 0.f);
 
 		// 높이 보간 (HeightOffset이 있다면)
-		// ApplyCurve에서 직선 모델의 Z는 0부터 HeightOffset까지 증가합니다.
 		if (!FMath::IsNearlyZero(CachedHeightOffset))
 		{
 			float Alpha = LocalDistance / ChunkLength;
-			Pos.Z = CachedHeightOffset * Alpha;
+			// Z 오프셋도 역스케일링 적용
+			Pos.Z = (CachedHeightOffset * Alpha) / ParentsScale.Z;
 		}
 		
 		// 회전: Pitch 계산
@@ -661,33 +802,127 @@ FTransform AExFloorChunk::GetLocalTransformAtDistance(float LocalDistance) const
 
 	const float DirSign = bCachedIsLeftCurve ? -1.f : 1.f;
 
-	// 로컬 회전 중심 (Actor Pivot 기준)
-	const FVector LocalCenter = FVector(0.f, CachedCurveRadius * DirSign, 0.f);
-	const FVector RadialStart = -LocalCenter;
+	// 로컬 회전 중심 (월드 크기 기준 계산 후 역스케일링)
+	const float WorldRadius = CachedCurveRadius;
+	const FVector WorldCenterLocal = FVector(0.f, WorldRadius * DirSign, 0.f);
+	const FVector WorldRadialStart = -WorldCenterLocal;
 
 	// 보간된 각도만큼 회전 수행
 	float DegAngle = FMath::RadiansToDegrees(CurrentAngle);
-	FVector RadialPos = RadialStart.RotateAngleAxis(DegAngle * DirSign, FVector::UpVector);
+	FVector WorldPos = WorldCenterLocal + WorldRadialStart.RotateAngleAxis(DegAngle * DirSign, FVector::UpVector);
 
-	FVector Pos = LocalCenter + RadialPos;
-	
-	// ★ 수정됨: 높이(Z) 보간
-	// ApplyCurve의 커브 모델에서 Z는 세그먼트의 중심을 기준으로
-	// 시작 지점이 -0.5 * HeightOffset, 끝 지점이 +0.5 * HeightOffset가 됩니다.
+	// Scale 역보정 (로컬로 변환해야 ActorToWorld 변환 시 복구됨)
+	FVector Pos = FVector(WorldPos.X / ParentsScale.X, WorldPos.Y / ParentsScale.Y, 0.f);
+
+	// ★ 수정됨: 높이(Z) 보간 및 역보정
 	if (!FMath::IsNearlyZero(CachedHeightOffset))
 	{
-		Pos.Z = (CachedHeightOffset * Alpha) - (CachedHeightOffset * 0.5f);
+		float ZOffset = (CachedHeightOffset * Alpha) - (CachedHeightOffset * 0.5f);
+		Pos.Z = ZOffset / ParentsScale.Z;
 	}
 
 	// 방향(Tangent)을 구하여 회전값 도출
-	FVector Tangent = FVector::CrossProduct(FVector::UpVector, (Pos - LocalCenter)).GetSafeNormal() * DirSign;
+	// 회전은 월드 기준으로 계산된 텐전트를 가져와서 로컬 벡터로 역변환시켜 회전값 산출
+	FVector WorldTangent = FVector::CrossProduct(FVector::UpVector, (WorldPos - WorldCenterLocal)).GetSafeNormal() * DirSign;
+	FVector LocalTangent = FVector(WorldTangent.X / ParentsScale.X, WorldTangent.Y / ParentsScale.Y, WorldTangent.Z / ParentsScale.Z);
+	
 	if (!FMath::IsNearlyZero(CachedHeightOffset))
 	{
-		Tangent.Z = CachedHeightOffset / ChunkLength;
-		Tangent.Normalize();
+		LocalTangent.Z = CachedHeightOffset / ParentsScale.Z;
 	}
-
-	FRotator Rot = Tangent.Rotation();
+	
+	FRotator Rot = LocalTangent.Rotation();
 
 	return FTransform(Rot, Pos, FVector::OneVector);
+}
+
+void AExFloorChunk::CalcCurveSplinePoint(float LocalDistance, float SpanDistance, FVector& OutPos, FVector& OutTangent) const
+{
+	LocalDistance = FMath::Clamp(LocalDistance, 0.f, ChunkLength);
+
+	FVector ParentsScale = GetActorScale3D();
+	ParentsScale.X = FMath::Max(ParentsScale.X, KINDA_SMALL_NUMBER);
+	ParentsScale.Y = FMath::Max(ParentsScale.Y, KINDA_SMALL_NUMBER);
+	ParentsScale.Z = FMath::Max(ParentsScale.Z, KINDA_SMALL_NUMBER);
+
+	const float AngleRad = FMath::DegreesToRadians(CachedCurveAngle);
+	const float Alpha = LocalDistance / ChunkLength;
+
+	const float HalfTotalAngle = AngleRad * 0.5f;
+	const float CurrentAngle = -HalfTotalAngle + (AngleRad * Alpha); 
+
+	const float DirSign = bCachedIsLeftCurve ? -1.f : 1.f;
+	const float WorldRadius = CachedCurveRadius;
+	
+	const FVector WorldCenterLocal = FVector(0.f, WorldRadius * DirSign, 0.f);
+	const FVector WorldRadialStart = -WorldCenterLocal;
+
+	float DegAngle = FMath::RadiansToDegrees(CurrentAngle);
+	FVector WorldPos = WorldCenterLocal + WorldRadialStart.RotateAngleAxis(DegAngle * DirSign, FVector::UpVector);
+
+	OutPos = FVector(WorldPos.X / ParentsScale.X, WorldPos.Y / ParentsScale.Y, 0.f);
+
+	if (!FMath::IsNearlyZero(CachedHeightOffset))
+	{
+		float ZOffset = (CachedHeightOffset * Alpha) - (CachedHeightOffset * 0.5f);
+		OutPos.Z = ZOffset / ParentsScale.Z;
+	}
+
+	const float SpanAngleRad = AngleRad * (SpanDistance / ChunkLength);
+	const float WorldTangentMag = WorldRadius * SpanAngleRad;
+
+	FVector WorldTangent = FVector::CrossProduct(FVector::UpVector, (WorldPos - WorldCenterLocal)).GetSafeNormal() * DirSign * WorldTangentMag;
+	OutTangent = FVector(WorldTangent.X / ParentsScale.X, WorldTangent.Y / ParentsScale.Y, WorldTangent.Z / ParentsScale.Z);
+	
+	if (!FMath::IsNearlyZero(CachedHeightOffset))
+	{
+		OutTangent.Z = (CachedHeightOffset * (SpanDistance / ChunkLength)) / ParentsScale.Z;
+	}
+}
+
+USplineMeshComponent* AExFloorChunk::SpawnGapSplineMesh(float StartDist, float EndDist, UMaterialInterface* Material)
+{
+	float SpanDist = EndDist - StartDist;
+	if (SpanDist <= 1.f) return nullptr;
+
+	FVector StartPos, StartTangent;
+	FVector EndPos, EndTangent;
+	
+	CalcCurveSplinePoint(StartDist, SpanDist, StartPos, StartTangent);
+	CalcCurveSplinePoint(EndDist, SpanDist, EndPos, EndTangent);
+
+	FName SplineName = MakeUniqueObjectName(this, USplineMeshComponent::StaticClass(), TEXT("GapCurveSpline"));
+	USplineMeshComponent* SplineMesh = NewObject<USplineMeshComponent>(this, USplineMeshComponent::StaticClass(), SplineName);
+
+	if (!SplineMesh) return nullptr;
+
+	SplineMesh->SetStaticMesh(FloorMesh->GetStaticMesh());
+	if (Material)
+	{
+		for (int32 MatIdx = 0; MatIdx < FloorMesh->GetNumMaterials(); ++MatIdx)
+		{
+			SplineMesh->SetMaterial(MatIdx, Material);
+		}
+	}
+
+	SplineMesh->SetForwardAxis(ESplineMeshAxis::X);
+	
+	// 누락된 스케일 및 롤링 값 적용 (원본 부모 메쉬의 스케일 유지)
+	FVector MeshScale = FloorMesh->GetRelativeScale3D();
+	SplineMesh->SetStartScale(FVector2D(MeshScale.Y, MeshScale.Z));
+	SplineMesh->SetEndScale(FVector2D(MeshScale.Y, MeshScale.Z));
+	SplineMesh->SetStartRoll(0.f);
+	SplineMesh->SetEndRoll(0.f);
+
+	SplineMesh->SetStartAndEnd(StartPos, StartTangent, EndPos, EndTangent);
+	
+	SplineMesh->SetCollisionProfileName(TEXT("BlockAll"));
+	SplineMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	SplineMesh->SetMobility(EComponentMobility::Movable); // 어태치 에러 대응
+
+	SplineMesh->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+	SplineMesh->RegisterComponent();
+
+	GapCurveSplinePieces.Add(SplineMesh);
+	return SplineMesh;
 }

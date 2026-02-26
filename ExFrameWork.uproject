@@ -101,6 +101,10 @@
 		{
 			"Name": "ExRunnerPlay",
 			"Enabled": true
+		},
+		{
+			"Name": "UnrealCopilot",
+			"Enabled": true
 		}
 	],
 	"EpicSampleNameHash": "1673045636"

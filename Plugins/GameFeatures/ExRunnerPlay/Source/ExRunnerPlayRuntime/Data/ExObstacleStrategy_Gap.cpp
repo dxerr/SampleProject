@@ -56,22 +56,62 @@ FTransform UExObstacleStrategy_Gap::CalculateSpawnPosition_Implementation(
 	if (!Chunk || !Def) return FTransform::Identity;
 
 	const float ChunkLength = Chunk->ChunkLength;
-	// PathDistance는 Chunk Center 기준이므로 StartDist 계산 시 HalfLength를 뻼
 	const float ChunkStartDist = Chunk->PathDistance - (ChunkLength * 0.5f);
 
 	// 로컬 거리 (ArcLength 기준)
 	float LocalDist = (SafeStartX + 200.f) - ChunkStartDist;
-
-	// 커브 로컬 변환 계산
-	FTransform CurveTrans = Chunk->GetLocalTransformAtDistance(LocalDist);
 	
-	// 월드 변환
-	FTransform WorldTrans = CurveTrans * Chunk->GetActorTransform();
+	// ConfigureObstacle에서 사용할 로컬 시작 거리 캐싱
+	CachedSpawnDist = LocalDist;
 
-	// ConfigureObstacle에서 사용할 X 좌표 캐시 (월드 X)
-	// Gap 전략은 이 값을 역변환하여 Local X를 구하고, 이를 Gap Slicing에 사용함.
-	// 커브의 경우 Local X != ArcLength 이지만, ApplyGap이 StaticMesh Slicing을 하므로 Local X가 맞음.
-	CachedSpawnX = WorldTrans.GetLocation().X;
+	// 1. Chunk 중점(Center)에서의 Local Transform (위치 및 방향) 가져오기
+	FTransform CenterCurveTrans = Chunk->GetLocalTransformAtDistance(LocalDist);
+
+	// 2. 곡선/경사도에 따른 정확한 회전(Rotation) 계산
+	if (!FMath::IsNearlyZero(Chunk->CachedHeightOffset) && !FMath::IsNearlyZero(Chunk->CachedCurveAngle))
+	{
+		float ObsLen = Def ? Def->MaxSize.X : 500.f;
+		if (ObsLen < 10.f) ObsLen = 100.f;
+
+		FVector FrontPos = CenterCurveTrans.GetLocation();
+		
+		float RearLocalDist = LocalDist + ObsLen;
+		float ClampRearDist = FMath::Min(RearLocalDist, Chunk->ChunkLength);
+		float OverflowDist = RearLocalDist - ClampRearDist;
+
+		FTransform RearTrans = Chunk->GetLocalTransformAtDistance(ClampRearDist);
+
+		if (OverflowDist > 0.f)
+		{
+			FVector ForwardDirRear = RearTrans.GetRotation().GetForwardVector();
+			RearTrans.AddToTranslation(ForwardDirRear * OverflowDist);
+		}
+
+		FVector RearPos = RearTrans.GetLocation();
+		FVector DirVec = RearPos - FrontPos;
+
+		FRotator NewLocalRot = CenterCurveTrans.GetRotation().Rotator();
+		float Size2D = DirVec.Size2D();
+		if (Size2D > KINDA_SMALL_NUMBER)
+		{
+			// 중앙축의 실제 경사도(Pitch)와 방향(Yaw)
+			NewLocalRot.Pitch = FMath::RadiansToDegrees(FMath::Atan2(DirVec.Z, Size2D));
+			NewLocalRot.Yaw = FMath::RadiansToDegrees(FMath::Atan2(DirVec.Y, DirVec.X));
+		}
+		
+		CenterCurveTrans.SetRotation(NewLocalRot.Quaternion());
+	}
+
+	// 3. 측면 Y Offset Location 계산
+	// ★ 회전이 먼저 적용된 Axis의 RightVector를 따라 이동하여 측면 피봇에 맞춰 Y축 이동
+	float TargetWidth = GetFloorWidth(Chunk);
+	float YOffset = -(TargetWidth * 0.5f); // 장애물 축이 좌측 가장자리라고 가정
+	
+	FVector RightDir = CenterCurveTrans.GetRotation().GetRightVector();
+	CenterCurveTrans.AddToTranslation(RightDir * YOffset);
+
+	// 4. World 변환
+	FTransform WorldTrans = CenterCurveTrans * Chunk->GetActorTransform();
 
 	return WorldTrans;
 }
@@ -103,22 +143,63 @@ void UExObstacleStrategy_Gap::ConfigureObstacle_Implementation(
 	if (BaseSize.Y < 1.f) BaseSize.Y = 100.f;
 	if (BaseSize.Z < 1.f) BaseSize.Z = 100.f;
 
-	// 4. SpawnX (월드) → 청크 로컬 좌표로 변환
-	FVector WorldSpawnPos(CachedSpawnX, Chunk->GetActorLocation().Y, Chunk->GetActorLocation().Z);
-	FVector LocalPos = Chunk->GetActorTransform().InverseTransformPosition(WorldSpawnPos);
-	float GapLocalStartX = LocalPos.X;
+	// 4. 장애물 시작 위치 (로컬 스플라인 누적 거리 기준, 0 ~ ChunkLength)
+	float GapLocalStartDist = CachedSpawnDist;
 
-	UE_LOG(LogTemp, Log, TEXT("Gap Strategy: Width=%.1f, LocalStartX=%.1f, FloorWidth=%.1f"),
-		GapWidth, GapLocalStartX, TargetWidth);
+	// 곡선 보정으로 인해 호 단위 확장이 과하게 적용되지 않도록 논리 거리를 동일하게 사용
+	float LogicalGapWidth = GapWidth;
 
-	// ★ 핵심: ChunkFloor에 Gap 적용
-	Chunk->ApplyGap(GapLocalStartX, GapWidth);
+	float MaxAllowedWidth = FMath::Max(0.f, Chunk->ChunkLength - GapLocalStartDist);
+	if (LogicalGapWidth > MaxAllowedWidth)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Gap Strategy: LogicalGapWidth %.1f exceeded MaxAllowed %.1f. Clamping."), LogicalGapWidth, MaxAllowedWidth);
+		LogicalGapWidth = MaxAllowedWidth;
+		GapWidth = LogicalGapWidth;
+	}
 
-	// 5. 장애물 스케일 설정
-	//    X: Gap 폭, Y: ChunkFloor 너비, Z: 데이터 값
+	UE_LOG(LogTemp, Log, TEXT("Gap Strategy: Final PhysicalWidth=%.1f, LogicalWidth=%.1f, LocalStartDist=%.1f"),
+		GapWidth, LogicalGapWidth, GapLocalStartDist);
+
+	// ★ 핵심: ChunkFloor에 Gap 적용 (바닥 구멍 내기) - 여기엔 논리적 거리를 전달!
+	Chunk->ApplyGap(GapLocalStartDist, LogicalGapWidth);
+
 	float TargetHeight = FMath::RandRange(Def->MinSize.Z, Def->MaxSize.Z);
 	if (TargetHeight < 1.f) TargetHeight = BaseSize.Z; // Z 미설정 시 기본 유지
 
+	// 5. 스냅된 거리에 맞게 장애물 Transform 완벽히 재계산
+	// Gap 구멍의 정중앙 지점을 찾습니다.
+	float CenterDist = GapLocalStartDist + (GapWidth * 0.5f);
+	CenterDist = FMath::Clamp(CenterDist, 0.f, Chunk->ChunkLength);
+
+	FTransform CenterTrans = Chunk->GetLocalTransformAtDistance(CenterDist);
+
+	// 높이 단차가 있다면 Pitch 기울기도 중심 기준으로 다시 계산
+	if (!FMath::IsNearlyZero(Chunk->CachedHeightOffset))
+	{
+		float RearDist = FMath::Min(CenterDist + (GapWidth * 0.5f), Chunk->ChunkLength);
+		FTransform RearTrans = Chunk->GetLocalTransformAtDistance(RearDist);
+		FVector DirVec = RearTrans.GetLocation() - CenterTrans.GetLocation();
+		float Size2D = DirVec.Size2D();
+		
+		if (Size2D > KINDA_SMALL_NUMBER)
+		{
+			FRotator NewLocalRot = CenterTrans.GetRotation().Rotator();
+			NewLocalRot.Pitch = FMath::RadiansToDegrees(FMath::Atan2(DirVec.Z, Size2D));
+			CenterTrans.SetRotation(NewLocalRot.Quaternion());
+		}
+	}
+
+	// 목표물(Gap Trigger Box)을 좌측 가장자리축(YOffset)으로 정렬하고, 
+	// 지면 위가 아니라 지면 "아래"로 향하도록 Z축(UpVector 반대)으로 내립니다.
+	float YOffset = -(TargetWidth * 0.5f);
+	CenterTrans.AddToTranslation(CenterTrans.GetRotation().GetRightVector() * YOffset);
+	CenterTrans.AddToTranslation(CenterTrans.GetRotation().GetUpVector() * (-TargetHeight * 0.5f));
+
+	// 최종 완성된 위치로 액터 이동
+	Obstacle->SetActorTransform(CenterTrans * Chunk->GetActorTransform());
+
+	// 6. 장애물 스케일 설정
+	//    X: Gap 폭, Y: ChunkFloor 너비, Z: 데이터 값
 	Obstacle->SetActorScale3D(FVector(
 		GapWidth     / BaseSize.X,  // X: Gap 폭
 		TargetWidth  / BaseSize.Y,  // Y: ChunkFloor 너비
