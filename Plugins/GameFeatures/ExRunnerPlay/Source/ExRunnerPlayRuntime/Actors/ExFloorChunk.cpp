@@ -473,12 +473,6 @@ void AExFloorChunk::ActivateChunkWithRotation(const FVector& SpawnLocation, cons
 // ──────────────────────────────────────────────
 // 커브 적용: FloorMesh 숨기고 Spline Mesh로 원호 바닥 생성
 // ──────────────────────────────────────────────
-// ──────────────────────────────────────────────
-// 커브 적용: FloorMesh 숨기고 Spline Mesh로 원호 바닥 생성
-// ──────────────────────────────────────────────
-// ──────────────────────────────────────────────
-// 커브 적용: FloorMesh 숨기고 Spline Mesh로 원호 바닥 생성
-// ──────────────────────────────────────────────
 void AExFloorChunk::ApplyCurve(float Angle, float Radius, int32 SegmentCount, bool bIsLeftCurve, float HeightOffset)
 {
 	// 이미 커브 적용 중이면 먼저 해제

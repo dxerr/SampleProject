@@ -25,10 +25,10 @@
   - `200.f`와 같은 버퍼 값을 `ExCurveConfig` 또는 `ExObstacleManager`의 `UPROPERTY(EditAnywhere)`로 노출하여 에디터에서 제어 가능하게 변경합니다.
   - 거리/Transform 계산은 공통 유틸리티나 부모 클래스로 병합합니다.
 
-### 4. `ApplyCurve` 함수 주석 복제
-- **검증 결과**: `True.` `ExFloorChunk.cpp` 의 `ApplyCurve` 함수 상단에 동일한 주석 블록이 3줄 연속으로 존재합니다.
-- **개선 계획**:
-  - 불필요한 중복 주석 블록을 1개로 정리합니다.
+### 4. `ApplyCurve` 함수 주석 복제 (완료)
+- **검증 결과**: `True.` `ExFloorChunk.cpp` 의 `ApplyCurve` 함수 상단에 동일한 주석 블록이 3줄 연속으로 존재하는 것을 확인했습니다.
+- **수정 내용**:
+  - 불필요한 중복 주석 블록을 1개만 남기고 정리했습니다.
 
 ---
 
