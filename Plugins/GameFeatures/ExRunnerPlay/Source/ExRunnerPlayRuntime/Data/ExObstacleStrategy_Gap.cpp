@@ -198,13 +198,26 @@ void UExObstacleStrategy_Gap::ConfigureObstacle_Implementation(
 	// 최종 완성된 위치로 액터 이동
 	Obstacle->SetActorTransform(CenterTrans * Chunk->GetActorTransform());
 
-	// 6. 장애물 스케일 설정
-	//    X: Gap 폭, Y: ChunkFloor 너비, Z: 데이터 값
-	Obstacle->SetActorScale3D(FVector(
-		GapWidth     / BaseSize.X,  // X: Gap 폭
-		TargetWidth  / BaseSize.Y,  // Y: ChunkFloor 너비
-		TargetHeight / BaseSize.Z   // Z: 높이
-	));
+	// 6. 장애물 액터 자체의 스케일은 건드리지 않음 (BP 설정값 유지)
+	// 대신 자식으로 있는 StaticMeshComponent들만 Y축(폭) 스케일을 바닥에 맞춤
+	TArray<UStaticMeshComponent*> MeshComps;
+	Obstacle->GetComponents<UStaticMeshComponent>(MeshComps);
+	for (UStaticMeshComponent* Mesh : MeshComps)
+	{
+		if (Mesh)
+		{
+			// Mesh 자체의 로컬 스케일을 가져와서 Y축만 변경 (액터 스케일에 곱해진 최종 크기가 TargetWidth가 되도록)
+			FVector CurrentScale = Mesh->GetRelativeScale3D();
+			FVector ActorScale = Obstacle->GetActorScale3D();
+			
+			// BaseSize.Y 는 이미 액터 스케일 1.0 기준의 Mesh Bounds Y 크기임
+			if (BaseSize.Y > KINDA_SMALL_NUMBER && ActorScale.Y > KINDA_SMALL_NUMBER)
+			{
+				float DesiredRelativeScaleY = (TargetWidth / BaseSize.Y) / ActorScale.Y;
+				Mesh->SetRelativeScale3D(FVector(CurrentScale.X, DesiredRelativeScaleY, CurrentScale.Z));
+			}
+		}
+	}
 
 	// 6. 장애물 정보 주입 (Interface)
 	FExObstacleInfo Info;
