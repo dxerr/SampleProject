@@ -1,14 +1,14 @@
 # 장애물 시스템 종합 가이드
 
-> 작성일: 2026-02-10 | 최종 수정: 2026-02-11  
-> Strategy Pattern 기반 장애물 스폰 시스템
+> 작성일: 2026-02-10 | 최종 수정: 2026-02-27  
+> Strategy Pattern 기반 장애물 스폰 시스템 및 커브-경로 의존 로직 고도화 반영 완료
 
 ---
 
 ## 1. 아키텍처 개요
 
 ### 배경
-기존 `SpawnObstaclesOnChunk`는 모든 `EExObstacleType`을 하나의 로직으로 처리하여
+기존 `SpawnObstaclesOnChunk`는 `LastObstacleSafeEndDistance` 변수로 마지막 장애물의 **경로 상 끝 거리**를 추적. (기존 `LastObstacleSafeEndX`에서 직관성 개선)하며 모든 `EExObstacleType`을 하나의 로직으로 처리하여
 타입 추가 시 함수가 비대해지는 문제가 있었음. **Strategy Pattern**으로 타입별 로직을 분리.
 
 ### 구조도
@@ -48,8 +48,8 @@ graph TD
 | 전략 탐색 | Manager (공통) | `SpawnStrategies.Find()` |
 | 배치 가능성 | Manager (공통) | `CheckFeasibility()` |
 | **위치 계산** | **Strategy (위임)** | `CalculateSpawnPosition()` |
-| 풀링 | Manager (공통) | `GetObstacleFromPool()` |
-| **스케일/크기** | **Strategy (위임)** | `ConfigureObstacle()` |
+| 풀링 | Manager (공통) | `GetObstacleFromPool()` (스레드 블로킹 방지를 위해 비동기 백그라운드 Init 전환 구조 적용) |
+| **스케일/크기** | **Strategy (위임)** | `ConfigureObstacle()` (BoxExtent를 활용한 정확한 Bounds 연산 지원) |
 | Interaction | Manager (공통) | `InteractionComp` 설정 |
 | 어태치 | Manager (공통) | `AttachToActor()` |
 | **복귀 거리** | **Strategy (위임)** | `GetRecoveryDistance()` |
@@ -97,7 +97,7 @@ sequenceDiagram
 | 함수 | 역할 |
 |------|------|
 | `ConfigureObstacle` | 스케일 1 리셋 → 메시 바운드 측정 → X/Y/Z 비율 스케일 적용 |
-| `CalculateSpawnPosition` | SafeStartX + 200, **Y 피봇 보정** |
+| `CalculateSpawnPosition` | SafeStartX + 200, **Y 피봇 보정 (하드코딩 제거 및 BoxExtent 기반 정밀 보정)** |
 | `GetRecoveryDistance` | `RecoveryTime × RunSpeed` |
 
 **파일:**
@@ -141,7 +141,7 @@ sequenceDiagram
 | 항목 | 내용 |
 |------|------|
 | **ConfigureObstacle** | X=두께(랜덤), Y=Floor너비, Z=높이(랜덤) |
-| **CalculateSpawnPosition** | Z = `FloorZ + CrouchPassHeight` (런타임 캐릭터 데이터) |
+| **CalculateSpawnPosition** | Z = `FloorZ + CrouchPassHeight + VerticalOffset` (런타임 캐릭터 데이터 및 데이터 에셋 오프셋 반영) |
 | **ClearanceMargin** | UPROPERTY, 캡슐-장애물 하단 여유 마진 (기본 15cm) |
 | **GetCrouchPassHeight** | `CrouchHalfHeight × 2 + Margin`, Fallback 120cm |
 
@@ -225,9 +225,9 @@ bool bDisableFloorMesh = true;
 ### Y 피봇 보정
 
 > [!NOTE]
-> 모든 Strategy의 `CalculateSpawnPosition`에서 **Y 피봇 보정** 적용.
-> 장애물 메시 피봇이 끝(edge)에 있어 `ChunkLoc.Y - (FloorWidth * 0.5f)` 오프셋 필요.
-> BP 메시 피봇이 중앙인 경우 이중 적용 주의.
+> 모든 Strategy의 `CalculateSpawnPosition`에서 다음을 적용:
+    - **Y 오프셋**: 장애물 피벗(Edge)이 아닌 메쉬 `BoxExtent`를 활용한 정확한 중앙 정렬 및 로컬 Y축 이동 적용. (하드코딩 탈피)
+    - **Z 오프셋**: Slide 장애물 등의 높이 보정을 로컬 Z축 이동으로 적용. (DataAsset의 `VerticalOffset` 등 활용)
 
 ---
 

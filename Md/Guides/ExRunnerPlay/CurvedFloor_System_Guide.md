@@ -1,7 +1,7 @@
 # 커브 Floor 청크 시스템 가이드
 
-> **최종 업데이트**: 2026-02-12  
-> **상태**: 코드 구현 완료, 에디터 설정 및 PIE 테스트 대기
+> **최종 업데이트**: 2026-02-27  
+> **상태**: 코드 구현 완료, 에디터 설정 및 PIE 테스트 완료, 잔여 AI 리포트 최적화 반영 완료
 
 이 문서는 러너 게임의 **커브 Floor 청크 시스템**의 설계, 구현 코드, 에디터 설정 방법,
 그리고 향후 개선 사항을 종합적으로 기술합니다.
@@ -22,7 +22,7 @@
 | 커브 각도 | **4분면 기반 90도 고정** (월드 축 정렬) |
 | 캐릭터 회전 | 캐릭터 회전 우선 → 향후 PlayerController/카메라 회전 확장 가능 |
 | 겹침 방지 | **경사(Slope) 기반 꽈배기** (Pitch 적용으로 고도 변경) |
-| 장애물 배치 | 커브 구간 **특수 배치 정책** (진입부 제한 등) |
+| 장애물 배치 | **커브 구간에서도 자연스럽게 배치되도록 거리 및 로컬 보정 강화** |
 | 커브 빈도 | **가중 확률 패턴 공식** |
 | 시각적 힌트 | 추후 구현 (델리게이트 인터페이스 준비 완료) |
 
@@ -64,6 +64,7 @@ graph TD
 - 모든 커브는 **정확히 90도**로 회전하며, 월드 좌표계(X, Y) 축에 정렬됩니다.
 - **고정 반경(`FixedCurveRadius`)**을 사용하여 예측 가능한 경로를 생성합니다.
 - `ApplyCurve` 시 부모 액터의 스케일(10, 4, 0.1)을 역산(Inverse Scale)하여 왜곡 없는 원호를 그립니다.
+	- **성능 최적화**: 로컬 변수들의 무의미한 프레임당 이중 선언이나 불필요한 연산을 루프 밖(`WorldSpace` 연산 단일화)으로 분리 적용했습니다.
 
 ### 8.2 나선형 꽈배기(Spiral Ramp)
 - **문제**: 제자리에서 360도 회전(4번의 90도 턴)을 하면 바닥이 겹치는 Z-Fighting 발생.
@@ -85,6 +86,7 @@ graph TD
 | 2026-02-12 | 초기 구현 완료 (8단계). Spline Mesh 커브, 데이터 드리븐, 꽈배기 바운딩, 캐릭터 회전, 장애물 특수 배치 |
 | 2026-02-12 | 3개 치명 버그 수정: SpawnNextChunk 경로 연동, OnWorldShifted 부호 수정, KillZ PathDistance 기반 전환 |
 | 2026-02-12 | **4분면(Quadrant) 시스템 개편**: 90도 고정 턴, 나선형 꽈배기(Pitch Ramp), Inverse Scale 복구 |
+| 2026-02-27 | **잔여 AI 리포트 개선 적용**: `ShouldSpawnObstaclesOnCurve` 미사용 훅 제거, `ApplyCurve` 내 로컬 연산 루프 최적화 반영, 컴포넌트 생명주기 타이머 백그라운드 경량화 |
 
 ---
 
@@ -105,7 +107,7 @@ graph TD
 | `ExFloorChunk.h/cpp` | `ApplyCurve()` / `ClearCurve()` / `ActivateChunkWithRotation()` / `PathDistance` / `SegmentType` |
 | `ExChunkSpawner.h/cpp` | `ShiftWorldAlongPath()` / `NextSpawnDistance` |
 | `ExRunnerGameMode.h/cpp` | `PathManager` 통합 / `UpdateCharacterRotation()` / `CurrentPathDistance` |
-| `ExObstacleManager.h/cpp` | `ShouldSpawnObstaclesOnCurve()` / 커브 배치 제한 체크 |
+| `ExObstacleManager.h/cpp` | 구 무용지물 훅(`ShouldSpawnObstaclesOnCurve`) 제거 및 거리 기반 안전 배치명칭 변경 |
 
 ---
 
@@ -196,7 +198,7 @@ NewRotation.Roll = CurrentRotation.Roll;
 
 현재 구현된 시스템의 안정화 및 추가 검증을 위해 다음 항목들이 계획되어 있습니다. 참고 바랍니다.
 
-### 10.1 꽈배기(Floor 기울기) 처리 확인 검증
+### 10.1 꽈배기(Floor 기울기) 처리 확인 검증dlfeks 
 - **검증 대상**: 나선형으로 연속 회전 시 `SlopePitchAngle`이 적용되어 고도가 변경되는 로직(꽈배기)이 시각적/물리적으로 올바르게 동작하는지 확인.
 - **체크포인트**: 
     - Chunk 연결 부위의 단차(Gap) 발생 여부.
@@ -222,4 +224,4 @@ NewRotation.Roll = CurrentRotation.Roll;
     - `ApplyGap` 함수가 커브의 Local X 좌표를 기준으로 올바른 지점을 슬라이싱(Slicing) 하는지.
     - 슬라이싱 된 단면(Cap)이 커브의 휜 형상을 따라 자연스럽게 마감되는지, 혹은 직선으로 잘려 이질감이 있는지 확인.
 
-// (2026-02-12) 문서 정리 완료. 향후 변경 사항은 별도 기록.
+// (2026-02-27) 문서 정리 및 AI 개선 리포트 결과 반영 완료. 향후 변경 사항은 별도 기록.
