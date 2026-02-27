@@ -34,17 +34,18 @@ public:
 	TArray<UExObstacleDefinition*> ObstacleDefinitions;
 
 	/**
-	 * 오브젝트 풀 사용 여부 (true = 원본 풀링 로직 사용, false = 매번 Spawn/Destroy 수행)
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Obstacle")
-	bool bUsePooling = false;
-
-	/**
 	 * 타입별 스폰 전략 매핑 (Strategy Pattern)
 	 * 에디터에서 각 EExObstacleType에 대응하는 전략을 인라인 편집 가능
 	 */
 	UPROPERTY(EditAnywhere, Instanced, Category = "Obstacle|Strategy")
 	TMap<EExObstacleType, TObjectPtr<UExObstacleSpawnStrategy>> SpawnStrategies;
+
+	/**
+	 * 연결된 청크 스포너 
+	 * (장애물 스폰 확률, 쿨타임 등의 통합 설정 참조용)
+	 */
+	UPROPERTY(Transient)
+	UExChunkSpawner* BoundSpawner;
 
 	/**
 	 * 청크 스포너와 연결 (델리게이트 구독)

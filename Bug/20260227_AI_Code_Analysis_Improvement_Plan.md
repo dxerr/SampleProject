@@ -34,15 +34,15 @@
 
 ## 🟠 개선 가능한 설계 문제 (Design Issues)
 
-### 5. `SpawnObstaclesOnChunk` 50% 하드코딩 확률 오류
+### 5. `SpawnObstaclesOnChunk` 하드코딩 확률 오류 (완료)
 - **검증 결과**: `True.` 주석은 "30% 확률"이라고 되어 있지만, 코드는 `FMath::RandRange(0, 10) < 5` 로 50% 확률로 동작 중이며 값 자체가 하드코딩되어 있습니다.
-- **개선 계획**:
-  - `UExObstacleManager` 헤더에 `UPROPERTY(EditAnywhere, Category="Spawn") float ObstacleSpawnChance = 0.7f;` 변수를 추가하여 하드코딩을 제거하고 기획 의도와 일치시킵니다.
+- **수정 내용**:
+  - `UExChunkSpawner`의 `FExObstacleSpawnConfig`에 `SpawnProbability` 변수를 추가하여 에디터에서 확률을 0.0 ~ 1.0 사이로 제어할 수 있도록 수정했습니다.
 
-### 6. `RunSpeed` 폴백 (600.f) 하드코딩
-- **검증 결과**: `True.` `ExObstacleManager.cpp`와 `ExRunnerGameMode.cpp`에 각각 600.f가 폴백 속도로 하드코딩되어 있습니다.
-- **개선 계획**:
-  - `AExRunnerGameMode`에 `DefaultRunSpeed` 변수를 노출하여 참조하거나, 공유 설정 데이터(DataAsset 혹은 Config)에서 읽어오도록 통합합니다.
+### 6. `RunSpeed` 폴백 (600.f) 하드코딩 (완료)
+- **검증 결과**: `True.` `ExObstacleManager.cpp`에 600.f가 폴백 속도로 하드코딩되어 있습니다.
+- **수정 내용**:
+  - `UExChunkSpawner`의 `FExObstacleSpawnConfig`에 `DefaultRunSpeed` 변수를 추가하여 하드코딩을 제거하고 에디터에서 설정 가능하도록 통합했습니다.
 
 ### 7. `ExRunnerMovementComponent` TargetPawn Lazy Init 구조
 - **검증 결과**: `True.` `BeginPlay`에서 MoverComponent를 찾고, `TickComponent`에서 또다시 TargetPawn을 찾는 2중 구조로 되어있습니다.
