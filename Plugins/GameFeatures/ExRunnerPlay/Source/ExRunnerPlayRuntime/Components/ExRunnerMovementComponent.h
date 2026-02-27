@@ -32,8 +32,8 @@ protected:
 	virtual void ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult) override;
 
 public:	
-	// TickComponent 제거 (타이머로 대체)
-	// virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	// 레인 변경(UpdateLanePosition) 처리를 위해 Tick을 유지합니다.
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	/** 왼쪽 레인으로 이동 요청 (BP에서 호출) */
 	UFUNCTION(BlueprintCallable, Category = "Runner|Movement")
