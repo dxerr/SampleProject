@@ -50,25 +50,25 @@
   - `TickComponent`의 매 프레임 검사 로직을 완전히 제거했습니다.
   - `TryInitializeMover()` 전담 함수를 생성하고, 실패 시 0.1초 간격의 가벼운 백그라운드 타이머(`FTimerHandle InitTimerHandle`) 단위로 부착을 대기하도록 경량화했습니다. 외부의 명시적 호출(BP 연동 등) 없이 컴포넌트 스스로 생명주기를 완벽히 독립적으로 책임지는 단독(Self-Contained) 구조를 완성했습니다.
 
-### 8. `ShouldSpawnObstaclesOnCurve` TODO 무용지물 상태
-- **검증 결과**: `True.` 함수 자체가 무조건 `return true;`를 호출하며, 커브 진입 제한 기능이 동작하지 않고 있습니다.
-- **개선 계획**:
-  - 현재 당장 필요하지 않으면 함수 내부 TODO를 명확히 남기고 캡슐화하거나, `ChunkIndex`를 관리하여 실제 커브 진입부를 판단할 수 있도록 로직을 고도화합니다.
+### 8. `ShouldSpawnObstaclesOnCurve` TODO 무용지물 상태 (완료)
+- **검증 결과**: `True.` 함수 자체가 무조건 `return true;`를 호출하며, 커브 진입 제한 기능이 동작하지 않고 있었습니다.
+- **수정 내용**:
+  - 현재 관련 기능이 불필요하므로 `ShouldSpawnObstaclesOnCurve` 선언 및 구현부를 완전히 제거했습니다.
 
-### 9. 변수명 혼동 (`LastObstacleSafeEndX` vs `Distance`)
+### 9. 변수명 혼동 (`LastObstacleSafeEndX` vs `Distance`) (완료)
 - **검증 결과**: `True.` 실제 로직은 `PathDistance`를 기준으로 계산하는데, 변수 이름은 좌표계 기반인 `X`로 남아있어 혼란을 줍니다.
-- **개선 계획**:
-  - `LastObstacleSafeEndX`를 `LastObstacleSafeEndDistance`로 리팩토링 (Rename) 합니다.
+- **수정 내용**:
+  - `LastObstacleSafeEndX`를 `LastObstacleSafeEndDistance`로 리팩토링하여 직관성을 높였습니다.
 
-### 10. `ActivateChunk`의 이중 로그 위임 
+### 10. `ActivateChunk`의 이중 로그 위임 (완료)
 - **검증 결과**: `True.` `ActivateChunkWithRotation`과 내부에서 호출되는 `ActivateChunk`가 각각 Warning과 Log로 중복 출력됩니다.
-- **개선 계획**:
-  - Warning 레벨을 Log로 낮추고, 하나의 함수에서만 핵심 데이터를 출력하도록 개선합니다.
+- **수정 내용**:
+  - `ActivateChunk`의 중복되고 과도한 `Warning` 로그를 `Log` 레벨로 단일화/개선하고, `ActivateChunkWithRotation`에서의 중복 출력 로그를 제거하여 가독성을 높였습니다.
 
-### 11. `ApplyCurve` 내 로컬 변수 이중 선언
-- **검증 결과**: `True.` `LocalCenter`와 `WorldCenterLocal` 등 비슷한 좌표 연산이 루프 밖과 안에서 무의미하게 반복 계산되고 있습니다.
-- **개선 계획**:
-  - 스플라인 메쉬 계산 로직 구조를 최적화하고 명확한 수학적 의도를 주석과 함께 단일 계산으로 압축합니다.
+### 11. `ApplyCurve` 내 로컬 변수 이중 선언 최적화 (완료)
+- **검증 결과**: `True.` `LocalCenter`와 `WorldCenterLocal` 등 비슷한 좌표 연산이 루프 밖과 안에서 무의미하게 반복 계산되고 있었습니다.
+- **수정 내용**:
+  - `ExFloorChunk::ApplyCurve` 함수 내에서 중복/미사용되던 로컬 변수(`LocalCenter`, `RadialStart`)를 제거하고, `WorldSpace` 기준의 변수 연산을 루프 밖으로 빼내어 프레임당 불필요한 연산을 최적화했습니다.
 
 ---
 

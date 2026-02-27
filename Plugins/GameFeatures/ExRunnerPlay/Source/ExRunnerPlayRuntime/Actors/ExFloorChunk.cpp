@@ -213,13 +213,8 @@ void AExFloorChunk::ActivateChunk(const FVector& SpawnLocation)
 	// 렌더 상태 강제 갱신
 	MarkComponentsRenderStateDirty();
 
-	UE_LOG(LogExFloorChunk, Warning, TEXT("[%s] ActivateChunk Called. Loc: %s, IsHidden: %d"), 
-		*GetName(), *SpawnLocation.ToString(), IsHidden());
-	if (FloorMesh)
-	{
-		UE_LOG(LogExFloorChunk, Warning, TEXT("  - Mesh HiddenInGame: %d, Visible: %d"), 
-			FloorMesh->bHiddenInGame, FloorMesh->GetVisibleFlag());
-	}
+	UE_LOG(LogExFloorChunk, Log, TEXT("[%s] ActivateChunk Called. Loc: %s"), 
+		*GetName(), *SpawnLocation.ToString());
 }
 
 void AExFloorChunk::DeactivateChunk()
@@ -466,8 +461,7 @@ void AExFloorChunk::ActivateChunkWithRotation(const FVector& SpawnLocation, cons
 	// 회전 적용
 	SetActorRotation(SpawnRotation);
 
-	UE_LOG(LogExFloorChunk, Log, TEXT("[%s] ActivateChunkWithRotation: Loc=%s, Rot=%s"),
-		*GetName(), *SpawnLocation.ToString(), *SpawnRotation.ToString());
+
 }
 
 // ──────────────────────────────────────────────
@@ -526,15 +520,11 @@ void AExFloorChunk::ApplyCurve(float Angle, float Radius, int32 SegmentCount, bo
 	// RotSign: 좌커브(-1), 우커브(+1)
 	const float RotSign = bIsLeftCurve ? -1.f : 1.f;
 
-	// 원의 중심 (로컬 좌표, 청크 원점 기준)
-	// 월드 반경을 로컬 스케일로 변환
-	const float ScaledRadiusY = Radius / ParentsScale.Y; 
-	// CurveRadius는 보통 X/Y 평면에서의 반경. 
-	// 중심 좌표 Y = +/- Radius.
-	const FVector LocalCenter = FVector(0.f, RotSign * ScaledRadiusY, 0.f);
-	
-	// 시작점에서 중심까지의 반지름 벡터 (로컬)
-	const FVector RadialStart = FVector(0.f, 0.f, 0.f) - LocalCenter;
+	// ── 3. 원호(Arc) 기준점 (World Space 기준 계산 후 Local 변환) ──
+	// Non-uniform 스케일(Ex: X=10, Y=4) 환경에서는 로컬에서 바로 회전하면 타원이 되므로,
+	// World Space 기준으로 원호 좌표를 구한 뒤 Inverse Scale을 적용해야 정확한 곡선이 나옵니다.
+	const FVector WorldCenterLocal = FVector(0.f, RotSign * Radius, 0.f);
+	const FVector WorldRadialStart = -WorldCenterLocal;
 
 	// 높이 변화량 분배 (경사 구현) - Z 스케일 역보정
 	// HeightOffset은 월드 높이. 로컬 Z로 변환.
@@ -587,51 +577,14 @@ void AExFloorChunk::ApplyCurve(float Angle, float Radius, int32 SegmentCount, bo
 			const float StartAngle = -HalfTotalAngle + (SegAngleRad * i);
 			const float EndAngle = -HalfTotalAngle + (SegAngleRad * (i + 1));
 
-			// 원호 위의 시작/끝 지점 (로컬 - Center 기준)
-			// RadialStart는 이미 Y스케일 보정됨.
-			// 회전은 X,Y 평면에서 이루어짐.
-			const FVector StartRadial = RadialStart.RotateAngleAxis(
-				FMath::RadiansToDegrees(StartAngle) * RotSign, FVector::UpVector);
-			const FVector EndRadial = RadialStart.RotateAngleAxis(
-				FMath::RadiansToDegrees(EndAngle) * RotSign, FVector::UpVector);
+			// World Space에서 호 위의 점 계산
+			const float StartDeg = FMath::RadiansToDegrees(StartAngle) * RotSign;
+			const float EndDeg = FMath::RadiansToDegrees(EndAngle) * RotSign;
 
-			// Center + Radial
-			SegStart = LocalCenter + StartRadial;
-			SegEnd = LocalCenter + EndRadial;
-
-			// X축 스케일 보정? 
-			// 위 로직에서 LocalCenter(Y보정됨)와 Rotating(X,Y 혼합)을 사용함.
-			// 만약 Parent X,Y 스케일이 다르다면 원이 타원이 될 수 있음.
-			// 하지만 보통 Floor는 균일 스케일(Non-uniform scale on floor?)
-			// Runner Game Floor Usually (10, 4, 1) -> Non-uniform.
-			// X=10, Y=4.
-			// Radius 1500.
-			// LocalCenter.Y = 1500/4 = 375.
-			// StartRadial(Rotated) has X and Y components.
-			// X component needs to be divided by ParentScale.X?
-			// Y component needs to be divided by ParentScale.Y?
-			// 현재 StartRadial은 VectorLength 375짜리 벡터임.
-			// 이걸 회전시키면 X,Y가 섞임.
-			// 예: 90도 회전 -> X=375, Y=0.
-			// World X = 375 * 10 = 3750.
-			// World Radius was 1500. 3750 != 1500.
-			// ★ 문제: Non-uniform scale에서 "회전"을 로컬에서 하면 찌그러짐.
+			const FVector WorldPosStart = WorldCenterLocal + WorldRadialStart.RotateAngleAxis(StartDeg, FVector::UpVector);
+			const FVector WorldPosEnd = WorldCenterLocal + WorldRadialStart.RotateAngleAxis(EndDeg, FVector::UpVector);
 			
-			// ★ 해결: "World Space"에서 점을 계산하고, "Inverse Transform"으로 로컬로 변환해야 정확함.
-			// 하지만 ApplyCurve는 Local Position을 설정해야 함.
-			
-			// 정확한 로직:
-			// 1. World 기준의 Center, Start, End 계산
-			// 2. ParentScale로 나누어 Local로 변환 (X는 /Scale.X, Y는 /Scale.Y)
-			
-			const float WorldRadius = Radius;
-			const FVector WorldCenterLocal = FVector(0.f, RotSign * WorldRadius, 0.f); // 청크 중심 기준 월드 오프셋
-			const FVector WorldRadialStart = -WorldCenterLocal;
-			
-			FVector WorldPosStart = WorldCenterLocal + WorldRadialStart.RotateAngleAxis(FMath::RadiansToDegrees(StartAngle) * RotSign, FVector::UpVector);
-			FVector WorldPosEnd = WorldCenterLocal + WorldRadialStart.RotateAngleAxis(FMath::RadiansToDegrees(EndAngle) * RotSign, FVector::UpVector);
-			
-			// Scale 역보정
+			// Non-uniform Scale 역보정 (Local 좌표계로 변환)
 			SegStart = FVector(WorldPosStart.X / ParentsScale.X, WorldPosStart.Y / ParentsScale.Y, 0.f);
 			SegEnd   = FVector(WorldPosEnd.X / ParentsScale.X, WorldPosEnd.Y / ParentsScale.Y, 0.f);
 
@@ -648,7 +601,7 @@ void AExFloorChunk::ApplyCurve(float Angle, float Radius, int32 SegmentCount, bo
 			// 접선 (Tangent)
 			// World Tangent (Spline Mesh Tangent is NOT a point, it's a vector)
 			// Tangent Magnitude = Radius * AngleRad
-			const float WorldTangentMag = WorldRadius * SegAngleRad;
+			const float WorldTangentMag = Radius * SegAngleRad;
 			
 			FVector WorldTangentStart = FVector::CrossProduct(FVector::UpVector, (WorldPosStart - WorldCenterLocal)).GetSafeNormal() * RotSign * WorldTangentMag;
 			FVector WorldTangentEnd   = FVector::CrossProduct(FVector::UpVector, (WorldPosEnd - WorldCenterLocal)).GetSafeNormal() * RotSign * WorldTangentMag;

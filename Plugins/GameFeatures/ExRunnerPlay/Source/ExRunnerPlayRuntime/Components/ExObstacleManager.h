@@ -77,8 +77,7 @@ protected:
 	// UPROPERTY가 없어도 World에 Spawn된 Actor는 GC되지 않음 (Level이 참조)
 	TMap<UClass*, TArray<AActor*>> ObstaclePool;
 
-	// 마지막으로 배치된 장애물의 끝 지점 (Feasibility Check용)
-	float LastObstacleSafeEndX = -99999.f; 
+
 
 	// 내부 함수들
 	AActor* GetObstacleFromPool(UClass* ObstacleClass);
@@ -101,7 +100,7 @@ protected:
 	 * @param Chunk 배치 대상 청크
 	 * @return 장애물 배치 허용 여부
 	 */
-	bool ShouldSpawnObstaclesOnCurve(AExFloorChunk* Chunk) const;
+
 
 	/** 경로 거리 기반 안전 배치 거리 */
 	float LastObstacleSafeEndDistance = -99999.f;

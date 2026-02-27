@@ -21,7 +21,7 @@ UExObstacleManager::UExObstacleManager()
 void UExObstacleManager::BeginPlay()
 {
 	Super::BeginPlay();
-	LastObstacleSafeEndX = -99999.f;
+	LastObstacleSafeEndDistance = -99999.f;
 }
 
 void UExObstacleManager::BindToSpawner(UExChunkSpawner* Spawner)
@@ -42,16 +42,8 @@ void UExObstacleManager::OnChunkSpawned(AExFloorChunk* Chunk)
 {
 	if (!Chunk) return;
 
-	// 커브 구간 청크인 경우 특수 배치 정책 적용
-	if (Chunk->SegmentType != EExPathSegmentType::Straight)
-	{
-		if (!ShouldSpawnObstaclesOnCurve(Chunk))
-		{
-			UE_LOG(LogExObstacleManager, Log, TEXT("[%s] 커브 진입부 청크 - 장애물 배치 제한"),
-				*Chunk->GetName());
-			return;
-		}
-	}
+	// 커브 구간 청크인 경우 특수 배치 정책 (향후 UExObstacleSpawnStrategy 서브클래스 등으로 확장 가능)
+	// 현재는 커브 청크에서도 기본 배치 허용
 
 	// 바닥 청크의 길이 참조
 	float Length = Chunk->ChunkLength;
@@ -161,7 +153,7 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 	// [변경] World X가 아닌 Path Distance 기반 계산
 	// ExChunkSpawner에서 PathDistance를 Center 기준으로 설정하므로, StartDist는 HalfLength를 뻼
 	float ChunkStartDist = Chunk->PathDistance - (ChunkLength * 0.5f);
-	float SafeStartDist = LastObstacleSafeEndX;
+	float SafeStartDist = LastObstacleSafeEndDistance;
 	
 	// 이전 장애물 끝 지점이 현재 청크 시작보다 전이면, 현재 청크 시작부터
 	if (SafeStartDist < ChunkStartDist) SafeStartDist = ChunkStartDist;
@@ -218,7 +210,7 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 	float RecoveryDist = Strategy->GetRecoveryDistance(SelectedDef, RunSpeed);
 	
 	// [변경] 거리 기반 누적
-	LastObstacleSafeEndX = ActualSpawnDist + (ObsLen * 0.5f) + RecoveryDist;
+	LastObstacleSafeEndDistance = ActualSpawnDist + (ObsLen * 0.5f) + RecoveryDist;
 
 	UE_LOG(LogExObstacleManager, Verbose,
 		TEXT("Obstacle Spawned [Type:%d]: %s at Dist=%.1f (Loc: %.2f, %.2f)"),
@@ -341,28 +333,3 @@ void UExObstacleManager::ReturnObstacleToPool(AActor* Obstacle)
 	ObstaclePool[Key].Add(Obstacle);
 }
 
-// ──────────────────────────────────────────────
-// 커브 구간 장애물 배치 제한 체크
-// 커브 진입부에는 장애물 배치를 제한하여 플레이어 반응 시간 확보
-// 커브 중반~탈출부에서만 배치 허용
-// ──────────────────────────────────────────────
-bool UExObstacleManager::ShouldSpawnObstaclesOnCurve(AExFloorChunk* Chunk) const
-{
-	if (!Chunk) return false;
-
-	// 직선 청크는 항상 배치 허용
-	if (Chunk->SegmentType == EExPathSegmentType::Straight)
-	{
-		return true;
-	}
-
-	// TODO: 향후 커브 구간에서의 특수 배치 전략 구현
-	// - 커브 외측에 벽 장애물
-	// - 커브 내측에 아이템/보너스
-	// - UExObstacleSpawnStrategy 서브클래스로 확장 가능
-
-	// 현재는 커브 청크에서도 기본 배치 허용
-	// 커브 첫 번째 청크(진입부)만 제한하는 로직은
-	// 청크 순서 추적이 필요하므로 향후 구현
-	return true;
-}
