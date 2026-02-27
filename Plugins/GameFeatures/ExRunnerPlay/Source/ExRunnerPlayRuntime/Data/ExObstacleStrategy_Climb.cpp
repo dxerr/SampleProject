@@ -4,35 +4,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/SplineComponent.h"
 
-// ──────────────────────────────────────────────
-// Base Strategy의 헬퍼 함수 복사 (static)
-// ──────────────────────────────────────────────
-static FBoxSphereBounds GetVisualBoundsOf_Climb(AActor* Actor)
-{
-	if (!IsValid(Actor))
-		return FBoxSphereBounds(FVector::ZeroVector, FVector::ZeroVector, 0.f);
 
-	TArray<UStaticMeshComponent*> MeshComps;
-	Actor->GetComponents<UStaticMeshComponent>(MeshComps);
-	for (UStaticMeshComponent* Mesh : MeshComps)
-	{
-		if (Mesh && Mesh->GetStaticMesh())
-		{
-			// [버그 수정] 오브젝트 풀링 시 이전 스케일 버그 및 회전에 의한 AABB 왜곡 제거를 위해,
-			// 원본 에셋(Static Mesh)의 로컬 Bounds를 그대로 반환합니다. 
-			// 이로써 장애물이 커브 위에서 임의의 회전을 가지더라도 항상 정확하고 순수한 1.0 기준 사이즈를 가져옵니다.
-			return Mesh->GetStaticMesh()->GetBounds();
-		}
-	}
-
-	FVector Origin, Extent;
-	Actor->GetActorBounds(true, Origin, Extent);
-	if (!Extent.IsZero()) {
-		return FBoxSphereBounds(Origin, Extent, Extent.GetMax());
-	}
-	Actor->GetActorBounds(false, Origin, Extent);
-	return FBoxSphereBounds(Origin, Extent, Extent.GetMax());
-}
 
 void UExObstacleStrategy_Climb::ConfigureObstacle_Implementation(
 	AActor* Obstacle,
@@ -79,7 +51,7 @@ void UExObstacleStrategy_Climb::ConfigureObstacle_Implementation(
 	Obstacle->SetActorScale3D(FVector::OneVector);
 	Obstacle->UpdateComponentTransforms();
 
-	FBoxSphereBounds ObsBounds = GetVisualBoundsOf_Climb(Obstacle);
+	FBoxSphereBounds ObsBounds = GetVisualBounds(Obstacle, true);
 	FVector BaseSize = ObsBounds.BoxExtent * 2.0f;
 
 	if (BaseSize.X < 1.f) BaseSize.X = 100.f;

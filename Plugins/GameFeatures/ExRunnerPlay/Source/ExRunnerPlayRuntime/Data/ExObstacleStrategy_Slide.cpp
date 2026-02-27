@@ -11,34 +11,7 @@
 #include "DefaultMovementSet/Settings/StanceSettings.h"
 #include "Kismet/GameplayStatics.h"
 
-// ──────────────────────────────────────────────
-// 기존 GetVisualBounds와 동일한 헬퍼
-// ──────────────────────────────────────────────
-static FBoxSphereBounds GetVisualBoundsOf_Slide(AActor* Actor)
-{
-	if (!IsValid(Actor))
-		return FBoxSphereBounds(FVector::ZeroVector, FVector::ZeroVector, 0.f);
 
-	TArray<UStaticMeshComponent*> MeshComps;
-	Actor->GetComponents<UStaticMeshComponent>(MeshComps);
-	for (UStaticMeshComponent* Mesh : MeshComps)
-	{
-		if (Mesh && Mesh->GetStaticMesh())
-		{
-			return Mesh->Bounds;
-		}
-	}
-
-	FVector Origin, Extent;
-	Actor->GetActorBounds(true, Origin, Extent);
-	if (!Extent.IsZero())
-	{
-		return FBoxSphereBounds(Origin, Extent, Extent.GetMax());
-	}
-
-	Actor->GetActorBounds(false, Origin, Extent);
-	return FBoxSphereBounds(Origin, Extent, Extent.GetMax());
-}
 
 // ──────────────────────────────────────────────
 // 캐릭터의 Mover StanceSettings에서 CrouchHalfHeight 읽기
@@ -102,7 +75,7 @@ void UExObstacleStrategy_Slide::ConfigureObstacle_Implementation(
 	Obstacle->SetActorScale3D(FVector::OneVector);
 	Obstacle->UpdateComponentTransforms();
 
-	FBoxSphereBounds ObsBounds = GetVisualBoundsOf_Slide(Obstacle);
+	FBoxSphereBounds ObsBounds = GetVisualBounds(Obstacle);
 	FVector BaseSize = ObsBounds.BoxExtent * 2.0f;
 
 	if (BaseSize.X < 1.f) BaseSize.X = 100.f;

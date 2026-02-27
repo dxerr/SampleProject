@@ -91,6 +91,14 @@ public:
 
 protected:
 	/**
+	 * 장애물의 시각적 경계(Bounds)를 가져옵니다.
+	 * @param Actor 대상 장애물 액터
+	 * @param bUseOriginalMeshExtents 풀링 및 회전 버그 방지를 위해 원본 에셋(스태틱 메시)의 로컬 Bounds 사용 여부
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Obstacle|Strategy")
+	static FBoxSphereBounds GetVisualBounds(AActor* Actor, bool bUseOriginalMeshExtents = false);
+
+	/**
 	 * 장애물 액터에 타입 및 크기 정보를 주입합니다.
 	 * 해당 액터가 IExObstacleInterface를 구현하고 있어야 합니다.
 	 */

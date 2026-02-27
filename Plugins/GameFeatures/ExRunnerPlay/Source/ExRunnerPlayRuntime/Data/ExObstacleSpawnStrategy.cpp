@@ -12,7 +12,7 @@
 // 기존 UExObstacleManager::GetVisualBounds와 동일한 헬퍼
 // Collision(BoxComponent 등)을 제외하고 순수 비주얼 메시의 Bounds만 반환
 // ──────────────────────────────────────────────
-static FBoxSphereBounds GetVisualBoundsOf(AActor* Actor)
+FBoxSphereBounds UExObstacleSpawnStrategy::GetVisualBounds(AActor* Actor, bool bUseOriginalMeshExtents)
 {
 	if (!IsValid(Actor))
 		return FBoxSphereBounds(FVector::ZeroVector, FVector::ZeroVector, 0.f);
@@ -24,6 +24,10 @@ static FBoxSphereBounds GetVisualBoundsOf(AActor* Actor)
 	{
 		if (Mesh && Mesh->GetStaticMesh())
 		{
+			if (bUseOriginalMeshExtents)
+			{
+				return Mesh->GetStaticMesh()->GetBounds();
+			}
 			return Mesh->Bounds; // 월드 공간 Bounds
 		}
 	}
@@ -87,8 +91,8 @@ void UExObstacleSpawnStrategy::ConfigureObstacle_Implementation(
 
 	// ★ 핵심: Collision(BoxComponent) 아닌 StaticMesh의 Bounds 사용
 	// 풀 재활용 시 BoxComponent.Extent가 이전 값을 유지하므로
-	// GetActorBounds(true) 대신 GetVisualBoundsOf 사용
-	FBoxSphereBounds ObsBounds = GetVisualBoundsOf(Obstacle);
+	// GetActorBounds(true) 대신 GetVisualBounds 사용
+	FBoxSphereBounds ObsBounds = GetVisualBounds(Obstacle);
 	FVector BaseSize = ObsBounds.BoxExtent * 2.0f;
 
 	if (BaseSize.X < 1.f) BaseSize.X = 100.f;

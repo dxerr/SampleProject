@@ -11,34 +11,7 @@
 #include "ExObstacleDefinition.h"
 #include "Components/StaticMeshComponent.h"
 
-// ──────────────────────────────────────────────
-// ChunkFloor 바운드 헬퍼 (Slide Strategy와 동일 패턴)
-// ──────────────────────────────────────────────
-static FBoxSphereBounds GetVisualBoundsOf_Gap(AActor* Actor)
-{
-	if (!IsValid(Actor))
-		return FBoxSphereBounds(FVector::ZeroVector, FVector::ZeroVector, 0.f);
 
-	TArray<UStaticMeshComponent*> MeshComps;
-	Actor->GetComponents<UStaticMeshComponent>(MeshComps);
-	for (UStaticMeshComponent* Mesh : MeshComps)
-	{
-		if (Mesh && Mesh->GetStaticMesh())
-		{
-			return Mesh->Bounds;
-		}
-	}
-
-	FVector Origin, Extent;
-	Actor->GetActorBounds(true, Origin, Extent);
-	if (!Extent.IsZero())
-	{
-		return FBoxSphereBounds(Origin, Extent, Extent.GetMax());
-	}
-
-	Actor->GetActorBounds(false, Origin, Extent);
-	return FBoxSphereBounds(Origin, Extent, Extent.GetMax());
-}
 
 // ──────────────────────────────────────────────
 // CalculateSpawnPosition: 바닥 레벨에 배치
@@ -137,7 +110,7 @@ void UExObstacleStrategy_Gap::ConfigureObstacle_Implementation(
 	Obstacle->SetActorScale3D(FVector::OneVector);
 	Obstacle->UpdateComponentTransforms();
 
-	FBoxSphereBounds ObsBounds = GetVisualBoundsOf_Gap(Obstacle);
+	FBoxSphereBounds ObsBounds = GetVisualBounds(Obstacle);
 	FVector BaseSize = ObsBounds.BoxExtent * 2.0f;
 	if (BaseSize.X < 1.f) BaseSize.X = 100.f;
 	if (BaseSize.Y < 1.f) BaseSize.Y = 100.f;
