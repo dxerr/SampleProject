@@ -13,10 +13,11 @@
 - **수정 내용**: 
   - `UExObstacleSpawnStrategy` 기본 클래스에 `protected static GetVisualBounds(AActor* Obstacle, bool bUseOriginalMeshExtents = false)` 형태의 통합 헬퍼 함수를 선언하고, 하위 클래스에서 이를 공통으로 호출하도록 리팩토링을 완료했습니다.
 
-### 2. 장애물 BaseSize 측정 + 스케일 적용 패턴 3중 복제
+### 2. 장애물 BaseSize 측정 + 스케일 적용 패턴 3중 복제 (완료)
 - **검증 결과**: `True.` `ConfigureObstacle_Implementation` 내부에 크기 측정 후 `TargetSize / BaseSize` 비율로 `SetActorScale3D`를 호출하는 동일한 패턴이 여러 번 반복됩니다.
-- **개선 계획**:
-  - `UExObstacleSpawnStrategy` 내부에 `MeasureAndApplyScale(AActor* Obstacle, FVector TargetSize)` 헬퍼 함수를 추가하여 코드를 단일화합니다.
+- **수정 내용**: 
+  - `UExObstacleSpawnStrategy::CalculateObstacleScale(AActor* Obstacle, FVector TargetSize)` 헬퍼 함수를 추가하여 BaseSize 측정 및 나눗셈 로직을 캡슐화했습니다.
+  - 이를 통해 각 Strategy 클래스 내부의 중복된 스케일 계산부가 2~3줄로 대폭 축소되었습니다.
 
 ### 3. `CalculateSpawnPosition` 내 계산식 및 버퍼(200.f) 하드코딩
 - **검증 결과**: `True.` `ActualSpawnDist = SafeStartDist + 200.f;` (`ExObstacleManager.cpp`) 와 거리 계산 로직들이 중복되어 있습니다.

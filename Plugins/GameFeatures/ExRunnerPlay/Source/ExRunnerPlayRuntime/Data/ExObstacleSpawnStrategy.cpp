@@ -69,6 +69,34 @@ float UExObstacleSpawnStrategy::GetFloorWidth(const AExFloorChunk* Chunk)
 }
 
 // ──────────────────────────────────────────────
+// 장애물의 최종 스케일 벡터를 계산합니다. (BaseSize 측정 중복 제거)
+// ──────────────────────────────────────────────
+FVector UExObstacleSpawnStrategy::CalculateObstacleScale(AActor* Obstacle, const FVector& TargetSize, bool bUseOriginalMeshExtents)
+{
+	if (!IsValid(Obstacle))
+	{
+		return FVector::OneVector;
+	}
+
+	// 기존 스케일 초기화 후 메시 기본 크기 측정
+	Obstacle->SetActorScale3D(FVector::OneVector);
+	Obstacle->UpdateComponentTransforms();
+
+	FBoxSphereBounds ObsBounds = GetVisualBounds(Obstacle, bUseOriginalMeshExtents);
+	FVector BaseSize = ObsBounds.BoxExtent * 2.0f;
+
+	if (BaseSize.X < 1.f) BaseSize.X = 100.f;
+	if (BaseSize.Y < 1.f) BaseSize.Y = 100.f;
+	if (BaseSize.Z < 1.f) BaseSize.Z = 100.f;
+
+	return FVector(
+		TargetSize.X / BaseSize.X,
+		TargetSize.Y / BaseSize.Y,
+		TargetSize.Z / BaseSize.Z
+	);
+}
+
+// ──────────────────────────────────────────────
 // 기존 로직과 동일: 장애물 스케일/크기 설정
 // ──────────────────────────────────────────────
 void UExObstacleSpawnStrategy::ConfigureObstacle_Implementation(
@@ -85,25 +113,10 @@ void UExObstacleSpawnStrategy::ConfigureObstacle_Implementation(
 	// ★ 바닥 너비: 로컬 Bounds 기반 (회전에 의한 월드 AABB 왜곡 방지)
 	float TargetWidth = GetFloorWidth(Chunk);
 
-	// 2. 스케일 적용 (기존 스케일 초기화 후 메시 기본 크기 측정)
-	Obstacle->SetActorScale3D(FVector::OneVector);
-	Obstacle->UpdateComponentTransforms();
-
-	// ★ 핵심: Collision(BoxComponent) 아닌 StaticMesh의 Bounds 사용
-	// 풀 재활용 시 BoxComponent.Extent가 이전 값을 유지하므로
-	// GetActorBounds(true) 대신 GetVisualBounds 사용
-	FBoxSphereBounds ObsBounds = GetVisualBounds(Obstacle);
-	FVector BaseSize = ObsBounds.BoxExtent * 2.0f;
-
-	if (BaseSize.X < 1.f) BaseSize.X = 100.f;
-	if (BaseSize.Y < 1.f) BaseSize.Y = 100.f;
-	if (BaseSize.Z < 1.f) BaseSize.Z = 100.f;
-
-	Obstacle->SetActorScale3D(FVector(
-		TargetLength / BaseSize.X,
-		TargetWidth / BaseSize.Y,
-		TargetHeight / BaseSize.Z
-	));
+	// 2. 통합된 스케일 계산 적용
+	FVector TargetSize(TargetLength, TargetWidth, TargetHeight);
+	FVector NewScale = CalculateObstacleScale(Obstacle, TargetSize);
+	Obstacle->SetActorScale3D(NewScale);
 }
 
 // ──────────────────────────────────────────────

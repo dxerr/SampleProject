@@ -23,22 +23,10 @@ void UExObstacleStrategy_WallRun::ConfigureObstacle_Implementation(
 		TargetWidth = GetFloorWidth(Chunk);
 	}
 
-	// 2. 스케일 적용
-	Obstacle->SetActorScale3D(FVector::OneVector);
-	Obstacle->UpdateComponentTransforms();
-
-	FBoxSphereBounds ObsBounds = GetVisualBounds(Obstacle);
-	FVector BaseSize = ObsBounds.BoxExtent * 2.0f;
-
-	if (BaseSize.X < 1.f) BaseSize.X = 100.f;
-	if (BaseSize.Y < 1.f) BaseSize.Y = 100.f;
-	if (BaseSize.Z < 1.f) BaseSize.Z = 100.f;
-
-	Obstacle->SetActorScale3D(FVector(
-		TargetLength / BaseSize.X,
-		TargetWidth / BaseSize.Y,
-		TargetHeight / BaseSize.Z
-	));
+	// 2. 통합된 스케일 계산 적용
+	FVector TargetSize(TargetLength, TargetWidth, TargetHeight);
+	FVector NewScale = CalculateObstacleScale(Obstacle, TargetSize);
+	Obstacle->SetActorScale3D(NewScale);
 
 	// 3. 장애물 정보 주입 (Interface)
 	FExObstacleInfo Info;

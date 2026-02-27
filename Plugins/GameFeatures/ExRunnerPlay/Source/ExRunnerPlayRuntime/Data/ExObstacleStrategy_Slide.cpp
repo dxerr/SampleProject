@@ -71,25 +71,18 @@ void UExObstacleStrategy_Slide::ConfigureObstacle_Implementation(
 		TargetWidth = GetFloorWidth(Chunk);
 	}
 
-	// 2. 기본 메시 크기 측정
-	Obstacle->SetActorScale3D(FVector::OneVector);
-	Obstacle->UpdateComponentTransforms();
-
-	FBoxSphereBounds ObsBounds = GetVisualBounds(Obstacle);
-	FVector BaseSize = ObsBounds.BoxExtent * 2.0f;
-
-	if (BaseSize.X < 1.f) BaseSize.X = 100.f;
-	if (BaseSize.Y < 1.f) BaseSize.Y = 100.f;
-	if (BaseSize.Z < 1.f) BaseSize.Z = 100.f;
-
 	// 주인님 지시사항: 박스의 스케일 크기(두께)는 1 ~ 1.5배로 랜덤 처리
 	float TargetHeightScale = FMath::RandRange(1.0f, 1.5f);
 
-	// 3. 최종 스케일 적용
+	// 2. 통합된 스케일 계산 적용 (Z 스케일은 예외 처리)
+	FVector TargetSize(TargetDepth, TargetWidth, 100.f); // Z는 나중에 덮어쓸 것이므로 임의의 값 100.f 전달
+	FVector NewScale = CalculateObstacleScale(Obstacle, TargetSize);
+	
+	// 3. 최종 스케일 적용 (Z만 특수 스케일 적용)
 	Obstacle->SetActorScale3D(FVector(
-		TargetDepth  / BaseSize.X,  // X: 두께
-		TargetWidth  / BaseSize.Y,  // Y: 바닥 폭
-		TargetHeightScale           // Z: 장애물 두께 스케일
+		NewScale.X,  // X: 두께
+		NewScale.Y,  // Y: 바닥 폭
+		TargetHeightScale // Z: 장애물 두께 스케일
 	));
 
 	// 4. 장애물 정보 주입 (Interface)

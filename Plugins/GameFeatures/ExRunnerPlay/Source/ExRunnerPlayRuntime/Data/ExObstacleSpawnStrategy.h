@@ -99,6 +99,17 @@ protected:
 	static FBoxSphereBounds GetVisualBounds(AActor* Actor, bool bUseOriginalMeshExtents = false);
 
 	/**
+	 * 장애물의 목표 크기(TargetSize)를 기반으로 스케일 값을 계산합니다.
+	 * 메시의 기본 크기를 측정하고 0으로 나누는 것을 방지합니다.
+	 * @param Obstacle 대상 장애물 액터
+	 * @param TargetSize 원하는 월드 기준 크기 (X, Y, Z)
+	 * @param bUseOriginalMeshExtents 원본 에셋의 로컬 Bounds 사용 여부
+	 * @return 계산된 3D 스케일 벡터
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Obstacle|Strategy")
+	static FVector CalculateObstacleScale(AActor* Obstacle, const FVector& TargetSize, bool bUseOriginalMeshExtents = false);
+
+	/**
 	 * 장애물 액터에 타입 및 크기 정보를 주입합니다.
 	 * 해당 액터가 IExObstacleInterface를 구현하고 있어야 합니다.
 	 */

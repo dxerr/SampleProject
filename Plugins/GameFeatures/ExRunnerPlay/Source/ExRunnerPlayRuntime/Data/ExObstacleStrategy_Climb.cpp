@@ -47,23 +47,13 @@ void UExObstacleStrategy_Climb::ConfigureObstacle_Implementation(
 		TargetWidth = GetFloorWidth(Chunk);
 	}
 
-	// 2. 스케일 적용
-	Obstacle->SetActorScale3D(FVector::OneVector);
-	Obstacle->UpdateComponentTransforms();
-
-	FBoxSphereBounds ObsBounds = GetVisualBounds(Obstacle, true);
-	FVector BaseSize = ObsBounds.BoxExtent * 2.0f;
-
-	if (BaseSize.X < 1.f) BaseSize.X = 100.f;
-	if (BaseSize.Y < 1.f) BaseSize.Y = 100.f;
-	if (BaseSize.Z < 1.f) BaseSize.Z = 100.f;
-
-	float ScaleX = TargetLength / BaseSize.X;
-	float ScaleY = TargetWidth / BaseSize.Y;
-	float ScaleZ = TargetHeight / BaseSize.Z;
+	// 2. 통합된 스케일 계산 적용
+	// [버그 수정] 원본 에셋(Static Mesh)의 로컬 Bounds를 그대로 반환 플래그 추가
+	FVector TargetSize(TargetLength, TargetWidth, TargetHeight);
+	FVector NewScale = CalculateObstacleScale(Obstacle, TargetSize, true);
 
 	// 기존처럼 직관적으로 액터 전체 루트 스케일 적용
-	Obstacle->SetActorScale3D(FVector(ScaleX, ScaleY, ScaleZ));
+	Obstacle->SetActorScale3D(NewScale);
 	
 	// [핵심 해결책] 런타임에 액터 스케일이 비균등하게 변하면 Spline 내부 캐시가 깨져 
 	// AC_TraversalLogic의 Ledge 좌표 연산이 오작동(우측 오프셋)함. 강제로 곡선과 바운드를 갱신!
