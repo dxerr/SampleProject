@@ -44,10 +44,11 @@
 - **수정 내용**:
   - `UExChunkSpawner`의 `FExObstacleSpawnConfig`에 `DefaultRunSpeed` 변수를 추가하여 하드코딩을 제거하고 에디터에서 설정 가능하도록 통합했습니다.
 
-### 7. `ExRunnerMovementComponent` TargetPawn Lazy Init 구조
+### 7. `ExRunnerMovementComponent` TargetPawn Lazy Init 구조 (완료)
 - **검증 결과**: `True.` `BeginPlay`에서 MoverComponent를 찾고, `TickComponent`에서 또다시 TargetPawn을 찾는 2중 구조로 되어있습니다.
-- **개선 계획**:
-  - `OnRegister` 단계나 `TargetPawn` 설정용 명시적 초기화 함수(`InitializeMovement`)를 추가하여 단일 책임 원칙에 맞게 정리합니다.
+- **수정 내용**:
+  - `TickComponent`의 매 프레임 검사 로직을 완전히 제거했습니다.
+  - `TryInitializeMover()` 전담 함수를 생성하고, 실패 시 0.1초 간격의 가벼운 백그라운드 타이머(`FTimerHandle InitTimerHandle`) 단위로 부착을 대기하도록 경량화했습니다. 외부의 명시적 호출(BP 연동 등) 없이 컴포넌트 스스로 생명주기를 완벽히 독립적으로 책임지는 단독(Self-Contained) 구조를 완성했습니다.
 
 ### 8. `ShouldSpawnObstaclesOnCurve` TODO 무용지물 상태
 - **검증 결과**: `True.` 함수 자체가 무조건 `return true;`를 호출하며, 커브 진입 제한 기능이 동작하지 않고 있습니다.

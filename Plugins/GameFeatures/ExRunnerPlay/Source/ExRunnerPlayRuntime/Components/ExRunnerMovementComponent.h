@@ -32,7 +32,8 @@ protected:
 	virtual void ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult) override;
 
 public:	
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	// TickComponent 제거 (타이머로 대체)
+	// virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	/** 왼쪽 레인으로 이동 요청 (BP에서 호출) */
 	UFUNCTION(BlueprintCallable, Category = "Runner|Movement")
@@ -62,6 +63,12 @@ protected:
 private:
 	/** 레인 위치 업데이트 (Interp) */
 	void UpdateLanePosition(float DeltaTime);
+
+	/** 상위 Mover Pawn 바인딩 시도 (성공 시 타이머 종료) */
+	void TryInitializeMover();
+
+	/** 지연 초기화를 위한 타이머 핸들 */
+	FTimerHandle InitTimerHandle;
 
 	// 내부 상태 변수
 	int32 CurrentLaneIndex = 0;

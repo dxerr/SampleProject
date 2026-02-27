@@ -12,17 +12,34 @@ DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
 
 UExRunnerMovementComponent::UExRunnerMovementComponent()
 {
+	// 더 이상 매 프레임 TickComponent를 오버라이드하여 돌리지 않고 내부 함수 바인딩 등에만 사용. 
+	// (Tick에서 처리하던 레인 변경 로직은 별도 틱을 켜두거나, 타이머/기타 방식으로 처리해야 하지만 
+	// 레인 변경 보간 로직(UpdateLanePosition) 자체는 프레임레이트 의존적이므로 기본 틱은 켜둡니다.)
 	PrimaryComponentTick.bCanEverTick = true;
 }
 
-// BeginPlay에서 상위 Pawn의 MoverComponent에 자신을 InputProducer로 등록합니다.
+// BeginPlay에서 상위 Pawn의 MoverComponent에 파트너 등록을 시도합니다.
 void UExRunnerMovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// 1차 시도 (즉시 성공할 수도 있음)
+	TryInitializeMover();
+
+	// 만약 초기화에 실패했다면(부착이 안 끝났다면), 가벼운 타이머(0.1초마다)로 재시도합니다.
+	if (!TargetPawn)
+	{
+		GetWorld()->GetTimerManager().SetTimer(InitTimerHandle, this, &UExRunnerMovementComponent::TryInitializeMover, 0.1f, true);
+	}
+}
+
+void UExRunnerMovementComponent::TryInitializeMover()
+{
+	if (TargetPawn) return; // 이미 초기화 완료
+
 	// 상위 Pawn 찾기 (1순위: Owner, 2순위: AttachParent)
 	APawn* ParentPawn = Cast<APawn>(GetOwner());
-	if (!ParentPawn)
+	if (!ParentPawn && GetOwner())
 	{
 		ParentPawn = Cast<APawn>(GetOwner()->GetAttachParentActor());
 	}
@@ -33,18 +50,14 @@ void UExRunnerMovementComponent::BeginPlay()
 		UMoverComponent* MoverComp = ParentPawn->FindComponentByClass<UMoverComponent>();
 		if (MoverComp)
 		{
+			TargetPawn = ParentPawn; // 캐싱 완료
 			// InputProducers 배열에 자신을 추가하여 Mover가 매 틱마다 ProduceInput을 호출하도록 합니다.
 			MoverComp->InputProducers.AddUnique(this);
 			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 InputProducer로 등록 완료"), *ParentPawn->GetName());
+			
+			// 성공 시 타이머 안전 종료
+			GetWorld()->GetTimerManager().ClearTimer(InitTimerHandle);
 		}
-		else
-		{
-			UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 상위 Pawn '%s'에서 MoverComponent를 찾을 수 없습니다."), *ParentPawn->GetName());
-		}
-	}
-	else
-	{
-		UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 상위 Pawn을 찾을 수 없습니다. ProduceInput이 호출되지 않습니다."));
 	}
 }
 
@@ -80,68 +93,11 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	// TargetPawn이 없으면 찾기 시도 (Lazy Init)
-	// Visual Actor가 스폰된 직후에는 아직 Mover에 Attach되지 않았을 수 있기 때문
-	if (!TargetPawn)
-	{
-		AActor* Owner = GetOwner();
-		if (Owner)
-		{
-			// 1. Attach Parent 확인 (Pawn 캐스팅)
-			TargetPawn = Cast<APawn>(Owner->GetAttachParentActor());
-			
-			// 2. Owner 자체 확인
-			if (!TargetPawn)
-			{
-				TargetPawn = Cast<APawn>(Owner);
-			}
+	// 아직 부모 폰에 안 붙었다면 위치 업데이트 로직 등은 스킵
+	if (!TargetPawn) return;
 
-			if (TargetPawn)
-			{
-				UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovementComponent: Found Target Pawn: %s"), *TargetPawn->GetName());
-			}
-		}
-
-		// 여전히 없으면 이번 틱은 스킵
-		if (!TargetPawn)
-		{
-			// 너무 빈번한 로그 방지 (2초마다)
-			static float LogTimer = 0.0f;
-			LogTimer += DeltaTime;
-			if (LogTimer > 2.0f)
-			{
-				LogTimer = 0.0f;
-				UE_LOG(LogExRunnerMovement, Warning, TEXT("[RunnerDebug] Waiting for TargetPawn... Owner: %s (AttachParent is NULL?)"), 
-					GetOwner() ? *GetOwner()->GetName() : TEXT("None"));
-			}
-			return;  // TargetPawn 없으면 스킵
-		}
-	}
-
-	// [NOTE] 캐릭터 MaxWalkSpeed는 ABP 또는 상태 시스템에서 자체 관리됨
-	// 트레드밀 속도와 분리되어 별도 설정 불필요
-
-	// 3. 강제 전진 (Forward Vector)
-	// [Treadmill Mode] 플레이어는 X축 고정, 월드(Floor)가 뒤로 이동함.
-	// 따라서 전진 이동 로직은 비활성화합니다.
-	
-	/*
-	if (bHasCMC)
-	{
-		TargetPawn->AddMovementInput(TargetPawn->GetActorForwardVector());
-	}
-	else
-	{
-		// 직접 이동 처리 (Sweep=true로 충돌 감지)
-		FVector DeltaMove = TargetPawn->GetActorForwardVector() * RunnerSpeed * DeltaTime;
-		TargetPawn->AddActorWorldOffset(DeltaMove, true);
-	}
-	*/
-
-	// 4. 레인 변경 처리
+	// 4. 레인 변경 처리 (보간)
 	UpdateLanePosition(DeltaTime);
-
-	// [Debug] 상태 모니터링 코드 제거(불필요)
 }
 void UExRunnerMovementComponent::MoveLeft()
 {
