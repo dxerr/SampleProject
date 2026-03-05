@@ -49,8 +49,6 @@ UI는 서버 데이터를 직접 참조하지 않는다. 반드시 아래 경로
 
 **핵심 규칙:** 서버가 위젯을 생성하거나 조작해서는 절대 안 된다. UI는 복제된 데이터의 변경 알림에 의해서만 수동적으로 구동된다.
 
-### 1.4 레이어 배치 규칙
-
 | 클래스 | 배치 위치 | 이유 |
 |---|---|---|
 | `UExUIManagerSubsystem` | **ExCore** | 모든 게임 모드에서 공용으로 사용하는 UI 스택 관리자 |
@@ -59,8 +57,18 @@ UI는 서버 데이터를 직접 참조하지 않는다. 반드시 아래 경로
 | `UExModalWidget` | **ExCore** | 팝업형(Modal/Modeless) 위젯 베이스 |
 | `UExBaseButtonWidget` | **ExCore** | 공용 버튼 스타일 베이스 |
 | ViewModel 베이스 | **ExCore** | MVVM 기반 클래스 |
-| `UExRunnerHUDLayout` | **ExRunnerPlay** | 러너 전용 HUD Layout 확장 |
-| `UExRunnerScoreWidget` | **ExRunnerPlay** | 러너 전용 스코어 UI |
+| `UExRunnerHUDLayout` | **ExRunnerPlay** | 러너(Feature) 전용 HUD Layout 확장 |
+| `UExRunnerScoreWidget` | **ExRunnerPlay** | 러너(Feature) 전용 스코어 UI |
+
+> **[핵심 원칙] Core 플러그인 vs GameFeature 플러그인의 완벽한 계층 분리**
+> - **ExCore (기반 프레임워크)**: 게임 기능(Feature)이나 특정 장르(러너, 슈터 등)에 종속되지 않는 가장 근본적인 부모 클래스와 공용 도구(`UExHUDLayoutWidget`, `UExModalWidget`, `UExUIManagerSubsystem` 등)만 위치합니다. 
+> - **ExRunnerPlay (게임 피처)**: ExCore의 기능들을 상속받아, 특정 콘텐츠에 실제로 쓰이는 파생 위젯(`UExRunnerHUDLayout`, 스코어보드 등)과 그에 종속된 뷰모델 인스턴스, 데이터들이 위치합니다.
+> - **의존성 방향성**: Feature 플러그인은 Core를 자유롭게 `#include` 하여 상속받고 사용할 수 있지만, **Core 플러그인은 절대로 Feature 모듈의 존재를 알거나 참조해서는 안 됩니다.**
+
+### 1.5 데이터 무결성과 단일 진실 공급원 (SSOT)
+UI 갱신이 필요한 모든 상태(State) 데이터는 오직 **서버에서 단일 진실 공급원(SSOT, 예: `ExGameState`, `ExPlayerState`, `ExStatComponent` 등)으로 값을 변경**하고, `UPROPERTY(ReplicatedUsing=OnRep_...)`로 선언된 리플리케이션 시스템(OnRep)을 통해 클라이언트로 전파되어야 합니다.
+- **RPC 직접 갱신 금지**: UI 반영을 목적으로 한 `ClientRPC_UpdateUI(...)` 식의 통신은 네트워크 지연 시 UI 데이터와 실제 데이터 간의 불일치(Desync)를 유발하므로 절대 금지합니다.
+- 데이터 로직과 UI 로직은 MVVM 패턴을 통해 완전히 격리됩니다 (Decoupling).
 
 ---
 
@@ -193,9 +201,11 @@ PublicDependencyModuleNames.AddRange(new string[]
 
 **2) CommonUIInputData 블루프린트 생성:**
 1. 콘텐츠 브라우저에서 `우클릭 → Blueprint Class → CommonUIInputData`를 검색하여 생성한다.
-2. 이름: `BP_CommonUIInputData`
-3. 블루프린트를 열고 `Default Click Action`과 `Default Back Action`을 위 Data Table의 항목으로 설정한다.
-4. `Edit → Project Settings → Game → Common Input Settings → Input Data`에 이 에셋(`BP_CommonUIInputData`)을 지정한다.
+2. 이름: `BP_ExCommonUIInputData`
+3. 블루프린트를 열고 디테일 패널 사항을 설정한다:
+   - **Enhanced Input Click Action**: UI에서 버튼을 누를 때 사용할 입력 액션(예: `IA_UI_Confirm` 등)을 만들어 지정.
+   - **Enhanced Input Back Action**: 뒤로가기(취소) 시 사용할 입력 액션(예: `IA_UI_Cancel` 등)을 만들어 지정.
+4. `Edit → Project Settings → Game → Common Input Settings → Input Data`에 이 에셋(`BP_ExCommonUIInputData`)을 지정한다.
 
 **3) Controller Data Asset 생성:**
 1. 콘텐츠 브라우저에서 `우클릭 → Blueprint Class → CommonInputBaseControllerData`를 검색하여 2개 생성:
@@ -205,6 +215,13 @@ PublicDependencyModuleNames.AddRange(new string[]
 3. `Edit → Project Settings → Game → Common Input Settings → Platform Input`에서:
    - Windows 플랫폼에 위 두 Controller Data를 연결한다.
    - `Default Gamepad Name`을 `"Generic"`으로 변경한다 (기본 "Windows"에서 변경 필요).
+
+**4) UI 매니저 스크립트 기반 블루프린트 구성 요령 (GameStack / MenuStack):**
+1. C++ Base(예: `UExHUDLayoutWidget`)를 상속받는 블루프린트(예 `WBP_ExHUDLayout`)를 엽니다.
+2. 캔버스 패널이나 오버레이에 `Common Activatable Widget Stack` 두 개를 각각 자식으로 추가합니다.
+   - 아래쪽 Layer 변수 이름 (BindWidget 명칭): `GameStack`
+   - 위쪽 Layer 변수 이름 (BindWidget 명칭): `MenuStack`
+3. 추가된 두 스택을 선택 후 앵커(Anchors)를 `전체 채우기 (Fill)` 로 설정하고, 모든 오프셋(Left, Top, Right, Bottom)을 `0`으로 맞춥니다.
 
 ### 4.3 검증 체크리스트
 - [ ] 에디터 `Output Log`에 CommonUI 관련 에러가 없다.

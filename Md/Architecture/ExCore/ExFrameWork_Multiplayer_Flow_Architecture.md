@@ -43,6 +43,11 @@ ExFrameWork/                        ← 메인 모듈 (앱 레벨, Travel 불가
 | `AExPlayerStateBase` | **ExCore** | 모든 게임 피처의 PlayerState가 상속받는 베이스 클래스. |
 | `AExRunnerGameMode` | **ExRunnerPlay** | 러너 전용 매치 로직, ExGameModeBase를 상속. |
 
+> **[핵심 원칙] Core 플러그인 vs GameFeature 플러그인의 완벽한 계층 분리**
+> - **ExCore (기반 프레임워크)**: 게임 기능(Feature)이나 특정 장르(러너, 배틀 등)에 종속되지 않는 가장 근본적인 `GameModeBase`, `GameStateBase`, `PlayerStateBase` 및 `GameFlowSubsystem` 등의 범용 뼈대 클래스만 위치합니다. 
+> - **Ex(장르)Play (게임 피처)**: ExCore의 기능들을 상속받아, 특정 룰셋과 조건이 적용된 파생 게임모드(`AExRunnerGameMode`), 파생 게임스테이트 등이 위치합니다.
+> - **의존성 방향성**: Feature 플러그인은 Core를 자유롭게 `#include` 하여 상속받고 사용할 수 있지만, **Core 플러그인은 절대로 Feature 모듈의 존재를 알거나 참조해서는 안 됩니다.**
+
 ### 1.3 5대 핵심 원칙
 
 1. **글로벌 Flow 제어:** `GameInstanceSubsystem`과 `GameplayTags`를 사용하여 전역 상태(Boot → IDP → Lobby → InGame)를 관리한다.
@@ -654,3 +659,30 @@ FOnLoginFailed OnLoginFailed;
 
 ### 4단계 (3단계 승인 후)
 8. `ExCore/Source/ExCoreRuntime/Subsystems/ExBackendCommunicationSubsystem.h` / `.cpp`
+
+---
+
+## 9. 베이스 클래스 구현 동기화 리포트 (C++ 반영 내역)
+
+본 섹션은 위 아키텍처 스펙을 바탕으로 언리얼 엔진 내에 C++로 1차 구현된 베이스 클래스들의 핵심 반영 내역과 주의사항을 동기화하기 위한 리포트입니다.
+
+### 9.1 전역 아키텍처 및 상태 전이 제어
+`UGameInstanceSubsystem`과 글로벌 태그 레지스트리(`ExFlowTags`)를 결합하여 게임 라이프사이클의 4단계(부팅 -> 인증 -> 로비 -> 인게임)를 강력히 캡슐화했습니다.
+
+- **설계 한계 극복:** `GameInstance` 서브시스템은 네트워크 복제가 안 된다는 한계가 있으므로, 클라이언트의 상태 전이는 UI의 브로드캐스팅(`SetFlowState` 호출) 또는 게임모드/게임스테이트를 우회한 Client RPC를 통해 수동으로 동기화되어야 함을 코드로 명확히 했습니다.
+- **Travel 제어의 분리:** 서브시스템은 맵 이동 권한이 없습니다. 대신 `OnRequestTravel` 델리게이트를 통해 이벤트를 쏘면, 이를 구독하고 있는 서버 권한의 `AExGameModeBase`가 실제 `ServerTravel`을 타도록 "관심사의 분리(Separation of Concerns)"를 달성했습니다.
+
+### 9.2 매치 상태 동기화 및 난입(JIP) 대응
+데디케이티드 서버를 중심으로 매치 상황(대기 -> 카운트다운 -> 플레이 -> 결과)을 단일 서버가 제어하고 모든 클라이언트에게 신뢰성 있게 복제되도록 구축했습니다.
+
+- **단방향 제어:** `AExGameModeBase::SetMatchPhase`에서만 전이를 지시하며, 상태값인 `CurrentMatchPhase`는 `AExGameStateBase`에 귀속되어 모든 클라이언트로 전파(Replicate)됩니다.
+- **난입 가드(JIP Guard):** 나중에 들어오는 유저는 델리게이트를 못 받아 UI가 안 뜨는 이슈를 방지하기 위해, `AExGameStateBase::BeginPlay()` 시점에 로컬 클라이언트라면 한번 강제로 이벤트를 쏘아주는(Broadcast) 초기화 가이드를 이식했습니다.
+
+### 9.3 플레이어 상태 및 넷 대역폭 효율화
+불필요한 인티저 점수 변수 할당을 방지하고 언리얼의 로우레벨 리플리케이션 효율을 끌어올렸습니다.
+
+- 엔진 내장 `Score`(float) 변수와 `OnRep_Score()` 가상함수를 래핑하여 다시 구현함으로써, 컴포넌트 변수 중복을 없앴습니다. UI는 `OnScoreChangedDelegate`만 구독하면 자동으로 점수 변화를 감지합니다.
+
+### 9.4 인벤토리 & 백엔드 (클라이언트-서버 RPC 패턴)
+- 어떠한 컨트롤러/폰에 부착되어도 정상 작동하는 `HasAuthority()` 위주의 판별 로직을 적용했습니다.
+- HTTP 요청 및 로비 웹 인증의 상태 머신(Idle -> Requesting -> Success/Fail)을 구현했습니다.
