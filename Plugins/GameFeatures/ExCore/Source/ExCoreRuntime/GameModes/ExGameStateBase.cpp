@@ -54,25 +54,6 @@ void AExGameStateBase::SetMatchPhase(FGameplayTag NewPhase, bool bForceTransitio
 	OnRep_MatchPhase(OldPhase);
 }
 
-void AExGameStateBase::SetMatchPhase(FGameplayTag NewPhase, bool bForceTransition /*= false*/)
-{
-	if (GetLocalRole() != ROLE_Authority)
-	{
-		return; // 서버 권한에서만 허용
-	}
-
-	if (CurrentMatchPhase == NewPhase)
-	{
-		return;
-	}
-
-	FGameplayTag OldPhase = CurrentMatchPhase;
-	CurrentMatchPhase = NewPhase;
-	
-	// 서버 자신도 리플리케이트 콜백을 강제로 로컬 실행
-	OnRep_MatchPhase(OldPhase);
-}
-
 void AExGameStateBase::OnRep_MatchPhase(const FGameplayTag& OldPhase)
 {
 	// 하위 클래스에서 필요한 처리 수행

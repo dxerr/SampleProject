@@ -4,6 +4,7 @@
 #include "ExDebugStateSubsystem.h"
 #include "ExGameplayTags.h"
 #include "GameModes/ExGameModeBase.h"
+#include "GameModes/ExGameStateBase.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 

@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "ExCoreGameMode.h"
+#include "ExGameModeBase.h"
 #include "GameplayTagContainer.h"
 #include "ExRunnerGameMode.generated.h"
 
@@ -21,7 +21,7 @@ struct FExGameplayEventPayload;
  * 커브 경로 지원: PathManager를 통한 경로 기반 이동 + 캐릭터 회전
  */
 UCLASS()
-class EXRUNNERPLAYRUNTIME_API AExRunnerGameMode : public AExCoreGameMode
+class EXRUNNERPLAYRUNTIME_API AExRunnerGameMode : public AExGameModeBase
 {
 	GENERATED_BODY()
 

@@ -4,10 +4,18 @@
 #include "GameModes/ExGameStateBase.h"
 #include "Tags/ExMatchTags.h"
 #include "Subsystems/ExGameFlowSubsystem.h"
+#include "../Data/ExCoreSpawnDataAsset.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/World.h"
 
 AExGameModeBase::AExGameModeBase()
 {
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
+
 	// 전이 맵 초기화
 	// WaitingForPlayers -> Countdown
 	AllowedMatchTransitions.Add(ExMatchTags::Match_WaitingForPlayers, { ExMatchTags::Match_Countdown });
@@ -34,6 +42,9 @@ void AExGameModeBase::BeginPlay()
 			FlowSubsystem->OnRequestTravel.AddDynamic(this, &AExGameModeBase::OnFlowSubsystemRequestTravel);
 		}
 	}
+
+	UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] BeginPlay - SpawnDataAsset: %s"), 
+		SpawnDataAsset ? *SpawnDataAsset->GetName() : TEXT("None"));
 }
 
 void AExGameModeBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -47,6 +58,11 @@ void AExGameModeBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 
 	Super::EndPlay(EndPlayReason);
+}
+
+void AExGameModeBase::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
 }
 
 void AExGameModeBase::SetMatchPhase(FGameplayTag NewPhase, bool bForceTransition)
@@ -129,6 +145,220 @@ void AExGameModeBase::HandleStartingNewPlayer_Implementation(APlayerController* 
 AActor* AExGameModeBase::ChoosePlayerStart_Implementation(AController* Player)
 {
 	return Super::ChoosePlayerStart_Implementation(Player);
+}
+
+APawn* AExGameModeBase::SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[ExGameModeBase] SpawnDefaultPawnAtTransform: World is null"));
+		return nullptr;
+	}
+
+	// 1. 스폰할 Pawn 클래스 결정
+	TSubclassOf<APawn> PawnClassToSpawn = nullptr;
+	
+	if (SpawnDataAsset)
+	{
+		PawnClassToSpawn = SpawnDataAsset->GetSelectedPawnClass();
+	}
+	
+	// DataAsset에 설정이 없으면 DefaultPawnClass 사용
+	if (!PawnClassToSpawn)
+	{
+		PawnClassToSpawn = DefaultPawnClass;
+	}
+
+	if (!PawnClassToSpawn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ExGameModeBase] SpawnDefaultPawnAtTransform: No valid PawnClass to spawn"));
+		return nullptr;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] Spawning Pawn: %s at %s"), 
+		*PawnClassToSpawn->GetName(), *SpawnTransform.ToString());
+
+	// 2. 컨테이너 폰 스폰
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	SpawnParams.Owner = this;
+
+	APawn* SpawnedPawn = World->SpawnActor<APawn>(
+		PawnClassToSpawn, 
+		SpawnTransform.GetLocation(), 
+		SpawnTransform.Rotator(), 
+		SpawnParams
+	);
+
+	if (!SpawnedPawn)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[ExGameModeBase] Failed to spawn Pawn"));
+		return nullptr;
+	}
+
+	// 3. Visual Override 적용
+	if (SpawnDataAsset)
+	{
+		TSubclassOf<AActor> VisualClass = SpawnDataAsset->GetSelectedVisualOverride();
+		if (VisualClass)
+		{
+			ApplyVisualOverride(SpawnedPawn, VisualClass);
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] Successfully spawned: %s"), *SpawnedPawn->GetName());
+	return SpawnedPawn;
+}
+
+AActor* AExGameModeBase::ApplyVisualOverride(APawn* ContainerPawn, TSubclassOf<AActor> VisualClass)
+{
+	if (!ContainerPawn || !VisualClass)
+	{
+		return nullptr;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] Applying VisualOverride: %s to %s"), 
+		*VisualClass->GetName(), *ContainerPawn->GetName());
+
+	// 기존 Visual Actor가 있다면 제거
+	if (AActor** ExistingVisual = SpawnedVisualActors.Find(ContainerPawn))
+	{
+		if (*ExistingVisual)
+		{
+			(*ExistingVisual)->Destroy();
+		}
+		SpawnedVisualActors.Remove(ContainerPawn);
+	}
+
+	// Visual Actor 스폰
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	SpawnParams.Owner = ContainerPawn;
+
+	AActor* VisualActor = World->SpawnActor<AActor>(
+		VisualClass, 
+		ContainerPawn->GetActorLocation(), 
+		ContainerPawn->GetActorRotation(), 
+		SpawnParams
+	);
+
+	if (!VisualActor)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[ExGameModeBase] Failed to spawn VisualActor"));
+		return nullptr;
+	}
+
+	// 컨테이너 폰의 SkeletalMeshComponent 찾기 (ACharacter, APawn 모두 지원)
+	USkeletalMeshComponent* ContainerMesh = nullptr;
+	
+	// 1. ACharacter인 경우 GetMesh() 사용
+	ACharacter* ContainerCharacter = Cast<ACharacter>(ContainerPawn);
+	if (ContainerCharacter)
+	{
+		ContainerMesh = ContainerCharacter->GetMesh();
+	}
+	
+	// 2. 일반 APawn인 경우 동적으로 SkeletalMeshComponent 검색
+	if (!ContainerMesh)
+	{
+		ContainerMesh = ContainerPawn->FindComponentByClass<USkeletalMeshComponent>();
+	}
+
+	// Visual Actor의 SkeletalMeshComponent 찾기 (Animation 설정 복사용)
+	USkeletalMeshComponent* VisualMesh = VisualActor->FindComponentByClass<USkeletalMeshComponent>();
+
+	// Visual Actor를 컨테이너 폰에 부착
+	if (ContainerMesh)
+	{
+		// SkeletalMeshComponent가 있는 경우 해당 컴포넌트에 부착
+		VisualActor->AttachToComponent(
+			ContainerMesh, 
+			FAttachmentTransformRules::SnapToTargetIncludingScale
+		);
+
+		// 컨테이너 메시 숨기기 (옵션)
+		if (SpawnDataAsset && SpawnDataAsset->bHideContainerMesh)
+		{
+			ContainerMesh->SetHiddenInGame(true);
+			ContainerMesh->SetVisibility(false);
+		}
+
+		// Visual Actor에서 Animation 설정을 ContainerMesh에 적용
+		// 이렇게 하면 ContainerPawn이 VisualActor의 Animation으로 구동됨
+		if (VisualMesh && SpawnDataAsset && SpawnDataAsset->bCopyAnimationFromVisual)
+		{
+			// Visual의 SkeletalMesh를 컨테이너에 적용
+			USkeletalMesh* VisualSkeletalMesh = VisualMesh->GetSkeletalMeshAsset();
+			if (VisualSkeletalMesh)
+			{
+				ContainerMesh->SetSkeletalMesh(VisualSkeletalMesh, false);
+			}
+
+			// Visual의 AnimClass를 컨테이너에 적용
+			TSubclassOf<UAnimInstance> VisualAnimClass = VisualMesh->GetAnimClass();
+			// Apply Animation
+			if (VisualAnimClass)
+			{
+				ContainerMesh->SetAnimInstanceClass(VisualAnimClass);
+			}
+
+			UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] Animation copied from Visual: Mesh=%s, AnimClass=%s"),
+				VisualSkeletalMesh ? *VisualSkeletalMesh->GetName() : TEXT("None"),
+				VisualAnimClass ? *VisualAnimClass->GetName() : TEXT("None"));
+
+			// Visual Actor의 메시는 숨기기 (ContainerMesh가 대신 렌더링)
+			VisualMesh->SetHiddenInGame(true);
+			VisualMesh->SetVisibility(false);
+			
+			// 컨테이너 메시 다시 표시 (Visual의 외형을 보여줌)
+			ContainerMesh->SetHiddenInGame(false);
+			ContainerMesh->SetVisibility(true);
+		}
+	}
+	else if (ContainerPawn->GetRootComponent())
+	{
+		// SkeletalMeshComponent가 없는 경우 RootComponent에 부착
+		VisualActor->AttachToComponent(
+			ContainerPawn->GetRootComponent(), 
+			FAttachmentTransformRules::SnapToTargetIncludingScale
+		);
+		
+		UE_LOG(LogTemp, Warning, TEXT("[ExGameModeBase] ContainerPawn has no SkeletalMeshComponent, attached to RootComponent"));
+	}
+
+	// 추적 맵에 등록
+	SpawnedVisualActors.Add(ContainerPawn, VisualActor);
+
+	UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] VisualOverride applied successfully: %s"), *VisualActor->GetName());
+	return VisualActor;
+}
+
+
+void AExGameModeBase::ChangeVisualOverride(APawn* TargetPawn, int32 NewVisualIndex)
+{
+	if (!TargetPawn || !SpawnDataAsset)
+	{
+		return;
+	}
+
+	// 인덱스 유효성 검사
+	if (!SpawnDataAsset->VisualOverrides.IsValidIndex(NewVisualIndex))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ExGameModeBase] ChangeVisualOverride: Invalid index %d"), NewVisualIndex);
+		return;
+	}
+
+	SpawnDataAsset->SelectedVisualIndex = NewVisualIndex;
+	TSubclassOf<AActor> NewVisualClass = SpawnDataAsset->VisualOverrides[NewVisualIndex];
+	
+	ApplyVisualOverride(TargetPawn, NewVisualClass);
 }
 
 void AExGameModeBase::OnMatchStarted_Implementation()

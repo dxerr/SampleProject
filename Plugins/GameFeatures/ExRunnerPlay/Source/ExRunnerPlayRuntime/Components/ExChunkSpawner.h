@@ -13,7 +13,7 @@
 #include "ExChunkSpawner.generated.h"
 
 class AExFloorChunk;
-class AExCoreGameMode;
+class AExGameModeBase;
 class UExPathManager;
 class UExCurveConfig;
 class UExObstacleSpawnConfig;

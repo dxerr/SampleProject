@@ -89,8 +89,8 @@ void UGameFeatureAction_AddUIData::AddAdditionalAssetBundleData(FAssetBundleData
 	{
 		for (const TSoftObjectPtr<UExUIDataAsset>& SoftUIData : UIDataList)
 		{
-			AssetBundleData.AddBundleAsset(UGameFeaturesSubsystemSettings::LoadStateClient, SoftUIData.ToSoftObjectPath());
-			AssetBundleData.AddBundleAsset(UGameFeaturesSubsystemSettings::LoadStateServer, SoftUIData.ToSoftObjectPath());
+			AssetBundleData.AddBundleAsset(UGameFeaturesSubsystemSettings::LoadStateClient, SoftUIData.ToSoftObjectPath().GetAssetPath());
+			AssetBundleData.AddBundleAsset(UGameFeaturesSubsystemSettings::LoadStateServer, SoftUIData.ToSoftObjectPath().GetAssetPath());
 		}
 	}
 }
