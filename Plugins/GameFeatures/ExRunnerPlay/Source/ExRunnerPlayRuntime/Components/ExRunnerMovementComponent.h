@@ -43,6 +43,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Runner|Movement")
 	void MoveRight();
 
+	/** 현재 러너의 목표 베이스 스피드를 변경합니다. (이때 StatComponent를 통해 UI 트리거) */
+	UFUNCTION(BlueprintCallable, Category = "Runner|Movement")
+	void SetTargetRunningSpeed(float NewSpeed);
+
 	/** 현재 레인의 목표 좌우 오프셋 반환 */
 	UFUNCTION(BlueprintPure, Category = "Runner|Lane")
 	float GetCurrentLaneYOffset() const { return CurrentLaneYOffset; }
@@ -69,6 +73,10 @@ private:
 
 	/** 지연 초기화를 위한 타이머 핸들 */
 	FTimerHandle InitTimerHandle;
+
+	/** 중앙 관리 스탯 컴포넌트 캐싱 (속도 갱신 시 UI 전달용) */
+	UPROPERTY()
+	TWeakObjectPtr<class UExRunnerStatComponent> CachedStatComponent;
 
 	// 내부 상태 변수
 	int32 CurrentLaneIndex = 0;

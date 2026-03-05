@@ -1,0 +1,394 @@
+Begin Object Class=/Script/Engine.Material Name="M_ExClearSky_V5" ExportPath="/Script/Engine.Material'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5'"
+   Begin Object Class=/Script/Engine.MaterialExpressionAdd Name="MaterialExpressionAdd_2" ExportPath="/Script/Engine.MaterialExpressionAdd'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionAdd_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_5" ExportPath="/Script/Engine.MaterialExpressionMultiply'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionMultiply_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_4" ExportPath="/Script/Engine.MaterialExpressionMultiply'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionMultiply_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_4" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionVectorParameter_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_3" ExportPath="/Script/Engine.MaterialExpressionMultiply'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionMultiply_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_6" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionScalarParameter_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionPower Name="MaterialExpressionPower_3" ExportPath="/Script/Engine.MaterialExpressionPower'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionPower_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_5" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionScalarParameter_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSampleParameter2D Name="MaterialExpressionTextureSampleParameter2D_1" ExportPath="/Script/Engine.MaterialExpressionTextureSampleParameter2D'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionTextureSampleParameter2D_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionPanner Name="MaterialExpressionPanner_1" ExportPath="/Script/Engine.MaterialExpressionPanner'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionPanner_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_3" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionComponentMask_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDivide Name="MaterialExpressionDivide_1" ExportPath="/Script/Engine.MaterialExpressionDivide'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionDivide_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_4" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionScalarParameter_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_1" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionLinearInterpolate_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_3" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionVectorParameter_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_2" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionVectorParameter_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionPower Name="MaterialExpressionPower_2" ExportPath="/Script/Engine.MaterialExpressionPower'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionPower_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_3" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionScalarParameter_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionClamp Name="MaterialExpressionClamp_1" ExportPath="/Script/Engine.MaterialExpressionClamp'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionClamp_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_2" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionComponentMask_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNormalize Name="MaterialExpressionNormalize_1" ExportPath="/Script/Engine.MaterialExpressionNormalize'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionNormalize_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSubtract Name="MaterialExpressionSubtract_1" ExportPath="/Script/Engine.MaterialExpressionSubtract'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionSubtract_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionObjectPositionWS Name="MaterialExpressionObjectPositionWS_1" ExportPath="/Script/Engine.MaterialExpressionObjectPositionWS'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionObjectPositionWS_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_0" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionVectorParameter_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSampleParameter2D Name="MaterialExpressionTextureSampleParameter2D_0" ExportPath="/Script/Engine.MaterialExpressionTextureSampleParameter2D'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionTextureSampleParameter2D_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_0" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionScalarParameter_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionPower Name="MaterialExpressionPower_1" ExportPath="/Script/Engine.MaterialExpressionPower'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionPower_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionObjectPositionWS Name="MaterialExpressionObjectPositionWS_0" ExportPath="/Script/Engine.MaterialExpressionObjectPositionWS'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionObjectPositionWS_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNormalize Name="MaterialExpressionNormalize_0" ExportPath="/Script/Engine.MaterialExpressionNormalize'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionNormalize_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_1" ExportPath="/Script/Engine.MaterialExpressionMultiply'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionMultiply_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionMultiply_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionWorldPosition Name="MaterialExpressionWorldPosition_1" ExportPath="/Script/Engine.MaterialExpressionWorldPosition'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionWorldPosition_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDivide Name="MaterialExpressionDivide_0" ExportPath="/Script/Engine.MaterialExpressionDivide'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionDivide_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_1" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionComponentMask_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionClamp Name="MaterialExpressionClamp_0" ExportPath="/Script/Engine.MaterialExpressionClamp'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionClamp_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAdd Name="MaterialExpressionAdd_0" ExportPath="/Script/Engine.MaterialExpressionAdd'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionAdd_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialEditorOnlyData Name="M_ExClearSky_V5EditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:M_ExClearSky_V5EditorOnlyData'"
+   End Object
+   Begin Object Name="MaterialExpressionAdd_2" ExportPath="/Script/Engine.MaterialExpressionAdd'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionAdd_2'"
+      A=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'M_ExClearSky_V5:MaterialExpressionLinearInterpolate_1'")
+      B=(Expression="/Script/Engine.MaterialExpressionMultiply'M_ExClearSky_V5:MaterialExpressionMultiply_5'")
+      MaterialExpressionEditorX=-260
+      MaterialExpressionGuid=62E6A582485ABA6099FFB794E261FCDB
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_5" ExportPath="/Script/Engine.MaterialExpressionMultiply'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionMultiply_5'"
+      A=(Expression="/Script/Engine.MaterialExpressionMultiply'M_ExClearSky_V5:MaterialExpressionMultiply_4'")
+      B=(Expression="/Script/Engine.MaterialExpressionClamp'M_ExClearSky_V5:MaterialExpressionClamp_1'")
+      MaterialExpressionEditorX=-520
+      MaterialExpressionEditorY=162
+      MaterialExpressionGuid=897BF3AB47100A088D123CB53087894F
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_4" ExportPath="/Script/Engine.MaterialExpressionMultiply'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionMultiply_4'"
+      A=(Expression="/Script/Engine.MaterialExpressionMultiply'M_ExClearSky_V5:MaterialExpressionMultiply_3'")
+      B=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_ExClearSky_V5:MaterialExpressionVectorParameter_4'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      MaterialExpressionEditorX=-780
+      MaterialExpressionEditorY=514
+      MaterialExpressionGuid=7EB5AADE41F7D6231FF821BD2F13DCDA
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_4" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionVectorParameter_4'"
+      DefaultValue=(R=1.000000,G=1.000000,B=1.000000,A=1.000000)
+      ParameterName="CloudColor"
+      ExpressionGUID=EE375482435D766FDE718785C16D317A
+      MaterialExpressionEditorX=-1040
+      MaterialExpressionEditorY=676
+      MaterialExpressionGuid=75D898BA4B756086EFEFFDA7FF5AFA73
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_3" ExportPath="/Script/Engine.MaterialExpressionMultiply'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionMultiply_3'"
+      A=(Expression="/Script/Engine.MaterialExpressionPower'M_ExClearSky_V5:MaterialExpressionPower_3'")
+      B=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_ExClearSky_V5:MaterialExpressionScalarParameter_6'")
+      MaterialExpressionEditorX=-1040
+      MaterialExpressionEditorY=514
+      MaterialExpressionGuid=A8FC525F41E9180265F749835B0C6201
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_6" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionScalarParameter_6'"
+      DefaultValue=0.300000
+      ParameterName="CloudOpacity"
+      ExpressionGUID=8ED85CFF4803D911B442448D42FAC3A6
+      MaterialExpressionEditorX=-1300
+      MaterialExpressionEditorY=676
+      MaterialExpressionGuid=5DF8D979485EC7EB40CB7B83DB0E08F1
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionPower_3" ExportPath="/Script/Engine.MaterialExpressionPower'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionPower_3'"
+      Base=(Expression="/Script/Engine.MaterialExpressionTextureSampleParameter2D'M_ExClearSky_V5:MaterialExpressionTextureSampleParameter2D_1'",OutputIndex=1,Mask=1,MaskR=1)
+      MaterialExpressionEditorX=-1300
+      MaterialExpressionEditorY=514
+      MaterialExpressionGuid=C033AB8647AD2F37A0D20A86277464D0
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_5" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionScalarParameter_5'"
+      DefaultValue=3.000000
+      ParameterName="CloudDensity"
+      ExpressionGUID=5605ACF14ABF16990D1A048C37E70CE8
+      MaterialExpressionEditorX=-1200
+      MaterialExpressionEditorY=700
+      MaterialExpressionGuid=5F4A05154A9BACD4DB281DBC718C15D8
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSampleParameter2D_1" ExportPath="/Script/Engine.MaterialExpressionTextureSampleParameter2D'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionTextureSampleParameter2D_1'"
+      ParameterName="CloudNoise"
+      ExpressionGUID=6251ADAD4A7B4FAA108238BD058F9F70
+      Texture="/Script/Engine.Texture2D'/Engine/MapTemplates/TilingNoise05.TilingNoise05'"
+      MaterialExpressionEditorX=-1560
+      MaterialExpressionEditorY=514
+      MaterialExpressionGuid=05CC416E4A068E544E5362987DD51E06
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionPanner_1" ExportPath="/Script/Engine.MaterialExpressionPanner'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionPanner_1'"
+      Coordinate=(Expression="/Script/Engine.MaterialExpressionComponentMask'M_ExClearSky_V5:MaterialExpressionComponentMask_3'")
+      SpeedX=0.015000
+      SpeedY=0.005000
+      MaterialExpressionEditorX=-1400
+      MaterialExpressionEditorY=450
+      MaterialExpressionGuid=765FBB2E4D0EA8217C24E3A0ADA561F7
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_3" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionComponentMask_3'"
+      Input=(Expression="/Script/Engine.MaterialExpressionDivide'M_ExClearSky_V5:MaterialExpressionDivide_1'")
+      R=True
+      G=True
+      MaterialExpressionEditorX=-1600
+      MaterialExpressionEditorY=450
+      MaterialExpressionGuid=B914994A490CA9070681DAA83F59FBEA
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionDivide_1" ExportPath="/Script/Engine.MaterialExpressionDivide'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionDivide_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionWorldPosition'M_ExClearSky_V5:MaterialExpressionWorldPosition_1'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      B=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_ExClearSky_V5:MaterialExpressionScalarParameter_4'")
+      MaterialExpressionEditorX=-1800
+      MaterialExpressionEditorY=450
+      MaterialExpressionGuid=49D3AD0C4D3959EB72AC63A3DE887C9C
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_4" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionScalarParameter_4'"
+      DefaultValue=60000.000000
+      ParameterName="SkyUVScale"
+      ExpressionGUID=B7B240CA4DCFFE98DCF78DA239D1BDE4
+      MaterialExpressionEditorX=-2000
+      MaterialExpressionEditorY=500
+      MaterialExpressionGuid=2AD24E6F449E609FA1E2849EB65C7D43
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_1" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionLinearInterpolate_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_ExClearSky_V5:MaterialExpressionVectorParameter_2'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      B=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_ExClearSky_V5:MaterialExpressionVectorParameter_3'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      Alpha=(Expression="/Script/Engine.MaterialExpressionPower'M_ExClearSky_V5:MaterialExpressionPower_2'")
+      MaterialExpressionEditorX=-520
+      MaterialExpressionGuid=73B289044B2376182D695D90791AF937
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_3" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionVectorParameter_3'"
+      DefaultValue=(R=0.020000,G=0.100000,B=0.600000,A=1.000000)
+      ParameterName="ZenithColor"
+      ExpressionGUID=5D238C3541380AFBCDB2BA81CA9621F6
+      MaterialExpressionEditorX=-800
+      MaterialExpressionEditorY=32
+      MaterialExpressionGuid=23828760465F91FA461C9B94592B0ECD
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_2" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionVectorParameter_2'"
+      DefaultValue=(R=0.124844,G=0.347540,B=1.000000,A=1.000000)
+      ParameterName="HorizonColor"
+      ExpressionGUID=1CC477A645BC3B49AC2EA19831F50B62
+      MaterialExpressionEditorX=-768
+      MaterialExpressionEditorY=-240
+      MaterialExpressionGuid=1CE95C1D4C3AD90732C4B6A6CBBC8C3B
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionPower_2" ExportPath="/Script/Engine.MaterialExpressionPower'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionPower_2'"
+      Base=(Expression="/Script/Engine.MaterialExpressionClamp'M_ExClearSky_V5:MaterialExpressionClamp_1'")
+      MaterialExpressionEditorX=-780
+      MaterialExpressionEditorY=352
+      MaterialExpressionGuid=18CCDEFD4675043AC99C098888B34BE0
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_3" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionScalarParameter_3'"
+      DefaultValue=1.500000
+      ParameterName="SkyGradientShift"
+      ExpressionGUID=7215B7CB461A336CFC1A6EBF8D2ED859
+      MaterialExpressionEditorX=-1400
+      MaterialExpressionEditorY=150
+      MaterialExpressionGuid=9E0D00784CEB831A149A6F8364355A53
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionClamp_1" ExportPath="/Script/Engine.MaterialExpressionClamp'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionClamp_1'"
+      Input=(Expression="/Script/Engine.MaterialExpressionComponentMask'M_ExClearSky_V5:MaterialExpressionComponentMask_2'")
+      MaterialExpressionEditorX=-1040
+      MaterialExpressionEditorY=352
+      MaterialExpressionGuid=4CACC943446233F4D1AA27BB6B8FE229
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_2" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionComponentMask_2'"
+      Input=(Expression="/Script/Engine.MaterialExpressionNormalize'M_ExClearSky_V5:MaterialExpressionNormalize_1'")
+      B=True
+      MaterialExpressionEditorX=-1300
+      MaterialExpressionEditorY=352
+      MaterialExpressionGuid=C9C230914ED1A588974F8E829B7F8CF2
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionNormalize_1" ExportPath="/Script/Engine.MaterialExpressionNormalize'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionNormalize_1'"
+      VectorInput=(Expression="/Script/Engine.MaterialExpressionSubtract'M_ExClearSky_V5:MaterialExpressionSubtract_1'")
+      MaterialExpressionEditorX=-1560
+      MaterialExpressionEditorY=352
+      MaterialExpressionGuid=8E778BAA4279343A975B1EA8B1AC355F
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionSubtract_1" ExportPath="/Script/Engine.MaterialExpressionSubtract'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionSubtract_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionWorldPosition'M_ExClearSky_V5:MaterialExpressionWorldPosition_1'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      B=(Expression="/Script/Engine.MaterialExpressionObjectPositionWS'M_ExClearSky_V5:MaterialExpressionObjectPositionWS_1'")
+      MaterialExpressionEditorX=-1820
+      MaterialExpressionEditorY=352
+      MaterialExpressionGuid=7BFBD6914729650AD30AD4A72FFA8223
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionObjectPositionWS_1" ExportPath="/Script/Engine.MaterialExpressionObjectPositionWS'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionObjectPositionWS_1'"
+      MaterialExpressionEditorX=-2080
+      MaterialExpressionEditorY=514
+      MaterialExpressionGuid=9C6B399B4F32D41B19687291045DAF48
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_0" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionVectorParameter_0'"
+      DefaultValue=(R=0.018670,G=0.159656,B=1.000000,A=1.000000)
+      ParameterName="HorizonColor"
+      ExpressionGUID=F609E58747900C29C4C06EB40F851698
+      MaterialExpressionEditorX=-1300
+      MaterialExpressionEditorY=-1000
+      MaterialExpressionGuid=B4DD127141FBC7B8C1C007842BEF940D
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSampleParameter2D_0" ExportPath="/Script/Engine.MaterialExpressionTextureSampleParameter2D'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionTextureSampleParameter2D_0'"
+      ParameterName="CloudNoise"
+      ExpressionGUID=E99A7F054F4710D2C43AAE93B5375994
+      Texture="/Script/Engine.Texture2D'/Engine/MapTemplates/TilingNoise05.TilingNoise05'"
+      MaterialExpressionEditorX=-1500
+      MaterialExpressionGuid=32159A3349C18B419CCB8D860F8F5DAF
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_0" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionScalarParameter_0'"
+      DefaultValue=3.000000
+      ParameterName="SkyGradientShift"
+      ExpressionGUID=71071FBD47CFD5DF0CE300904EAC0F2E
+      MaterialExpressionEditorX=-1700
+      MaterialExpressionEditorY=-700
+      MaterialExpressionGuid=208B37B44DC3882249BA85A424F11665
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionPower_1" ExportPath="/Script/Engine.MaterialExpressionPower'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionPower_1'"
+      Base=(Expression="/Script/Engine.MaterialExpressionClamp'M_ExClearSky_V5:MaterialExpressionClamp_0'")
+      MaterialExpressionEditorX=-1000
+      MaterialExpressionEditorY=400
+      MaterialExpressionGuid=60DD1AD64C2908321C0E94B6EA73C873
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionObjectPositionWS_0" ExportPath="/Script/Engine.MaterialExpressionObjectPositionWS'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionObjectPositionWS_0'"
+      MaterialExpressionEditorX=-3000
+      MaterialExpressionEditorY=-600
+      MaterialExpressionGuid=2CBF18F746B205FD2DD82AA51431FE4D
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionNormalize_0" ExportPath="/Script/Engine.MaterialExpressionNormalize'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionNormalize_0'"
+      MaterialExpressionEditorX=-2600
+      MaterialExpressionEditorY=-800
+      MaterialExpressionGuid=D5D719724FD467ED669961B45A1C91A0
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_1" ExportPath="/Script/Engine.MaterialExpressionMultiply'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionMultiply_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionTextureSampleParameter2D'M_ExClearSky_V5:MaterialExpressionTextureSampleParameter2D_0'",OutputIndex=1,Mask=1,MaskR=1)
+      MaterialExpressionEditorX=-1000
+      MaterialExpressionEditorY=200
+      MaterialExpressionGuid=156D07E44F015BBB25D4A0964EEA7A2E
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionMultiply_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionAdd'M_ExClearSky_V5:MaterialExpressionAdd_0'")
+      MaterialExpressionEditorX=-2000
+      MaterialExpressionEditorY=-800
+      MaterialExpressionGuid=4498246F474366AF28E1BC870224607C
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionWorldPosition_1" ExportPath="/Script/Engine.MaterialExpressionWorldPosition'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionWorldPosition_1'"
+      MaterialExpressionEditorX=-2080
+      MaterialExpressionEditorY=352
+      MaterialExpressionGuid=77029B4042B85F1558C9BBA9FC2FDC68
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionDivide_0" ExportPath="/Script/Engine.MaterialExpressionDivide'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionDivide_0'"
+      A=(Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      MaterialExpressionEditorX=-2200
+      MaterialExpressionGuid=B1B51AC5483E0132A152D99C762401DC
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_1" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionComponentMask_1'"
+      Input=(Expression="/Script/Engine.MaterialExpressionDivide'M_ExClearSky_V5:MaterialExpressionDivide_0'")
+      R=True
+      G=True
+      MaterialExpressionEditorX=-2000
+      MaterialExpressionGuid=4F713CA54A6FB1B99D063FB44AFD5DE3
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionClamp_0" ExportPath="/Script/Engine.MaterialExpressionClamp'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionClamp_0'"
+      Input=(Expression="/Script/Engine.MaterialExpressionMultiply'M_ExClearSky_V5:MaterialExpressionMultiply_0'")
+      MaterialExpressionEditorX=-1800
+      MaterialExpressionEditorY=-800
+      MaterialExpressionGuid=54432BB34A42C6FC3DCFC8B46AC13407
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="MaterialExpressionAdd_0" ExportPath="/Script/Engine.MaterialExpressionAdd'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:MaterialExpressionAdd_0'"
+      MaterialExpressionEditorX=-2200
+      MaterialExpressionEditorY=-800
+      MaterialExpressionGuid=D5F92A184EBF53575607A2B52140D90D
+      Material="/Script/Engine.Material'M_ExClearSky_V5'"
+   End Object
+   Begin Object Name="M_ExClearSky_V5EditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/ExRunnerPlay/VFX/Sky/M_ExClearSky_V5.M_ExClearSky_V5:M_ExClearSky_V5EditorOnlyData'"
+      BaseColor=(UseConstant=True)
+      Metallic=(UseConstant=True)
+      Specular=(UseConstant=True)
+      Roughness=(UseConstant=True)
+      Normal=(UseConstant=True)
+      Tangent=(UseConstant=True)
+      EmissiveColor=(Expression="/Script/Engine.MaterialExpressionAdd'M_ExClearSky_V5:MaterialExpressionAdd_2'")
+      Opacity=(UseConstant=True)
+      OpacityMask=(UseConstant=True)
+      SubsurfaceColor=(UseConstant=True)
+      ClearCoat=(UseConstant=True)
+      ClearCoatRoughness=(UseConstant=True)
+      AmbientOcclusion=(UseConstant=True)
+      Refraction=(UseConstant=True)
+      CustomizedUVs(0)=(UseConstant=True)
+      CustomizedUVs(1)=(UseConstant=True)
+      CustomizedUVs(2)=(UseConstant=True)
+      CustomizedUVs(3)=(UseConstant=True)
+      CustomizedUVs(4)=(UseConstant=True)
+      CustomizedUVs(5)=(UseConstant=True)
+      CustomizedUVs(6)=(UseConstant=True)
+      CustomizedUVs(7)=(UseConstant=True)
+      SurfaceThickness=(UseConstant=True)
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionAdd'M_ExClearSky_V5:MaterialExpressionAdd_2'","/Script/Engine.MaterialExpressionObjectPositionWS'M_ExClearSky_V5:MaterialExpressionObjectPositionWS_0'","/Script/Engine.MaterialExpressionNormalize'M_ExClearSky_V5:MaterialExpressionNormalize_0'","/Script/Engine.MaterialExpressionAdd'M_ExClearSky_V5:MaterialExpressionAdd_0'","/Script/Engine.MaterialExpressionMultiply'M_ExClearSky_V5:MaterialExpressionMultiply_0'","/Script/Engine.MaterialExpressionClamp'M_ExClearSky_V5:MaterialExpressionClamp_0'","/Script/Engine.MaterialExpressionScalarParameter'M_ExClearSky_V5:MaterialExpressionScalarParameter_0'","/Script/Engine.MaterialExpressionVectorParameter'M_ExClearSky_V5:MaterialExpressionVectorParameter_0'","/Script/Engine.MaterialExpressionDivide'M_ExClearSky_V5:MaterialExpressionDivide_0'","/Script/Engine.MaterialExpressionComponentMask'M_ExClearSky_V5:MaterialExpressionComponentMask_1'","/Script/Engine.MaterialExpressionTextureSampleParameter2D'M_ExClearSky_V5:MaterialExpressionTextureSampleParameter2D_0'","/Script/Engine.MaterialExpressionMultiply'M_ExClearSky_V5:MaterialExpressionMultiply_1'","/Script/Engine.MaterialExpressionPower'M_ExClearSky_V5:MaterialExpressionPower_1'","/Script/Engine.MaterialExpressionWorldPosition'M_ExClearSky_V5:MaterialExpressionWorldPosition_1'","/Script/Engine.MaterialExpressionObjectPositionWS'M_ExClearSky_V5:MaterialExpressionObjectPositionWS_1'","/Script/Engine.MaterialExpressionSubtract'M_ExClearSky_V5:MaterialExpressionSubtract_1'","/Script/Engine.MaterialExpressionNormalize'M_ExClearSky_V5:MaterialExpressionNormalize_1'","/Script/Engine.MaterialExpressionComponentMask'M_ExClearSky_V5:MaterialExpressionComponentMask_2'","/Script/Engine.MaterialExpressionClamp'M_ExClearSky_V5:MaterialExpressionClamp_1'","/Script/Engine.MaterialExpressionScalarParameter'M_ExClearSky_V5:MaterialExpressionScalarParameter_3'","/Script/Engine.MaterialExpressionPower'M_ExClearSky_V5:MaterialExpressionPower_2'","/Script/Engine.MaterialExpressionVectorParameter'M_ExClearSky_V5:MaterialExpressionVectorParameter_2'","/Script/Engine.MaterialExpressionVectorParameter'M_ExClearSky_V5:MaterialExpressionVectorParameter_3'","/Script/Engine.MaterialExpressionLinearInterpolate'M_ExClearSky_V5:MaterialExpressionLinearInterpolate_1'","/Script/Engine.MaterialExpressionScalarParameter'M_ExClearSky_V5:MaterialExpressionScalarParameter_4'","/Script/Engine.MaterialExpressionDivide'M_ExClearSky_V5:MaterialExpressionDivide_1'","/Script/Engine.MaterialExpressionComponentMask'M_ExClearSky_V5:MaterialExpressionComponentMask_3'","/Script/Engine.MaterialExpressionPanner'M_ExClearSky_V5:MaterialExpressionPanner_1'","/Script/Engine.MaterialExpressionTextureSampleParameter2D'M_ExClearSky_V5:MaterialExpressionTextureSampleParameter2D_1'","/Script/Engine.MaterialExpressionScalarParameter'M_ExClearSky_V5:MaterialExpressionScalarParameter_5'","/Script/Engine.MaterialExpressionPower'M_ExClearSky_V5:MaterialExpressionPower_3'","/Script/Engine.MaterialExpressionScalarParameter'M_ExClearSky_V5:MaterialExpressionScalarParameter_6'","/Script/Engine.MaterialExpressionMultiply'M_ExClearSky_V5:MaterialExpressionMultiply_3'","/Script/Engine.MaterialExpressionVectorParameter'M_ExClearSky_V5:MaterialExpressionVectorParameter_4'","/Script/Engine.MaterialExpressionMultiply'M_ExClearSky_V5:MaterialExpressionMultiply_4'","/Script/Engine.MaterialExpressionMultiply'M_ExClearSky_V5:MaterialExpressionMultiply_5'"))
+      ParameterGroupData(0)=(GroupName="None")
+   End Object
+   ShadingModel=MSM_Unlit
+   ShadingModels=(ShadingModelField=1)
+   TwoSided=True
+   bUsedWithSplineMeshes=True
+   bCanMaskedBeAssumedOpaque=True
+   StateId=3AD15C354EB8A402D2F9C5B91A7997AE
+   ReferencedTextureGuids(0)=204816B241849C12AC0440A8C5E0628B
+   EditorOnlyData="/Script/Engine.MaterialEditorOnlyData'M_ExClearSky_V5EditorOnlyData'"
+   TextureStreamingDataVersion=1
+   TextureStreamingData(0)=(SamplingScale=1.000000,UVChannelIndex=0,TextureName="TilingNoise05",TextureReference="/Engine/MapTemplates/TilingNoise05.TilingNoise05")
+   ParameterOverviewExpansion=(("-12Global", True))
+   LightingGuid=9C3F74B0423BA6870C4123AA848A3088
+End Object

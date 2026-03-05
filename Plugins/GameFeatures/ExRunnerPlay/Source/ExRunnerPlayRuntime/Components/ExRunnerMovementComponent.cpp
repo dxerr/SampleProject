@@ -6,6 +6,7 @@
 #include "MotionWarpingComponent.h" 
 #include "MoverDataModelTypes.h"
 #include "MoverComponent.h"
+#include "ExRunnerStatComponent.h"
 
 // 디버깅용 로그 카테고리 정의
 DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
@@ -51,6 +52,10 @@ void UExRunnerMovementComponent::TryInitializeMover()
 		if (MoverComp)
 		{
 			TargetPawn = ParentPawn; // 캐싱 완료
+			
+			// UI 갱신을 위해 스탯 컴포넌트도 함께 캐싱 (부모 폰에 부착되어 있다고 가정)
+			CachedStatComponent = ParentPawn->FindComponentByClass<UExRunnerStatComponent>();
+			
 			// InputProducers 배열에 자신을 추가하여 Mover가 매 틱마다 ProduceInput을 호출하도록 합니다.
 			MoverComp->InputProducers.AddUnique(this);
 			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 InputProducer로 등록 완료"), *ParentPawn->GetName());
@@ -112,6 +117,18 @@ void UExRunnerMovementComponent::MoveRight()
 	if (CurrentLaneIndex < 1)
 	{
 		CurrentLaneIndex++;
+	}
+}
+
+void UExRunnerMovementComponent::SetTargetRunningSpeed(float NewSpeed)
+{
+	// 1. 여기서 실제 Mover의 이동 속도(MaxSpeed 등)를 변경하는 로직 추가 가능 (기획에 맞춰 구현)
+	// UMoverComponent 인터페이스를 통해 속도 수정 로직 삽입 필요 (현재는 UI 테스트를 위한 스니펫)
+
+	// 2. 중앙 집중 데이터 스토어(UI 갱신용)에 통보하여 이벤트를 울리게 합니다 (Zero-Tick)
+	if (CachedStatComponent.IsValid())
+	{
+		CachedStatComponent->SetCurrentRunningSpeed(NewSpeed);
 	}
 }
 

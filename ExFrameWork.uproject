@@ -105,6 +105,14 @@
 		{
 			"Name": "UnrealCopilot",
 			"Enabled": true
+		},
+		{
+			"Name": "CommonUI",
+			"Enabled": true
+		},
+		{
+			"Name": "ModelViewViewModel",
+			"Enabled": true
 		}
 	],
 	"EpicSampleNameHash": "1673045636"

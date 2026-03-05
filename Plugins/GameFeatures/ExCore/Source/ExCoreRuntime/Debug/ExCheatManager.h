@@ -40,6 +40,10 @@ public:
 	UFUNCTION(Exec)
 	void ExDebug(FString Category);
 
+	/** 매치 페이즈 강제 변경 (ex: ExSetMatchPhase Match.Playing) */
+	UFUNCTION(Exec)
+	void ExSetMatchPhase(FString PhaseTagString);
+
 	/** 현재 활성화된 모든 치트 상태를 로그에 출력 */
 	UFUNCTION(Exec)
 	void ExDebugStatus();

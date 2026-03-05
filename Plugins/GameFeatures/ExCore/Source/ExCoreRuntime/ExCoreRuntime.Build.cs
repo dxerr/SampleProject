@@ -11,7 +11,7 @@ public class ExCoreRuntime : ModuleRules
 
 		PublicIncludePaths.AddRange(
 			new string[] {
-				// Path.Combine(ModuleDirectory, "ExCoreRuntime"), // Self
+				ModuleDirectory,
 				Path.Combine(ModuleDirectory, "GameModes"),
 				Path.Combine(ModuleDirectory, "Data"),
 				Path.Combine(ModuleDirectory, "Components"),
@@ -21,6 +21,10 @@ public class ExCoreRuntime : ModuleRules
 				Path.Combine(ModuleDirectory, "Util"),
 				Path.Combine(ModuleDirectory, "Util", "Events"),
 				Path.Combine(ModuleDirectory, "Debug"),
+				Path.Combine(ModuleDirectory, "UI"),
+				Path.Combine(ModuleDirectory, "UI", "Subsystems"),
+				Path.Combine(ModuleDirectory, "UI", "Widgets"),
+				Path.Combine(ModuleDirectory, "UI", "ViewModels"),
 			}
 			);
 
@@ -44,6 +48,13 @@ public class ExCoreRuntime : ModuleRules
 				"EnhancedInput",
 				"Mover",
 				"MotionWarping", // Centralized Warp Logic
+				
+				// --- UI Architecture Modules ---
+				"UMG",
+				"CommonUI",
+				"CommonInput",
+				"ModelViewViewModel",
+				
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
@@ -51,7 +62,8 @@ public class ExCoreRuntime : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				// ... add private dependencies that you statically link with here ...
+				"Slate",
+				"SlateCore"
 			}
 			);
 

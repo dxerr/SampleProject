@@ -11,6 +11,7 @@ public class ExRunnerPlayRuntime : ModuleRules
 		PublicIncludePaths.AddRange(
 			new string[] {
 				System.IO.Path.Combine(ModuleDirectory, "Debug"),
+				System.IO.Path.Combine(ModuleDirectory, "Tags"),
 			}
 			);
 				
@@ -31,6 +32,7 @@ public class ExRunnerPlayRuntime : ModuleRules
 				"Mover",
 				"MotionWarping",
 				"EnhancedInput",
+				"ModelViewViewModel",
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

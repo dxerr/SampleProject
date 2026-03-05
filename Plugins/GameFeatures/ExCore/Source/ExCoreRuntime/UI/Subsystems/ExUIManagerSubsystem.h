@@ -1,0 +1,116 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Subsystems/LocalPlayerSubsystem.h"
+#include "CommonActivatableWidget.h"
+#include "Widgets/CommonActivatableWidgetContainer.h"
+#include "GameplayTagContainer.h"
+#include "UI/Data/ExUIDataAsset.h"
+#include "ExUIManagerSubsystem.generated.h"
+
+// Forward declarations for specific widget types
+class UExWindowWidget;
+class UExModalWidget;
+
+/**
+ * ExCore의 전역 UI 스택 매니저입니다.
+ * LocalPlayer 화면(Viewport)마다 독립적으로 유지되며, 
+ * HUD Layout으로부터 스택(GameStack, MenuStack)을 주입받아
+ * Window 타입(인벤토리 등)이나 Modal 패턴(확인 안내창) 등 
+ * 각종 위젯의 Push / Pop 라우팅을 총괄합니다.
+ */
+UCLASS()
+class EXCORERUNTIME_API UExUIManagerSubsystem : public ULocalPlayerSubsystem
+{
+	GENERATED_BODY()
+	
+public:
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
+
+	/**
+	 * HUD Layout 위젯이 생성될 때 자신이 가진 스택들을 매니저에 등록합니다.
+	 * 
+	 * @param InGameStack 미니맵, 퀘스트 등 게임 오버레이용 (ZOrder 하위)
+	 * @param InMenuStack 인벤토리, 타이틀메뉴, 팝업 등 인터랙티브 UI용 (ZOrder 상위)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExUI")
+	void RegisterStacks(UCommonActivatableWidgetStack* InGameStack, UCommonActivatableWidgetStack* InMenuStack);
+
+	/**
+	 * 창 모드 기반 위젯(UExWindowWidget 파생)을 Menu Stack에 추가(Push)합니다.
+	 * 추가됨과 동시에 위젯은 자동으로 Activate 되며 입력을 가져갑니다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExUI")
+	UCommonActivatableWidget* PushWindow(TSubclassOf<UExWindowWidget> WidgetClass);
+
+	/**
+	 * 팝업 대화상자 기반 위젯(UExModalWidget 파생)을 Menu Stack 최상단에 추가합니다.
+	 * (Modal 모드에 따라 하위 위젯 입력 차단 등은 위젯 내부 InputConfig를 따름)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExUI")
+	UCommonActivatableWidget* PushModal(TSubclassOf<UExModalWidget> WidgetClass);
+
+	/**
+	 * 인게임 오버레이 전용 위젯(미니맵 등)을 Game Stack에 추가합니다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExUI")
+	UCommonActivatableWidget* PushGameOverlay(TSubclassOf<UCommonActivatableWidget> WidgetClass);
+
+	/**
+	 * Menu Stack의 최상단 위젯(활성화된 탭/팝업 등)을 스택에서 제거(Pop)합니다.
+	 * CommonUI가 포커스를 자동으로 계산해 직전 위젯에 반환합니다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExUI")
+	void PopMenu();
+
+	/**
+	 * 특정 위젯 인스턴스를 찾아 스택에서 명시적으로 제거합니다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExUI")
+	void RemoveWidget(UCommonActivatableWidget* Widget);
+
+	// --- 데이터 드리븐(Data-Driven) UI 제어 API ---
+
+	/**
+	 * DataAsset을 통해 UI 매핑 정보를 글로벌 레지스트리에 등록합니다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExUI")
+	void RegisterUIData(const UExUIDataAsset* UIData);
+
+	/**
+	 * 플러그인 등 해제 시 글로벌 레지스트리에서 UI 매핑 정보를 제거합니다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExUI")
+	void UnregisterUIData(const UExUIDataAsset* UIData);
+
+	/**
+	 * 태그를 통해 UI를 특정 스택에 활성화시킵니다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExUI")
+	UCommonActivatableWidget* PushUIByTag(FGameplayTag UITag);
+
+	/**
+	 * 태그를 통해 활성화된 해당 UI를 찾아 스택에서 제거합니다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExUI")
+	void PopUIByTag(FGameplayTag UITag);
+
+private:
+	/** 현재 런타임에 등록된 모든 UI 매핑 데이터 */
+	UPROPERTY(Transient)
+	TMap<FGameplayTag, FExUIEntry> GlobalUIActiveRegistry;
+
+	/** 태그로 띄운 활성화된 위젯 객체들의 레퍼런스 트래킹용 */
+	UPROPERTY(Transient)
+	TMap<FGameplayTag, TObjectPtr<UCommonActivatableWidget>> ActivatedWidgetsByTag;
+	/** HUD 레이아웃에서 등록된 게임 플레이 층 스택 포인터 */
+	UPROPERTY(Transient)
+	TObjectPtr<UCommonActivatableWidgetStack> GameStack;
+
+	/** HUD 레이아웃에서 등록된 메뉴/팝업 층 스택 포인터 */
+	UPROPERTY(Transient)
+	TObjectPtr<UCommonActivatableWidgetStack> MenuStack;
+};
