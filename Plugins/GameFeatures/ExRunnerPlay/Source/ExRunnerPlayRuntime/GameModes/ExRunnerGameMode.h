@@ -34,22 +34,6 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Runner")
 	bool bRunnerModeEnabled = true;
 
-
-	// 현재 트레드밀의 누적 이동 거리 (가상 거리)
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ExRunner|Status")
-	float CurrentPathDistance = 0.f;
-
-	// ★ 실제 플레이어의 경로상 위치 (Chunk 삭제 판단용)
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ExRunner|Status")
-	float RealPlayerPathDistance = 0.f;
-
-	UFUNCTION(BlueprintCallable, Category = "ExRunner|Status")
-	float GetCurrentPathDistance() const { return CurrentPathDistance; }
-
-	// 플레이어 실제 위치 기반 거리 반환
-	UFUNCTION(BlueprintCallable, Category = "ExRunner|Status")
-	float GetPlayerPathDistance() const { return RealPlayerPathDistance; }
-
 	/** 러너 게임 시작 */
 	UFUNCTION(BlueprintCallable, Category = "Runner")
 	void StartRunnerGame();
@@ -84,9 +68,6 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UExObstacleManager> ObstacleManager;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<UExPathManager> PathManager;
 
 	/** 커브 설정 데이터 에셋 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Runner|Curve", meta = (AllowPrivateAccess = "true"))

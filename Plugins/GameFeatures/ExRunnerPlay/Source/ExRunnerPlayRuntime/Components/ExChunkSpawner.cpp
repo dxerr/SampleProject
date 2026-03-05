@@ -9,6 +9,7 @@
 #include "ExChunkSpawner.h"
 #include "../Actors/ExFloorChunk.h"
 #include "ExPathManager.h"
+#include "../GameStates/ExRunnerGameState.h"
 #include "../Data/ExCurveConfig.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
@@ -50,11 +51,14 @@ void UExChunkSpawner::InitializeSpawner()
 	// 기존 청크 모두 정리
 	ClearAllChunks();
 	
-	// GameMode에서 PathManager 가져오기
+	// GameState에서 PathManager 가져오기
 	UExPathManager* PM = nullptr;
-	if (AActor* Owner = GetOwner())
+	if (UWorld* World = GetWorld())
 	{
-		PM = Owner->FindComponentByClass<UExPathManager>();
+		if (AExRunnerGameState* GS = World->GetGameState<AExRunnerGameState>())
+		{
+			PM = GS->PathManager;
+		}
 	}
 
 	// [Fix] 초기 세그먼트(0,0,0 위치) 스폰
@@ -91,11 +95,14 @@ AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
 
 	// ── PathManager 연동: 경로 기반 스폰 ──
 
-	// GameMode에서 PathManager 가져오기
+	// GameState에서 PathManager 가져오기
 	UExPathManager* PM = nullptr;
-	if (AActor* Owner = GetOwner())
+	if (UWorld* World = GetWorld())
 	{
-		PM = Owner->FindComponentByClass<UExPathManager>();
+		if (AExRunnerGameState* GS = World->GetGameState<AExRunnerGameState>())
+		{
+			PM = GS->PathManager;
+		}
 	}
 
 	if (PM && PM->CurveConfig)

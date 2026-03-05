@@ -6,11 +6,10 @@
 #include "../Components/ExChunkSpawner.h"
 #include "../Components/ExObstacleManager.h"
 #include "../Components/ExPathManager.h"
+#include "../GameStates/ExRunnerGameState.h"
 #include "../Data/ExCurveConfig.h"
-#include "../Actors/ExFloorChunk.h"
 #include "ExGameplayTags.h"
 #include "ExGameplayEventSubsystem.h"
-#include "ExDebugStateSubsystem.h"
 #include "Kismet/GameplayStatics.h"
 
 #include "GameFramework/Character.h"
@@ -21,149 +20,8 @@ DEFINE_LOG_CATEGORY_STATIC(LogExRunnerPlay, Log, All);
 
 // ... (Existing Include)
 
-void AExRunnerGameMode::UpdateCharacterRotation(float DeltaTime)
-{
-	if (!PathManager || !CurveConfig) return;
+// 캐릭터 조향(UpdateCharacterRotation) 로직은 UExRunnerMovementComponent로 이관되었습니다.
 
-	APawn* PlayerPawn = GetCachedPlayerPawn();
-	if (!PlayerPawn) return;
-
-	AController* Controller = PlayerPawn->GetController();
-	if (!Controller) return;
-
-	// ★ 각도 계산 보정: 캐릭터가 (0,0,0)이 아닌 오프셋 위치(TargetX 전후)에 있을 수 있음.
-	// 기존: CurrentPathDistance + X (직선 가정, 곡선에서 부정확)
-	// 개선: 실제 월드 위치를 경로에 투영하여 정확한 경로 거리 산출
-	float PlayerPathDist = PathManager->GetClosestDistanceAtLocation(PlayerPawn->GetActorLocation(), CurrentPathDistance, 3000.f);
-
-	// ★ 실제 플레이어 거리 저장 (Chunk 삭제 판단용)
-	RealPlayerPathDistance = PlayerPathDist;
-
-	// 현재 경로 거리에서의 접선 방향 및 위치 조회
-	FRotator PathDirection = PathManager->GetDirectionAtDistance(PlayerPathDist);
-	FVector ExpectedPos = PathManager->GetPositionAtDistance(PlayerPathDist);
-	FVector ActualPos = PlayerPawn->GetActorLocation();
-
-	// ★ 디버그 드로잉 (빨강=실제, 초록=계산된 경로 위치)
-	if (bRunnerModeEnabled) // 너무 많으면 정신없으니 모드 체크
-	{
-		DrawDebugCoordinateSystem(GetWorld(), ActualPos, PlayerPawn->GetActorRotation(), 100.f, false, -1.f, 0, 2.f);
-		DrawDebugCoordinateSystem(GetWorld(), ExpectedPos, PathDirection, 100.f, false, -1.f, 0, 2.f);
-		DrawDebugLine(GetWorld(), ActualPos, ExpectedPos, FColor::Yellow, false, -1.f, 0, 2.f);
-
-		// 화면 출력 디버깅
-		if (GEngine)
-		{
-			FString DebugMsg = FString::Printf(TEXT("Dist: %.0f | Err: %.0f | PathYaw: %.1f | PlayerYaw: %.1f"), 
-				PlayerPathDist, FVector::Dist(ActualPos, ExpectedPos), PathDirection.Yaw, PlayerPawn->GetActorRotation().Yaw);
-			GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Cyan, DebugMsg);
-		}
-	}
-
-	// ★ Controller Yaw 회전 처리 (카메라 연동)
-	// 캐릭터 자체 회전 대신 컨트롤러 회전을 사용해야 SpringArm 등 카메라가 따라옴.
-	FRotator CurrentControlRot = Controller->GetControlRotation();
-
-	// [Fix] 캐릭터가 Controller 회전을 따르도록 설정 강제
-	PlayerPawn->bUseControllerRotationYaw = true;
-	PlayerPawn->bUseControllerRotationPitch = false;
-	PlayerPawn->bUseControllerRotationRoll = false;
-
-	// ACharacter인 경우, Movement 컴포넌트 설정도 확인
-	if (ACharacter* Character = Cast<ACharacter>(PlayerPawn))
-	{
-		if (UCharacterMovementComponent* CMC = Character->GetCharacterMovement())
-		{
-			CMC->bOrientRotationToMovement = false;
-		}
-	}
-
-	// ──────────────────────────────────────────────
-	// [Steering Correction] 조향 보정 로직
-	// ──────────────────────────────────────────────
-	// 1. Lookahead: 반응 지연 보상을 위해 조금 앞의 경로를 조회
-	
-	// 개선: 트레드밀 속도 대신 실제 캐릭터의 Velocity 사용
-	float PlayerSpeed = PlayerPawn->GetVelocity().Size();
-	if (PlayerSpeed < 10.f)
-	{
-		// 움직이지 않을 때는 기본 600 정도를 기준으로 설정
-		PlayerSpeed = 600.f;
-	}
-	
-	const float LookAheadAmount = PlayerSpeed * 0.3f; // 0.3초 앞
-	const float LookAheadDist = PlayerPathDist + LookAheadAmount;
-
-	FRotator TargetRot = PathManager->GetDirectionAtDistance(LookAheadDist);
-
-	// 2. Lateral Error(횡방향 오차) 계산
-	// 현재 위치에서 가장 가까운 경로상의 점
-	FVector PathPos = PathManager->GetPositionAtDistance(PlayerPathDist);
-	// 경로의 오른쪽 벡터 (Yaw + 90)
-	FVector PathRight = FRotationMatrix(PathDirection).GetScaledAxis(EAxis::Y);
-	// 플레이어가 경로 중심에서 얼마나 오른쪽/왼쪽에 있는지 (Right +, Left -)
-	FVector ErrorVec = PlayerPawn->GetActorLocation() - PathPos;
-	float LateralOffset = FVector::DotProduct(ErrorVec, PathRight);
-
-	// 캐릭터가 이동하려는 레인(Lane)의 추가 목표 오프셋
-	float DesiredLateralOffset = 0.f;
-	if (UExRunnerMovementComponent* MoveComp = PlayerPawn->FindComponentByClass<UExRunnerMovementComponent>())
-	{
-		DesiredLateralOffset = MoveComp->GetCurrentLaneYOffset();
-	}
-	float LateralError = LateralOffset - DesiredLateralOffset;
-
-	// 3. P-Control Steering (회전 조향)
-	// [수정] 기존에는 횡방향 오차(LateralError)를 줄이려고 캐릭터를 경로 중앙으로 비스듬히 틀어버리는(SteeringYaw) 로직이 있었습니다.
-	// 하지만 러너 게임에서는 캐릭터가 항상 '진행 방향의 정면(Spline Tangent, 빨간색 X축)'을 바라보는 것이 자연스럽습니다.
-	// 횡이동은 캐릭터의 로컬 우측(ActorRightVector)을 통해 이루어지므로, 회전은 오직 경로의 방향(TargetRot)만 순수하게 따라가도록 변경합니다.
-	
-	/*
-	const float SteeringGain = -0.15f; 
-	float SteeringYaw = LateralError * SteeringGain;
-	SteeringYaw = FMath::Clamp(SteeringYaw, -15.f, 15.f);
-	TargetRot.Yaw += SteeringYaw;  // <- 이 부분 때문에 캐릭터가 비스듬하게 회전하는 문제 발생
-	*/
-
-	// 4. 부드러운 보간 (RInterpTo)
-	FRotator NewControlRot = FMath::RInterpTo(
-		CurrentControlRot,
-		TargetRot,
-		DeltaTime,
-		CurveConfig->CharacterRotationInterpSpeed * 1.5f // 반응성 향상
-	);
-
-	// Yaw만 적용 (Pitch/Roll은 카메라이거나 고정)
-	NewControlRot.Pitch = CurrentControlRot.Pitch;
-	NewControlRot.Roll = CurrentControlRot.Roll;
-
-	// [Fix] 강제 회전 로직 복원 및 개선
-	Controller->SetControlRotation(NewControlRot);
-
-	// 5. 물리적 횡이동(Drift) 원심력 보정
-	// 캐릭터 머리와 몸통의 회전(Steering)을 완전히 앞쪽으로 고정했기 때문에, 곡선 구간에서는 탄젠트 직진성에 의해
-	// 자연스레 트랙 바닥 중심으로부터 바깥으로 밀려나가게(Drift) 됩니다.
-	// 따라서 몸을 틀지 않고도 선로 중앙을 유지할 수 있도록, 오차(LateralError)만큼 부드럽게 위치를 땡겨줍니다.
-	if (FMath::Abs(LateralError) > 1.0f)
-	{
-		const float DriftCorrectionSpeed = 15.0f; // 밀려나는 것을 잡아주는 인력 강도
-		FVector CorrectionDelta = -PathRight * (LateralError * DriftCorrectionSpeed * DeltaTime);
-		
-		// 스윕(Sweep)을 켜서 혹시라도 벽이 있으면 뚫고 가지 않도록 안전하게 이동
-		PlayerPawn->AddActorWorldOffset(CorrectionDelta, true);
-	}
-
-	// 캐릭터 자체는 bUseControllerRotationYaw 옵션에 의해 자동으로 Controller의 Yaw를 따라가게 되므로,
-	// 별도의 SetActorRotation 호출은 불필요하고 충돌을 일으킬 수 있어 제거합니다.
-
-	// 디버그 출력 업데이트
-	if (bRunnerModeEnabled && GEngine)
-	{
-		FString SteeringMsg = FString::Printf(TEXT("Offset: %.1f | Steer: %.1f | FinalYaw: %.1f"), 
-			LateralOffset, 0.0f, TargetRot.Yaw);
-		GEngine->AddOnScreenDebugMessage(2, 0.f, FColor::Orange, SteeringMsg);
-	}
-}
 
 AExRunnerGameMode::AExRunnerGameMode()
 {
@@ -173,7 +31,10 @@ AExRunnerGameMode::AExRunnerGameMode()
 
 	ChunkSpawner = CreateDefaultSubobject<UExChunkSpawner>(TEXT("ChunkSpawner"));
 	ObstacleManager = CreateDefaultSubobject<UExObstacleManager>(TEXT("ObstacleManager"));
-	PathManager = CreateDefaultSubobject<UExPathManager>(TEXT("PathManager"));
+	
+	// PathManager는 AExRunnerGameState로 이관되었습니다.
+	// [Fix] 블루프린트 생성 시 부모의 게임스테이트가 상속되지 않도록 명시적 기본값 설정
+	GameStateClass = AExRunnerGameState::StaticClass();
 }
 
 void AExRunnerGameMode::BeginPlay()
@@ -198,19 +59,23 @@ void AExRunnerGameMode::BeginPlay()
 
 void AExRunnerGameMode::StartRunnerGame()
 {
-	CurrentPathDistance = 0.f;
-
-	// PathManager 초기화
-	if (PathManager)
+	AExRunnerGameState* GS = GetGameState<AExRunnerGameState>();
+	if (GS)
 	{
-		if (CurveConfig)
+		GS->CurrentPathDistance = 0.f;
+		GS->RealPlayerPathDistance = 0.f;
+
+		// PathManager 초기화
+		if (GS->PathManager)
 		{
-			PathManager->CurveConfig = CurveConfig;
+			if (CurveConfig)
+			{
+				GS->PathManager->CurveConfig = CurveConfig;
+			}
+			GS->PathManager->InitializePath(FVector::ZeroVector, FRotator::ZeroRotator);
+			UE_LOG(LogExRunnerPlay, Log, TEXT("PathManager 초기화 완료 (CurveConfig=%s)"),
+				CurveConfig ? *CurveConfig->GetName() : TEXT("None"));
 		}
-		PathManager->InitializePath(FVector::ZeroVector, FRotator::ZeroRotator);
-		// 초기 경로 오프셋이 필요하다면 여기서 설정할 수도 있음.
-		UE_LOG(LogExRunnerPlay, Log, TEXT("PathManager 초기화 완료 (CurveConfig=%s)"),
-			CurveConfig ? *CurveConfig->GetName() : TEXT("None"));
 	}
 
 	if (ChunkSpawner)
@@ -251,21 +116,17 @@ void AExRunnerGameMode::Tick(float DeltaTime)
 
 	// 실제 이동한 거리를 RealPlayerPathDistance에 갱신
 	// 플레이어 위치를 기준으로 가장 가까운 경로 상의 거리(투영)를 계산하여 추적합니다.
-	FVector PlayerLocation = PlayerPawn->GetActorLocation();
-	RealPlayerPathDistance = PathManager->GetClosestDistanceAtLocation(PlayerLocation, RealPlayerPathDistance, 2000.f);
-	
-	// 가상 경로 거리도 동기화 (트레드밀/LookAhead 참조 등에 사용)
-	CurrentPathDistance = RealPlayerPathDistance;
-
-	// 1. 캐릭터 회전 갱신 (경로 접선 방향으로 커브 제어)
-	// ★ 중요: 등반(Climb) 등 Traversal 액션 중에는 
-	// 캐릭터가 장애물의 로컬 표면에 워핑/밀착해야 하므로 GameMode의 전체 회전 통제를 잠시 해제합니다.
-	if (!bIsTraversing)
+	AExRunnerGameState* GS = GetGameState<AExRunnerGameState>();
+	if (GS && GS->PathManager)
 	{
-		UpdateCharacterRotation(DeltaTime);
+		FVector PlayerLocation = PlayerPawn->GetActorLocation();
+		GS->RealPlayerPathDistance = GS->PathManager->GetClosestDistanceAtLocation(PlayerLocation, GS->RealPlayerPathDistance, 2000.f);
+		
+		// 가상 경로 거리도 동기화 (트레드밀/LookAhead 참조 등에 사용)
+		GS->CurrentPathDistance = GS->RealPlayerPathDistance;
 	}
-	
-	// 2. 디버그 및 진행 모니터링 기능은 별도 갱신 필요시 추가
+
+	// 캐릭터 위치/방향 조향 로직은 클라이언트 보간을 위해 MovementComponent로 이관되었습니다.
 }
 
 // ──────────────────────────────────────────────

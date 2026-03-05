@@ -68,6 +68,9 @@ private:
 	/** 레인 위치 업데이트 (Interp) */
 	void UpdateLanePosition(float DeltaTime);
 
+	/** 캐릭터 조향(Rotation) 및 스티어링 업데이트 (GameState의 PathManager 연동) */
+	void UpdateCharacterRotation(float DeltaTime);
+
 	/** 상위 Mover Pawn 바인딩 시도 (성공 시 타이머 종료) */
 	void TryInitializeMover();
 

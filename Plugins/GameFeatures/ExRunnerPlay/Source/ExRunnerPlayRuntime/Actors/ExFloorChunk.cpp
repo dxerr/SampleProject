@@ -2,6 +2,7 @@
 
 #include "ExFloorChunk.h"
 #include "../GameModes/ExRunnerGameMode.h"
+#include "../GameStates/ExRunnerGameState.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SplineMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -80,8 +81,11 @@ void AExFloorChunk::Tick(float DeltaTime)
 
 	if (CachedGameMode)
 	{
-		// 경로 기반 삭제 로직. 트레드밀이 아닌 캐릭터 주행 기반 시스템.
-		float PlayerDist = CachedGameMode->GetPlayerPathDistance();
+		float PlayerDist = 0.f;
+		if (AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>())
+		{
+			PlayerDist = GS->CurrentPathDistance;
+		}
 		// KillZ는 스폰 오프셋(음수값)으로, 캐릭터 뒤쪽 범위를 의미
 		bReachedKillZ = (PathDistance < PlayerDist + KillZ);
 	}

@@ -7,6 +7,11 @@
 #include "MoverDataModelTypes.h"
 #include "MoverComponent.h"
 #include "ExRunnerStatComponent.h"
+#include "../GameStates/ExRunnerGameState.h"
+#include "../Components/ExPathManager.h"
+#include "../Data/ExCurveConfig.h"
+#include "GameFramework/Character.h"
+#include "DrawDebugHelpers.h"
 
 // 디버깅용 로그 카테고리 정의
 DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
@@ -101,7 +106,10 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 	// 아직 부모 폰에 안 붙었다면 위치 업데이트 로직 등은 스킵
 	if (!TargetPawn) return;
 
-	// 4. 레인 변경 처리 (보간)
+	// 1. 캐릭터 조향 업데이트 (경로 추적)
+	UpdateCharacterRotation(DeltaTime);
+
+	// 2. 레인 변경 처리 (보간)
 	UpdateLanePosition(DeltaTime);
 }
 void UExRunnerMovementComponent::MoveLeft()
@@ -159,5 +167,97 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
 			// 레인 이동 중 충돌 시 로그 (옵션)
 			// UE_LOG(LogExRunnerMovement, Warning, TEXT("[LaneMove] Blocked by %s"), *SweepHit.GetActor()->GetName());
 		}
+	}
+}
+
+void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
+{
+	if (!TargetPawn) return;
+
+	AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
+	if (!GS || !GS->PathManager || !GS->PathManager->CurveConfig) return;
+
+	AController* Controller = TargetPawn->GetController();
+	if (!Controller) return;
+
+	// IsLocallyControlled 거나 HasAuthority일 때만 컨트롤러 회전을 조작합니다.
+	if (!TargetPawn->IsLocallyControlled() && !TargetPawn->HasAuthority()) return;
+
+	// [Fix] 캐릭터가 Controller 회전을 따르도록 설정 강제
+	TargetPawn->bUseControllerRotationYaw = true;
+	TargetPawn->bUseControllerRotationPitch = false;
+	TargetPawn->bUseControllerRotationRoll = false;
+
+	// ACharacter인 경우, Movement 컴포넌트 설정도 확인
+	if (ACharacter* Character = Cast<ACharacter>(TargetPawn))
+	{
+		if (UCharacterMovementComponent* CMC = Character->GetCharacterMovement())
+		{
+			CMC->bOrientRotationToMovement = false;
+		}
+	}
+
+	// 플레이어 위치 기반 현재 경로 거리
+	float PlayerPathDist = GS->RealPlayerPathDistance; 
+	
+	// 개선: 트레드밀 속도 대신 실제 캐릭터의 Velocity 사용
+	float PlayerSpeed = TargetPawn->GetVelocity().Size();
+	if (PlayerSpeed < 10.f)
+	{
+		PlayerSpeed = 600.f;
+	}
+	
+	const float LookAheadAmount = PlayerSpeed * 0.3f; // 0.3초 앞
+	const float LookAheadDist = PlayerPathDist + LookAheadAmount;
+
+	FRotator PathDirection = GS->PathManager->GetDirectionAtDistance(PlayerPathDist);
+	FRotator TargetRot = GS->PathManager->GetDirectionAtDistance(LookAheadDist);
+
+	// Lateral Error(횡방향 오차) 계산
+	FVector PathPos = GS->PathManager->GetPositionAtDistance(PlayerPathDist);
+	FVector PathRight = FRotationMatrix(PathDirection).GetScaledAxis(EAxis::Y);
+	FVector ErrorVec = TargetPawn->GetActorLocation() - PathPos;
+	float LateralOffset = FVector::DotProduct(ErrorVec, PathRight);
+
+	float DesiredLateralOffset = CurrentLaneYOffset;
+	float LateralError = LateralOffset - DesiredLateralOffset;
+
+	// 부드러운 보간 (RInterpTo)
+	FRotator CurrentControlRot = Controller->GetControlRotation();
+	FRotator NewControlRot = FMath::RInterpTo(
+		CurrentControlRot,
+		TargetRot,
+		DeltaTime,
+		GS->PathManager->CurveConfig->CharacterRotationInterpSpeed * 1.5f // 반응성 향상
+	);
+
+	NewControlRot.Pitch = CurrentControlRot.Pitch;
+	NewControlRot.Roll = CurrentControlRot.Roll;
+
+	Controller->SetControlRotation(NewControlRot);
+
+	// 물리적 횡이동(Drift) 원심력 보정
+	if (FMath::Abs(LateralError) > 1.0f)
+	{
+		const float DriftCorrectionSpeed = 15.0f; // 밀려나는 것을 잡아주는 인력 강도
+		FVector CorrectionDelta = -PathRight * (LateralError * DriftCorrectionSpeed * DeltaTime);
+		TargetPawn->AddActorWorldOffset(CorrectionDelta, true);
+	}
+
+	// ★ 디버그 드로잉 (실제 위치와 경로 위치 간의 차이 가시화)
+	DrawDebugCoordinateSystem(GetWorld(), TargetPawn->GetActorLocation(), TargetPawn->GetActorRotation(), 100.f, false, -1.f, 0, 2.f);
+	DrawDebugCoordinateSystem(GetWorld(), PathPos, PathDirection, 100.f, false, -1.f, 0, 2.f);
+	DrawDebugLine(GetWorld(), TargetPawn->GetActorLocation(), PathPos, FColor::Yellow, false, -1.f, 0, 2.f);
+
+	// 화면 출력 디버깅
+	if (GEngine)
+	{
+		FString DebugMsg = FString::Printf(TEXT("Dist: %.0f | Err: %.0f | PathYaw: %.1f | PlayerYaw: %.1f"), 
+			PlayerPathDist, FVector::Dist(TargetPawn->GetActorLocation(), PathPos), PathDirection.Yaw, TargetPawn->GetActorRotation().Yaw);
+		GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Cyan, DebugMsg);
+
+		FString SteeringMsg = FString::Printf(TEXT("Offset: %.1f | FinalYaw: %.1f"), 
+			LateralOffset, TargetRot.Yaw);
+		GEngine->AddOnScreenDebugMessage(2, 0.f, FColor::Orange, SteeringMsg);
 	}
 }
