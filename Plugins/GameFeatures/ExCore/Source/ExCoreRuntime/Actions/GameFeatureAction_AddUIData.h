@@ -31,8 +31,5 @@ public:
 #endif
 
 private:
-	/** 현재 떠있는 모든 LocalPlayer들의 UI 매니저를 찾아 등록합니다. */
-	void RegisterToAllLocalPlayers();
-	/** UI 매니저에서 등록된 데이터를 해제합니다. */
-	void UnregisterFromAllLocalPlayers();
+
 };

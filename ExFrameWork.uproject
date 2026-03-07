@@ -99,10 +99,6 @@
 			"Enabled": true
 		},
 		{
-			"Name": "ExRunnerPlay",
-			"Enabled": true
-		},
-		{
 			"Name": "UnrealCopilot",
 			"Enabled": true
 		},
@@ -112,6 +108,10 @@
 		},
 		{
 			"Name": "ModelViewViewModel",
+			"Enabled": true
+		},
+		{
+			"Name": "ExRunnerPlay",
 			"Enabled": true
 		}
 	],

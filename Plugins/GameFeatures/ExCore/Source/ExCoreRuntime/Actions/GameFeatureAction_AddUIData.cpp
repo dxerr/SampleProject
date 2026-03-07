@@ -12,73 +12,22 @@ void UGameFeatureAction_AddUIData::OnGameFeatureActivating(FGameFeatureActivatin
 {
 	Super::OnGameFeatureActivating(Context);
 
-	// 동기 로딩 방식 (추후 비동기로 고도화 가능)
-	RegisterToAllLocalPlayers();
+	// [Lazy Initialization] 
+	// 지연 로딩을 위해 현재 접속한, 혹은 앞으로 접속할 
+	// 모든 UExUIManagerSubsystem 공유 대기열에 이 데이터 에셋을 추가합니다.
+	for (const TSoftObjectPtr<UExUIDataAsset>& SoftUIData : UIDataList)
+	{
+		UExUIManagerSubsystem::AddPendingUIData(SoftUIData);
+	}
 }
 
 void UGameFeatureAction_AddUIData::OnGameFeatureDeactivating(FGameFeatureDeactivatingContext& Context)
 {
 	Super::OnGameFeatureDeactivating(Context);
 
-	UnregisterFromAllLocalPlayers();
-}
-
-void UGameFeatureAction_AddUIData::RegisterToAllLocalPlayers()
-{
-	if (!GEngine) return;
-
-	for (const FWorldContext& WorldContext : GEngine->GetWorldContexts())
+	for (const TSoftObjectPtr<UExUIDataAsset>& SoftUIData : UIDataList)
 	{
-		UWorld* World = WorldContext.World();
-		if (World && World->IsGameWorld())
-		{
-			if (UGameInstance* GameInstance = World->GetGameInstance())
-			{
-				for (ULocalPlayer* LocalPlayer : GameInstance->GetLocalPlayers())
-				{
-					if (UExUIManagerSubsystem* UIManager = LocalPlayer->GetSubsystem<UExUIManagerSubsystem>())
-					{
-						for (const TSoftObjectPtr<UExUIDataAsset>& SoftUIData : UIDataList)
-						{
-							if (UExUIDataAsset* UIData = SoftUIData.LoadSynchronous())
-							{
-								UIManager->RegisterUIData(UIData);
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-}
-
-void UGameFeatureAction_AddUIData::UnregisterFromAllLocalPlayers()
-{
-	if (!GEngine) return;
-
-	for (const FWorldContext& WorldContext : GEngine->GetWorldContexts())
-	{
-		UWorld* World = WorldContext.World();
-		if (World && World->IsGameWorld())
-		{
-			if (UGameInstance* GameInstance = World->GetGameInstance())
-			{
-				for (ULocalPlayer* LocalPlayer : GameInstance->GetLocalPlayers())
-				{
-					if (UExUIManagerSubsystem* UIManager = LocalPlayer->GetSubsystem<UExUIManagerSubsystem>())
-					{
-						for (const TSoftObjectPtr<UExUIDataAsset>& SoftUIData : UIDataList)
-						{
-							// 이미 메모리에 로드되어 있거나 캐시된 경우에만 지웁니다
-							if (UExUIDataAsset* UIData = SoftUIData.Get())
-							{
-								UIManager->UnregisterUIData(UIData);
-							}
-						}
-					}
-				}
-			}
-		}
+		UExUIManagerSubsystem::RemovePendingUIData(SoftUIData);
 	}
 }
 

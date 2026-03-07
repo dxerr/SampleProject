@@ -75,6 +75,13 @@ public:
 	// --- 데이터 드리븐(Data-Driven) UI 제어 API ---
 
 	/**
+	 * 싱글톤/지연 초기화 패턴: GameFeature 활성화 시 바로 로드하지 않고
+	 * 대기열에 등록만 해둡니다. 실제 UI 호출 시점에 로딩됩니다.
+	 */
+	static void AddPendingUIData(const TSoftObjectPtr<UExUIDataAsset>& SoftUIData);
+	static void RemovePendingUIData(const TSoftObjectPtr<UExUIDataAsset>& SoftUIData);
+
+	/**
 	 * DataAsset을 통해 UI 매핑 정보를 글로벌 레지스트리에 등록합니다.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "ExUI")
@@ -99,6 +106,16 @@ public:
 	void PopUIByTag(FGameplayTag UITag);
 
 private:
+	/** 태그로 UI를 찾기 전, 대기 중인 데이터를 실제로 로드하여 레지스트리에 병합합니다. */
+	void ProcessPendingUIData();
+
+	/** 전역 대기열 (모든 GameFeature 액션들이 공유) */
+	static TArray<TSoftObjectPtr<UExUIDataAsset>> PendingUIDataList;
+
+	/** 이 로컬 플레이어 서브시스템에서 이미 로드처리를 완료한 대상 캐싱 */
+	UPROPERTY(Transient)
+	TSet<TObjectPtr<const UExUIDataAsset>> LoadedUIDataAssets;
+
 	/** 현재 런타임에 등록된 모든 UI 매핑 데이터 */
 	UPROPERTY(Transient)
 	TMap<FGameplayTag, FExUIEntry> GlobalUIActiveRegistry;

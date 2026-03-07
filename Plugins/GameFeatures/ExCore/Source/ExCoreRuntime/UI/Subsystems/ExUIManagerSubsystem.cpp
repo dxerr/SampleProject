@@ -5,6 +5,9 @@
 #include "UI/Widgets/ExModalWidget.h"
 #include "Engine/LocalPlayer.h"
 
+// GameFeatureAction 등에서 지연(Lazy) 로드용으로 전역 공유하는 대기열
+TArray<TSoftObjectPtr<UExUIDataAsset>> UExUIManagerSubsystem::PendingUIDataList;
+
 void UExUIManagerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -118,6 +121,33 @@ void UExUIManagerSubsystem::RemoveWidget(UCommonActivatableWidget* Widget)
 
 // --- Data-Driven UI API Implementation ---
 
+void UExUIManagerSubsystem::AddPendingUIData(const TSoftObjectPtr<UExUIDataAsset>& SoftUIData)
+{
+	PendingUIDataList.AddUnique(SoftUIData);
+}
+
+void UExUIManagerSubsystem::RemovePendingUIData(const TSoftObjectPtr<UExUIDataAsset>& SoftUIData)
+{
+	PendingUIDataList.Remove(SoftUIData);
+}
+
+void UExUIManagerSubsystem::ProcessPendingUIData()
+{
+	// 전역 대기열에 들어온 소프트 참조들을 순회하면서 현재 사용자의 시스템에 로드/등록해줍니다
+	for (const TSoftObjectPtr<UExUIDataAsset>& SoftUIData : PendingUIDataList)
+	{
+		// 이전에 동기/비동기로 이미 로드된 적이 있는지 캐시 검사
+		if (UExUIDataAsset* UIData = SoftUIData.LoadSynchronous())
+		{
+			if (!LoadedUIDataAssets.Contains(UIData))
+			{
+				RegisterUIData(UIData);
+				LoadedUIDataAssets.Add(UIData);
+			}
+		}
+	}
+}
+
 void UExUIManagerSubsystem::RegisterUIData(const UExUIDataAsset* UIData)
 {
 	if (!UIData) return;
@@ -147,6 +177,9 @@ UCommonActivatableWidget* UExUIManagerSubsystem::PushUIByTag(FGameplayTag UITag)
 		UE_LOG(LogTemp, Error, TEXT("[ExUIManagerSubsystem] PushUIByTag 실패: 전달된 태그가 유효하지 않습니다."));
 		return nullptr;
 	}
+
+	// [Lazy Initialization] UI 호출 시점에 밀린 데이터 로드를 수행합니다.
+	ProcessPendingUIData();
 
 	if (const FExUIEntry* Entry = GlobalUIActiveRegistry.Find(UITag))
 	{

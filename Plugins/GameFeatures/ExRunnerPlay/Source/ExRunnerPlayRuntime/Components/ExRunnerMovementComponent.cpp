@@ -12,6 +12,7 @@
 #include "../Data/ExCurveConfig.h"
 #include "GameFramework/Character.h"
 #include "DrawDebugHelpers.h"
+#include "Util/Actor/ExActorUtil.h"
 
 // 디버깅용 로그 카테고리 정의
 DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
@@ -43,12 +44,8 @@ void UExRunnerMovementComponent::TryInitializeMover()
 {
 	if (TargetPawn) return; // 이미 초기화 완료
 
-	// 상위 Pawn 찾기 (1순위: Owner, 2순위: AttachParent)
-	APawn* ParentPawn = Cast<APawn>(GetOwner());
-	if (!ParentPawn && GetOwner())
-	{
-		ParentPawn = Cast<APawn>(GetOwner()->GetAttachParentActor());
-	}
+	// ExActorUtil을 사용하여 Owner → AttachParent 순으로 Pawn 탐색
+	APawn* ParentPawn = UExActorUtil::FindOwnerPawn(this);
 
 	// 상위 Pawn의 MoverComponent를 찾아 InputProducer로 등록
 	if (ParentPawn)
@@ -105,6 +102,8 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 
 	// 아직 부모 폰에 안 붙었다면 위치 업데이트 로직 등은 스킵
 	if (!TargetPawn) return;
+
+	// 속도 수집은 ExRunnerStatComponent의 자체 타이머(StatPollInterval)가 담당합니다.
 
 	// 1. 캐릭터 조향 업데이트 (경로 추적)
 	UpdateCharacterRotation(DeltaTime);
