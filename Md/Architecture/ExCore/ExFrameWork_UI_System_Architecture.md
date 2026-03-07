@@ -1,9 +1,10 @@
 # ExFrameWork: 모던 UI 시스템 아키텍처 설계서
 
-> **버전:** v2.0  
+> **버전:** v2.1  
 > **대상 엔진:** Unreal Engine 5  
 > **프로젝트:** ExFrameWork  
 > **작성일:** 2026-03-04  
+> **최종 수정:** 2026-03-08 (MVVM View Bindings 실전 검증 결과 반영: ReadOnly/ReadWrite 구분, On Activated 시점, AutoInitialize 패턴, Mover GetVelocity, 트러블슈팅 표 추가)  
 > **의존 문서:** ExFrameWork_Multiplayer_Flow_Architecture.md (v2.0)
 
 ---
@@ -93,8 +94,12 @@ UI 갱신이 필요한 모든 상태(State) 데이터는 오직 **서버에서 �
 ### 2.2 MVVM 필수 규칙
 
 - UI 업데이트를 위해 `Event Tick`을 절대 사용하지 마라. FieldNotify 기반 데이터 바인딩만 사용한다.
-- ViewModel 프로퍼티는 `BlueprintReadOnly, FieldNotify`로 선언한다. (`BlueprintReadWrite`가 아님. ReadWrite로 하면 블루프린트에서 Setter를 거치지 않고 직접 변경하여 Broadcast가 누락된다.)
+- **View Bindings 방향에 따른 UPROPERTY 선언 구분:**
+  - **Source 전용 (ViewModel → Widget 단방향):** `BlueprintReadOnly, FieldNotify, Getter, Setter`로 선언. BP에서 직접 쓰기를 막아 Setter 우회를 방지한다.
+  - **View Bindings Target 포함 (Widget ↔ 양방향 또는 Target으로 사용):** `BlueprintReadWrite, FieldNotify, Getter, Setter`로 선언. `ReadWrite`가 없으면 View Bindings에서 Target으로 인식되지 않아 **"not writable at runtime"** 에러가 발생한다.
+  - **파생 계산값 (함수 반환):** `UFUNCTION(BlueprintPure, FieldNotify)`로 선언. Source 바인딩만 가능하며 Target으로는 사용 불가.
 - 값 변경은 반드시 Setter 함수를 통해 수행하며, Setter 내부에서 `UE_MVVM_SET_PROPERTY_VALUE` 매크로를 호출한다.
+- **ViewModel 접근 시점:** Widget에서 ViewModel에 접근할 때 `On Initialized` 이벤트는 너무 이른 시점일 수 있다. ViewModel 인스턴스(`Create Instance` 방식)는 위젯이 완전히 초기화된 후 생성되므로, 반드시 **`On Activated`** 이벤트에서 ViewModel 접근 및 초기화를 수행한다.
 
 ### 2.3 코딩 규칙
 
@@ -869,20 +874,22 @@ class EXCORERUNTIME_API UExPlayerStatsViewModel : public UMVVMViewModelBase
 
 public:
     // ── FieldNotify 프로퍼티 ──
-    // ★ BlueprintReadOnly 사용 (ReadWrite가 아님!)
-    // ReadWrite로 하면 BP에서 Setter를 거치지 않고 직접 변경하여 Broadcast가 누락된다.
+    // ★ View Bindings Source 전용: BlueprintReadOnly
+    // ★ View Bindings Target 사용: BlueprintReadWrite 필수
+    //    (ReadWrite 없으면 "not writable at runtime" 에러 발생)
 
-    UPROPERTY(BlueprintReadOnly, FieldNotify, Getter, Setter)
+    UPROPERTY(BlueprintReadWrite, FieldNotify, Getter, Setter, meta=(AllowPrivateAccess))
     float CurrentHealth = 100.f;
 
-    UPROPERTY(BlueprintReadOnly, FieldNotify, Getter, Setter)
+    UPROPERTY(BlueprintReadWrite, FieldNotify, Getter, Setter, meta=(AllowPrivateAccess))
     float MaxHealth = 100.f;
 
-    UPROPERTY(BlueprintReadOnly, FieldNotify, Getter, Setter)
+    UPROPERTY(BlueprintReadWrite, FieldNotify, Getter, Setter, meta=(AllowPrivateAccess))
     int32 CurrentScore = 0;
 
-    // ── 파생 FieldNotify 함수 (ProgressBar용 퍼센트 등) ──
+    // ── 파생 FieldNotify 함수 (ProgressBar용 퍼센트, 포맷 텍스트 등) ──
     // Pure, Const, 리턴값만, 파라미터 없음 → FieldNotify 함수 조건 충족
+    // Source 바인딩만 가능 (Target 불가)
     UFUNCTION(BlueprintPure, FieldNotify)
     float GetHealthPercent() const;
 
@@ -990,9 +997,59 @@ C++ ViewModel을 UMG Widget과 연결하려면 에디터에서 다음 작업이 
 - [ ] `SetCurrentHealth(50.f)` 호출 시 바인딩된 ProgressBar가 자동으로 50%로 업데이트된다.
 - [ ] `SetCurrentScore(100)` 호출 시 바인딩된 TextBlock이 자동으로 "100"으로 업데이트된다.
 - [ ] `Event Tick`이 UI 업데이트에 사용되지 않는다.
-- [ ] FieldNotify 프로퍼티가 `BlueprintReadOnly`로 선언되어 있다 (ReadWrite가 아님).
+- [ ] View Bindings Target으로 사용하는 프로퍼티는 `BlueprintReadWrite`로 선언되어 있다.
 - [ ] Setter 내부에서 `UE_MVVM_SET_PROPERTY_VALUE` 매크로가 사용된다.
 - [ ] 파생 필드(`GetHealthPercent`)가 관련 프로퍼티 변경 시 함께 Broadcast된다.
+- [ ] ViewModel 초기화 코드가 `On Initialized`가 아닌 `On Activated` 이벤트에서 호출된다.
+
+---
+
+## 7.6 GameFeature ViewModel 연동 패턴 (역참조 방지)
+
+**문제:** GameFeature(ExRunnerPlay)의 ViewModel이 특정 컴포넌트(`ExRunnerStatComponent`)를 초기화할 때, Core BP(`ExSandboxCharacter_Mover`)가 Feature 클래스를 직접 참조하면 Core → Feature 역참조가 발생한다.
+
+**해결:** Feature ViewModel에 `AutoInitialize(PlayerController)` 함수를 제공하여, BP 노드 1개로 내부에서 컴포넌트를 자동 탐색하고 바인딩한다.
+
+```cpp
+// ExRunnerStatsViewModel.h (ExRunnerPlay 모듈)
+UFUNCTION(BlueprintCallable, Category="ExUI|RunnerViewModel")
+void AutoInitialize(APlayerController* InController);
+
+// ExRunnerStatsViewModel.cpp
+void UExRunnerStatsViewModel::AutoInitialize(APlayerController* InController)
+{
+    if (!InController) return;
+    APawn* OwnerPawn = InController->GetPawn();
+    if (!OwnerPawn) return;
+
+    // 1순위: Pawn 직접 탐색
+    if (UExRunnerStatComponent* Direct = OwnerPawn->FindComponentByClass<UExRunnerStatComponent>())
+    {
+        InitializeRunnerBindings(Direct);
+        return;
+    }
+    // 2순위: Attach된 Child Actor 순회 (SkeletalMesh Actor 등)
+    TArray<AActor*> AttachedActors;
+    OwnerPawn->GetAttachedActors(AttachedActors, true, true);
+    for (AActor* Child : AttachedActors)
+    {
+        if (UExRunnerStatComponent* Found = Child->FindComponentByClass<UExRunnerStatComponent>())
+        {
+            InitializeRunnerBindings(Found);
+            return;
+        }
+    }
+}
+```
+
+**Blueprint 연결 (WBP_ExRunnerSpeedBar):**
+```
+On Activated
+  → Get ExRunnerStatsViewModel
+  → AutoInitialize( GetOwningPlayer() )   ← 단 하나의 노드!
+```
+
+**원칙:** 탐색/초기화 로직은 항상 Feature 모듈 내부 함수로 캡슐화한다. Core BP는 Feature 클래스를 직접 참조할 수 없다.
 
 ---
 
@@ -1167,17 +1224,33 @@ void UExMainHUDWidget::HandleInventoryButtonClicked()
 - ExCore `.Build.cs` 모듈 추가
 - 에디터 프로젝트 설정 (4.2절 전체)
 
-### 2단계: UI 매니저 (1단계 완료 후)
-1. `ExCore/Source/ExCoreRuntime/UI/Subsystems/ExUIManagerSubsystem.h` / `.cpp`
+### 2단계: UI 공용 유틸 (1단계 완료 후)
+1. `ExCore/Source/ExCoreRuntime/Util/Actor/ExActorUtil.h` / `.cpp` ← Actor/컴포넌트 계층 탐색 유틸
 
-### 3단계: 3분류 베이스 위젯 (2단계 승인 후)
-2. `ExCore/Source/ExCoreRuntime/UI/Widgets/ExHUDLayoutWidget.h` / `.cpp`
-3. `ExCore/Source/ExCoreRuntime/UI/Widgets/ExWindowWidget.h` / `.cpp`
-4. `ExCore/Source/ExCoreRuntime/UI/Widgets/ExModalWidget.h` / `.cpp`
-5. `ExCore/Source/ExCoreRuntime/UI/Widgets/ExBaseButtonWidget.h` / `.cpp`
+### 3단계: UI 매니저 (2단계 완료 후)
+2. `ExCore/Source/ExCoreRuntime/UI/Subsystems/ExUIManagerSubsystem.h` / `.cpp`
 
-### 4단계: MVVM ViewModel (3단계 승인 후)
-6. `ExCore/Source/ExCoreRuntime/UI/ViewModels/ExPlayerStatsViewModel.h` / `.cpp`
+### 4단계: 3분류 베이스 위젯 (3단계 승인 후)
+3. `ExCore/Source/ExCoreRuntime/UI/Widgets/ExHUDLayoutWidget.h` / `.cpp`
+4. `ExCore/Source/ExCoreRuntime/UI/Widgets/ExWindowWidget.h` / `.cpp`
+5. `ExCore/Source/ExCoreRuntime/UI/Widgets/ExModalWidget.h` / `.cpp`
+6. `ExCore/Source/ExCoreRuntime/UI/Widgets/ExBaseButtonWidget.h` / `.cpp`
 
-### 5단계: 하이브리드 예시 (4단계 승인 후)
-7. `ExCore/Source/ExCoreRuntime/UI/Widgets/ExMainHUDWidget.h` / `.cpp`
+### 5단계: MVVM ViewModel (4단계 승인 후)
+7. `ExCore/Source/ExCoreRuntime/UI/ViewModels/ExPlayerStatsViewModel.h` / `.cpp`
+
+### 6단계: 하이브리드 예시 (5단계 승인 후)
+8. `ExCore/Source/ExCoreRuntime/UI/Widgets/ExMainHUDWidget.h` / `.cpp`
+
+---
+
+## 11. 실전 교훈 (트러블슈팅 기록)
+
+| 증상 | 원인 | 해결 |
+|------|------|------|
+| View Bindings "not writable at runtime" | Target 프로퍼티에 `BlueprintReadOnly` 선언 | `BlueprintReadWrite`로 변경 |
+| View Bindings Source에 변수가 노출 안 됨 | `UFUNCTION`만 선언, `UPROPERTY` 없음 | `UPROPERTY(FieldNotify, Setter, Getter)` 추가 |
+| float → FText 바인딩 타입 불일치 | Source가 float, Target이 FText | `UFUNCTION(BlueprintPure, FieldNotify)`로 FText 반환 함수 추가하여 Source 교체 |
+| ViewModel Getter가 None 반환 | `On Initialized`에서 ViewModel 접근 (너무 이른 시점) | `On Activated`로 변경 |
+| `APawn::GetVelocity()` 항상 0 반환 | Mover 시스템은 자체 물리 시뮬레이션 사용 | `UMoverComponent::GetVelocity()` 직접 사용 |
+| Core BP가 Feature 클래스 직접 참조 | BP에서 컴포넌트를 직접 탐색/연결 | Feature ViewModel에 `AutoInitialize(PlayerController)` 함수 제공 |
