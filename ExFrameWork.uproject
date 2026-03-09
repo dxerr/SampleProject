@@ -97,11 +97,7 @@
 		{
 			"Name": "MotionTrajectory",
 			"Enabled": true
-		},
-		{
-			"Name": "UnrealCopilot",
-			"Enabled": true
-		},
+		},		
 		{
 			"Name": "CommonUI",
 			"Enabled": true
