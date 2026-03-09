@@ -33,6 +33,8 @@ public class ExRunnerPlayRuntime : ModuleRules
 				"MotionWarping",
 				"EnhancedInput",
 				"ModelViewViewModel",
+				"UMG",
+				"CommonUI",
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
