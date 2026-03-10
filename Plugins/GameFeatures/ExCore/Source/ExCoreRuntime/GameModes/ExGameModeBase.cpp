@@ -5,6 +5,8 @@
 #include "Tags/ExMatchTags.h"
 #include "Subsystems/ExGameFlowSubsystem.h"
 #include "../Data/ExCoreSpawnDataAsset.h"
+#include "Experience/ExExperienceManagerComponent.h"
+#include "Experience/ExExperienceDefinition.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
@@ -16,18 +18,11 @@ AExGameModeBase::AExGameModeBase()
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.bStartWithTickEnabled = true;
 
-	// 전이 맵 초기화
-	// WaitingForPlayers -> Countdown
-	AllowedMatchTransitions.Add(ExMatchTags::Match_WaitingForPlayers, { ExMatchTags::Match_Countdown });
+	// Seamless Travel 사용 (주인님 요청사항)
+	bUseSeamlessTravel = true;
 	
-	// Countdown -> Playing
-	AllowedMatchTransitions.Add(ExMatchTags::Match_Countdown, { ExMatchTags::Match_Playing });
-	
-	// Playing -> PostMatch
-	AllowedMatchTransitions.Add(ExMatchTags::Match_Playing, { ExMatchTags::Match_PostMatch });
-	
-	// PostMatch -> WaitingForPlayers (재시작)
-	AllowedMatchTransitions.Add(ExMatchTags::Match_PostMatch, { ExMatchTags::Match_WaitingForPlayers });
+	// 매치 시작 자동화 여부 기본값 
+	bAutoStartOnReady = false;
 }
 
 void AExGameModeBase::BeginPlay()
@@ -40,6 +35,19 @@ void AExGameModeBase::BeginPlay()
 		if (UExGameFlowSubsystem* FlowSubsystem = GI->GetSubsystem<UExGameFlowSubsystem>())
 		{
 			FlowSubsystem->OnRequestTravel.AddDynamic(this, &AExGameModeBase::OnFlowSubsystemRequestTravel);
+		}
+	}
+
+	// GameState의 ExperienceManager에 할당된 DataAsset 주입
+	if (DefaultExperience)
+	{
+		if (AGameStateBase* GS = GetGameState<AGameStateBase>())
+		{
+			if (UExExperienceManagerComponent* ExpManager = GS->GetComponentByClass<UExExperienceManagerComponent>())
+			{
+				ExpManager->ServerSetCurrentExperience(DefaultExperience);
+				UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] DefaultExperience (%s) automatically injected to Manager."), *DefaultExperience->GetName());
+			}
 		}
 	}
 
@@ -79,37 +87,58 @@ void AExGameModeBase::SetMatchPhase(FGameplayTag NewPhase, bool bForceTransition
 		return;
 	}
 
-	// 상태 전이 유효성 검사
-	bool bIsAllowedTransition = false;
-	if (bForceTransition)
-	{
-		bIsAllowedTransition = true;
-	}
-	else if (const TArray<FGameplayTag>* ValidNextStates = AllowedMatchTransitions.Find(CurrentPhase))
-	{
-		bIsAllowedTransition = ValidNextStates->Contains(NewPhase);
-	}
-
-	if (!bIsAllowedTransition)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[ExGameModeBase] Invalid match phase transition from %s to %s"), 
-			*CurrentPhase.ToString(), *NewPhase.ToString());
-		return;
-	}
+	// [주인님 요청] 상태 전이 유효성 검사 제거 - 모든 상태 전이를 자유롭게 허용
+	// (기존 AllowedMatchTransitions 맵 기반 검사 삭제)
 
 	FGameplayTag OldPhase = CurrentPhase;
 	ExGameState->CurrentMatchPhase = NewPhase; // friend 선언으로 접근 가능
 	
 	// 서버 자신도 로컬 델리게이트를 돌도록 강제 트리거
 	ExGameState->OnRep_MatchPhase(OldPhase);
+
+	// 매치 시작/종료 게임모드 콜백
+	if (NewPhase == ExMatchTags::Match_Playing && OldPhase != ExMatchTags::Match_Playing)
+	{
+		OnMatchStarted();
+	}
+	else if (NewPhase == ExMatchTags::Match_PostMatch && OldPhase != ExMatchTags::Match_PostMatch)
+	{
+		OnMatchEnded();
+	}
 }
 
 void AExGameModeBase::OnFlowSubsystemRequestTravel(const FString& MapURL)
 {
 	if (UWorld* World = GetWorld())
 	{
-		UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] Performing ServerTravel to URL: %s"), *MapURL);
-		World->ServerTravel(MapURL);
+		UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] Performing ServerTravel to URL: %s with Seamless: %s"), *MapURL, bUseSeamlessTravel ? TEXT("True") : TEXT("False"));
+		// bAbsolute=false (상대경로 유지), bShouldSkipGameNotify=false (보통 false)
+		World->ServerTravel(MapURL, false, bUseSeamlessTravel);
+	}
+}
+
+void AExGameModeBase::CheckAndStartMatch()
+{
+	AExGameStateBase* ExGameState = GetGameState<AExGameStateBase>();
+	if (!ExGameState)
+	{
+		return;
+	}
+
+	if (ExGameState->GetCurrentMatchPhase() == ExMatchTags::Match_WaitingForPlayers)
+	{
+		if (CheckAllPlayersReady())
+		{
+			if (bAutoStartOnReady)
+			{
+				SetMatchPhase(ExMatchTags::Match_Playing);
+				UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] CheckAndStartMatch: All players ready and bAutoStartOnReady is true. Transitioned to Match_Playing."));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] CheckAndStartMatch: All players ready but bAutoStartOnReady is false. Waiting for explicit start command."));
+			}
+		}
 	}
 }
 
@@ -117,7 +146,6 @@ bool AExGameModeBase::CheckAllPlayersReady() const
 {
 	if (!GetWorld()) return false;
 	
-	// 기본적인 예시: 모든 플레이어 컨트롤러를 검사하여 로딩 완료 상태인지 체크합니다.
 	// 실제 구현에서는 AExPlayerControllerBase 등을 캐싱하여 Pawn의 Possess 완료 여부 등을 검증합니다.
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
@@ -139,7 +167,12 @@ void AExGameModeBase::PostLogin(APlayerController* NewPlayer)
 void AExGameModeBase::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
 {
 	Super::HandleStartingNewPlayer_Implementation(NewPlayer);
-	// 시작 처리 가능
+	
+	// 일단 입장 시점에서 모두가 준비된 상태라면 Playing으로 넘김 (기본 게임 플로우)
+	if (CheckAllPlayersReady())
+	{
+		SetMatchPhase(ExMatchTags::Match_Playing);
+	}
 }
 
 AActor* AExGameModeBase::ChoosePlayerStart_Implementation(AController* Player)

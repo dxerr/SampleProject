@@ -71,7 +71,7 @@ void AExGameStateBase::HandleMatchPhaseChanged(const FGameplayTag& OldPhase, con
 	// 하위 블루프린트나 상속받은 C++ 클래스에서 확장 가능하도록 비워둠
 	
 	// 매치 페이즈 변경 시, 전역으로 이벤트 브로드캐스트.
-	// (Ex: BP_ExPlayerController 등에서 UI를 트리거 하는 용도로 델리게이트 수신)
+	// (Ex: BP_ExPlayerControllerBase 등에서 UI를 트리거 하는 용도로 델리게이트 수신)
 	if (UWorld* World = GetWorld())
 	{
 		if (UExGameplayEventSubsystem* EventSubsystem = World->GetSubsystem<UExGameplayEventSubsystem>())

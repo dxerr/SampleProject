@@ -40,6 +40,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ExFlow")
 	void RequestTravel(const FString& MapURL);
 
+	/** 
+	 * [UI 호출용] 로비에서 인게임으로 서버 이동을 직접 요청합니다.
+	 * 델리게이트를 통해 GameMode가 실질적인 SeamlessTravel을 수행합니다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExFlow")
+	void TransitionToInGame(const FString& MapURL);
+
 public:
 	UPROPERTY(BlueprintAssignable, Category = "ExFlow")
 	FOnFlowStateChanged OnFlowStateChanged;

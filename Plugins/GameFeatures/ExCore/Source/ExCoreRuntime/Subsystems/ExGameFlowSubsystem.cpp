@@ -70,3 +70,12 @@ void UExGameFlowSubsystem::RequestTravel(const FString& MapURL)
 	UE_LOG(LogTemp, Log, TEXT("[ExGameFlowSubsystem] Requesting Travel to %s"), *MapURL);
 	OnRequestTravel.Broadcast(MapURL);
 }
+
+void UExGameFlowSubsystem::TransitionToInGame(const FString& MapURL)
+{
+	// 로비 -> 인게임 상태로 내부 전환 시도
+	SetFlowState(ExFlowTags::Flow_InGame);
+
+	// 게임 모드에 맵 로딩 지시
+	RequestTravel(MapURL);
+}

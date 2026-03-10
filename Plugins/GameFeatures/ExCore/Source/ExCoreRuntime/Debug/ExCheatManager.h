@@ -17,7 +17,7 @@
  * - PlayerController의 CheatClass에 이 클래스를 지정하여 사용
  * 
  * 사용법:
- * 1. BP_ExPlayerController의 CheatClass에 UExCheatManager 설정
+ * 1. BP_ExPlayerControllerBase의 CheatClass에 UExCheatManager 설정
  * 2. 각 Feature의 GameFeatureData에 UGameFeatureAction_AddCheats 추가
  * 3. Extension에서 UFUNCTION(Exec)으로 콘솔 명령 정의
  */

@@ -11,6 +11,7 @@
 #include "ExGameplayTags.h"
 #include "ExGameplayEventSubsystem.h"
 #include "Kismet/GameplayStatics.h"
+#include "Tags/ExMatchTags.h"
 
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -35,6 +36,9 @@ AExRunnerGameMode::AExRunnerGameMode()
 	// PathManager는 AExRunnerGameState로 이관되었습니다.
 	// [Fix] 블루프린트 생성 시 부모의 게임스테이트가 상속되지 않도록 명시적 기본값 설정
 	GameStateClass = AExRunnerGameState::StaticClass();
+	
+	// 매치 준비 완료 시 자동 시작 켜기
+	bAutoStartOnReady = true;
 }
 
 void AExRunnerGameMode::BeginPlay()
@@ -49,11 +53,6 @@ void AExRunnerGameMode::BeginPlay()
 			EventSubsystem->GetEventDelegate(TAG_Ex_Action_Climb_Start).AddDynamic(this, &AExRunnerGameMode::OnTraversalStart);
 			EventSubsystem->GetEventDelegate(TAG_Ex_Action_Climb_End).AddDynamic(this, &AExRunnerGameMode::OnTraversalEnd);
 		}
-	}
-
-	if (bRunnerModeEnabled)
-	{
-		StartRunnerGame();
 	}
 }
 
@@ -165,6 +164,26 @@ void AExRunnerGameMode::OnTraversalEnd(FGameplayTag EventTag, const FExGameplayE
 	{
 		bIsTraversing = false;
 		UE_LOG(LogExRunnerPlay, Log, TEXT("ExRunnerGameMode: Traversal Ended - Rotation Override Resumed"));
+	}
+}
+
+void AExRunnerGameMode::OnMatchStarted_Implementation()
+{
+	Super::OnMatchStarted_Implementation();
+
+	if (bRunnerModeEnabled)
+	{
+		StartRunnerGame();
+	}
+}
+
+void AExRunnerGameMode::OnMatchEnded_Implementation()
+{
+	Super::OnMatchEnded_Implementation();
+
+	if (bRunnerModeEnabled)
+	{
+		StopRunnerGame();
 	}
 }
 

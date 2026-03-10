@@ -363,6 +363,7 @@ UCommonActivatableWidget* UExUIManagerSubsystem::PushWindow(TSubclassOf<UExWindo
 - 내부에 `GameStack`과 `MenuStack` (둘 다 `UCommonActivatableWidgetStack`)을 보유한다.
 - Push/Pop 스택의 **대상이 아니다**. Viewport에 직접 추가되는 **루트 위젯**이다.
 - ESC 키(또는 게임패드 Start 버튼) 입력 시 MenuStack에 일시정지 메뉴를 Push하는 진입점 역할.
+- **[핵심]** 맵 로딩 시 이 뼈대 뷰포트 추가 작업은 수동 호출이 아닌 **`ExperienceManager`** 가 데이터 기반(`UExExperienceDefinition::DefaultHUDLayout`)으로 주도하여 뷰포트에 띄우도록 아키텍처가 개선되었다.
 
 #### 6.2.2 핵심 구현
 

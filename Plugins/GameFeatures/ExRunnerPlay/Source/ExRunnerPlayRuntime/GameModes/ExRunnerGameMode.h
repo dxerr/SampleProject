@@ -60,6 +60,9 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 
+	virtual void OnMatchStarted_Implementation() override;
+	virtual void OnMatchEnded_Implementation() override;
+
 
 
 private:

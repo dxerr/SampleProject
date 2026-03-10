@@ -34,6 +34,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ExMatch|Spawn")
 	TObjectPtr<UExCoreSpawnDataAsset> SpawnDataAsset;
 
+	// ========== 경험 관리 (UI & 플로우) ==========
+
+	/**
+	 * 이 게임 모드가 시작될 때 기본적으로 활성화할 경험(UI 세팅 등) 데이터입니다.
+	 * 블루프린트 디테일 패널에서 에셋을 할당해 주면 자동으로 적용됩니다.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "ExMatch|Experience")
+	TObjectPtr<const class UExExperienceDefinition> DefaultExperience;
+
 	/**
 	 * 컨테이너 폰에 Visual Override를 적용
 	 * @param ContainerPawn 대상 컨테이너 폰
@@ -48,17 +57,27 @@ public:
 	 * @param TargetPawn 대상 폰
 	 * @param NewVisualIndex 새 Visual 인덱스
 	 */
-	UFUNCTION(BlueprintCallable, Category = "ExMatch|Spawn")
 	void ChangeVisualOverride(APawn* TargetPawn, int32 NewVisualIndex);
 
 	// ========== 매치 흐름 관리 ==========
+
+	/** 
+	 * 로딩이 완료된 시점에 자동으로 Match_Playing 상태로 진입할지 여부 
+	 * (Runner 등 바로 시작해야 하는 모드에서 true로 사용)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ExMatch|Flow")
+	bool bAutoStartOnReady;
 
 	/**
 	 * 서버에서 새로운 매치 페이즈를 설정하고 GameState에 전파합니다.
 	 * (주의: 허용된 매치 상태 전이 맵을 내장하여 유효성을 검사합니다)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "ExMatch")
+	// 매치 플로우
+	UFUNCTION(BlueprintCallable, Category = "ExMatch|Flow")
 	void SetMatchPhase(FGameplayTag NewPhase, bool bForceTransition = false);
+
+	UFUNCTION(BlueprintCallable, Category = "ExMatch|Flow")
+	virtual void CheckAndStartMatch();
 
 	/** 모든 플레이어 컨트롤러가 로딩을 성공적으로 끝냈는지 체크 */
 	UFUNCTION(BlueprintPure, Category = "ExMatch")
@@ -93,9 +112,6 @@ protected:
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "ExMatch")
 	void OnMatchEnded();
 	virtual void OnMatchEnded_Implementation();
-
-	/** 매치 진행 허용 전이 루프 정보 */
-	TMap<FGameplayTag, TArray<FGameplayTag>> AllowedMatchTransitions;
 
 private:
 	/**

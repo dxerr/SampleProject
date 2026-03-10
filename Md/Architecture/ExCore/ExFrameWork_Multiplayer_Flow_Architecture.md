@@ -262,17 +262,20 @@ AExPlayerStateBase       ←────     AExRunnerPlayerState (ExRunnerPlay)
 **매치 페이즈 관리 (서버 권한):**
 - `SetMatchPhase(FGameplayTag NewPhase)` 함수를 제공한다.
 - 이 함수는 `GameState`의 `CurrentMatchPhase`를 변경한다. (GameMode → GameState로의 단방향 제어)
-- 매치 페이즈 전이 유효성을 검증한다. (허용된 전이 맵 사용, Flow 서브시스템과 동일한 패턴)
+- ~~매치 페이즈 전이 유효성을 검증한다. (허용된 전이 맵 사용)~~ [수정됨] 각 특수 게임 모드의 유연한 전환을 위해 상태 전이 유효성 검사 루프는 제거되었다. 순서에 구애받지 않고 원하는 상태로 바로 전이할 수 있다.
+- **자동 시작 플래그:** `bAutoStartOnReady` 속성을 두어, 에디터 개별 맵 시작 시 로딩이 끝나면 바로 `Match_Playing` 상태로 전환되도록 설정할 수 있다. (예: `AExRunnerGameMode` 생성자에서 `bAutoStartOnReady = true;`)
+
+**플레이어 로딩 및 경험(Experience) 초기화 관리:**
+- `GameMode`는 `DefaultExperience`(DataAsset)를 보유한다.
+- 매치가 시작될 때, 이 경험 데이터가 `GameState`에 부착된 `UExExperienceManagerComponent`로 복제(Replicate)된다.
+- 클라이언트의 경험 매니저가 유효한 경험 데이터를 수신하면, UI 등 클라이언트 전용 로직의 로딩을 비동기적으로 시작한다.
+- UI 로딩이 완료된 클라이언트의 `PlayerController`는 `Server_NotifyReadyForMatch`를 통해 서버에 준비 완료를 알린다.
+- 서버의 `AExGameModeBase::CheckAndStartMatch()`는 `CheckAllPlayersReady()`를 검증한 뒤, `bAutoStartOnReady`가 켜져 있으면 게임을 즉시 `Match_Playing`으로 전이시킨다.
 
 **Travel 수신 인터페이스:**
 - `BeginPlay`에서 `UExGameFlowSubsystem::OnRequestTravel`을 구독한다.
 - 콜백 내에서 `GetWorld()->ServerTravel(MapURL)`을 호출한다.
 - `EndPlay`에서 구독을 해제한다.
-
-**플레이어 로딩 관리:**
-- `PostLogin(APlayerController*)` 오버라이드: 접속한 플레이어를 추적한다.
-- `HandleStartingNewPlayer(APlayerController*)` 오버라이드: 캐릭터 스폰 위치를 지정한다.
-- 모든 플레이어가 로딩을 마쳤는지 확인하는 `CheckAllPlayersReady()` 함수를 제공한다.
 
 **하위 클래스가 오버라이드할 가상 함수:**
 ```cpp
@@ -373,7 +376,19 @@ namespace ExMatchTags
 }
 ```
 
-### 4.5 검증 체크리스트
+### 4.5 경험(Experience) 기반 로딩 시스템
+
+하드코딩된 UI 로딩 및 게임 초기화를 방지하기 위해 `ExExperienceManagerComponent`를 사용한다. `GameMode`가 지정한 데이터 에셋(`UExExperienceDefinition`)을 리플리케이트하여 클라이언트 측 UI 및 시스템 로딩을 주도한다.
+
+- **`UExExperienceDefinition` (데이터 에셋):** 해당 매치에서 사용할 기본 HUD 레이아웃(`DefaultHUDLayout`) 등 초기화 데이터를 담고 있다.
+- **`UExExperienceManagerComponent`:** `GameState`에 부착되어 Replicated 되는 `CurrentExperience` 데이터를 감시한다.
+- **동작 흐름:**
+  1. **서버:** `GameMode`가 `InitGame` 시점에 자신의 `DefaultExperience` 속성값을 가져와 `GameState` 내 `ExperienceManager`의 `CurrentExperience`에 할당.
+  2. **클라이언트 (또는 맵 접속 시):** `CurrentExperience` 값이 복제되어 들어오면 클라이언트 `OnRep_CurrentExperience()`가 트리거된다.
+  3. **UI 로딩:** 클라이언트는 `CurrentExperience`에 정의된 `DefaultHUDLayout`(예: `WBP_ExRunnerHUDLayout`)을 로딩하고 화면에 띄운 후 `OnExperienceLoadCompleteEvent`를 브로드캐스트.
+  4. **클라이언트-서버 응답:** `PlayerController`는 이 완료 델리게이트를 받고 `Server_NotifyReadyForMatch` RPC를 통해 자신이 준비됨을 서버에 알림. 서버는 모든 컨트롤러의 레디 상태를 체크(`CheckAndStartMatch`)하고, 조건이 맞을 시 `Match_Playing` 페이즈로 자동 돌입한다.
+
+### 4.6 검증 체크리스트
 - [ ] `AExGameModeBase::SetMatchPhase()`가 호출되면 `AExGameStateBase::CurrentMatchPhase`가 변경된다.
 - [ ] `CurrentMatchPhase` 변경이 모든 클라이언트에 복제된다.
 - [ ] 클라이언트에서 `OnRep_MatchPhase`가 호출되고, `OnMatchPhaseChanged` 델리게이트가 브로드캐스트된다.
