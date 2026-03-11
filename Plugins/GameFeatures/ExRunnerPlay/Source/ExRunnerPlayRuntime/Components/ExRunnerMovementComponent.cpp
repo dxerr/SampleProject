@@ -71,10 +71,11 @@ void UExRunnerMovementComponent::TryInitializeMover()
 void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult)
 {
 	// Mover 시스템에 전달할 입력 데이터를 찾거나 생성합니다.
-	FCharacterDefaultInputs* Inputs = InputCmdResult.InputCollection.FindMutableDataByType<FCharacterDefaultInputs>();
-	if (Inputs)
-	{
-		// 1. 순수 전진 입력 (PlayerController의 전방 축 기준)
+	// [Fix] 모바일이나 패키징 빌드 환경에서 Mover 시스템의 디폴트 입력 프로듀서가 먼저 이 컴포넌트를 돌리지 않을 수도 있으므로, 
+	// 기존 데이터를 찾지 못하고 무시당하는 현상을 막기 위해 FindOrAddMutableDataByType를 호출하여 강제 생성 및 바인딩합니다.
+	FCharacterDefaultInputs& Inputs = InputCmdResult.InputCollection.FindOrAddMutableDataByType<FCharacterDefaultInputs>();
+	
+	// 1. 순수 전진 입력 (PlayerController의 전방 축 기준)
 		// 곡선 구간이나 카메라 회전 시에도 조작 시점에 '앞(X)'으로 간주되는 방향으로 전진
 		FVector ForwardDir = FVector::ForwardVector;
 		
@@ -89,11 +90,10 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 		}
 
 		// DirectionalIntent로 이동 입력 설정 (크기 1.0)
-		Inputs->SetMoveInput(EMoveInputType::DirectionalIntent, ForwardDir);
+		Inputs.SetMoveInput(EMoveInputType::DirectionalIntent, ForwardDir);
 
 		// [Fix] Mover 시스템이 캐릭터의 모델(Mesh) 방향도 컨트롤러가 바라보는 방향(경로 접선)으로 맞춰 회전시킬 수 있도록 OrientationIntent를 주입합니다.
-		Inputs->OrientationIntent = ForwardDir;
-	}
+		Inputs.OrientationIntent = ForwardDir;
 }
 
 void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)

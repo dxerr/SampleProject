@@ -22,6 +22,13 @@ void UExRunnerInputComponent::InitializeInputBindings(UEnhancedInputComponent* E
 			EnhancedInputComponent->BindAction(SlideAction, ETriggerEvent::Triggered, this, &UExRunnerInputComponent::NativeOnSlideAction);
 			EnhancedInputComponent->BindAction(SlideAction, ETriggerEvent::Started, this, &UExRunnerInputComponent::NativeOnSlideAction);
 		}
+
+		// 스프린트 바인딩 (체크박스 지속/해제 처리에 적합하도록 Triggered와 Completed 바인딩)
+		if (SprintAction)
+		{
+			EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Triggered, this, &UExRunnerInputComponent::NativeOnSprintAction);
+			EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &UExRunnerInputComponent::NativeOnSprintAction);
+		}
 		
 		// 이동 바인딩 (Axis)
 		if (MoveAction)
@@ -43,6 +50,12 @@ void UExRunnerInputComponent::NativeOnSlideAction(const FInputActionValue& Value
 	OnSlideRequested.Broadcast(bIsPressed);
 }
 
+void UExRunnerInputComponent::NativeOnSprintAction(const FInputActionValue& Value)
+{
+	bool bIsPressed = Value.Get<bool>();
+	OnSprintRequested.Broadcast(bIsPressed);
+}
+
 void UExRunnerInputComponent::NativeOnMoveAction(const FInputActionValue& Value)
 {
 	float AxisValue = Value.Get<float>();
@@ -51,15 +64,20 @@ void UExRunnerInputComponent::NativeOnMoveAction(const FInputActionValue& Value)
 
 void UExRunnerInputComponent::RequestJumpAction(bool bIsTriggered)
 {
-	OnJumpRequested.Broadcast(bIsTriggered);
+	InjectInputBoolForAction(JumpAction, bIsTriggered);
 }
 
 void UExRunnerInputComponent::RequestSlideAction(bool bIsTriggered)
 {
-	OnSlideRequested.Broadcast(bIsTriggered);
+	InjectInputBoolForAction(SlideAction, bIsTriggered);
+}
+
+void UExRunnerInputComponent::RequestSprintAction(bool bIsTriggered)
+{
+	InjectInputBoolForAction(SprintAction, bIsTriggered);
 }
 
 void UExRunnerInputComponent::RequestMoveAction(float AxisValue)
 {
-	OnMoveRequested.Broadcast(AxisValue);
+	InjectInputFloatForAction(MoveAction, AxisValue);
 }

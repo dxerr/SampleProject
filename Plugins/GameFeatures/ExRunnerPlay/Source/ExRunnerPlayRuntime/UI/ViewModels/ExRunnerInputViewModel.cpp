@@ -38,6 +38,14 @@ void UExRunnerInputViewModel::OnSlideButtonReleased()
 	}
 }
 
+void UExRunnerInputViewModel::OnSprintCheckStateChanged(bool bIsChecked)
+{
+	if (UExRunnerInputComponent* InputComp = GetRunnerInputComponent())
+	{
+		InputComp->RequestSprintAction(bIsChecked);
+	}
+}
+
 UExRunnerInputComponent* UExRunnerInputViewModel::GetRunnerInputComponent() const
 {
 	// 에디터/PIE 환경 내에서 유효한 첫 번째 로컬 플레이어를 찾아 폰(Pawn)의 컴포넌트를 가져옴

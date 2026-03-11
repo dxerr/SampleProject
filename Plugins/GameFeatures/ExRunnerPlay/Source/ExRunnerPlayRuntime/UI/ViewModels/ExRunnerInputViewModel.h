@@ -32,6 +32,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="ExUI|RunnerInput")
 	void OnSlideButtonReleased();
 
+	// UI 스프린트 체크박스 상태 변경 시 (ViewBinding 이벤트)
+	UFUNCTION(BlueprintCallable, Category="ExUI|RunnerInput")
+	void OnSprintCheckStateChanged(bool bIsChecked);
+
 private:
 	// 안전하게 로컬 플레이어의 Runner Input Component를 가져오는 내부 헬퍼
 	class UExRunnerInputComponent* GetRunnerInputComponent() const;
