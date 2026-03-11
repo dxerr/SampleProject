@@ -4,21 +4,36 @@
 #include "GameFramework/Pawn.h"
 #include "../Components/ExRunnerInputComponent.h"
 
-void UExRunnerInputViewModel::OnJumpButtonClicked()
+void UExRunnerInputViewModel::OnJumpButtonPressed()
 {
 	if (UExRunnerInputComponent* InputComp = GetRunnerInputComponent())
 	{
-		// UI 터치/클릭은 단발성 이벤트이므로 'Started'(false) 성격으로 보냅니다.
-		// 블루프린트 기존 로직에서 'Started' 분기에 타야 일반 점프 및 일어서기가 발생합니다.
+		// 버튼을 누르는 순간 키보드 입력과 동일하게 True (눌림 판정)
+		InputComp->RequestJumpAction(true);
+	}
+}
+
+void UExRunnerInputViewModel::OnJumpButtonReleased()
+{
+	if (UExRunnerInputComponent* InputComp = GetRunnerInputComponent())
+	{
+		// 버튼에서 손을 뗄 때 False (뗌 판정 - 체공 시간 등 조절에 유효)
 		InputComp->RequestJumpAction(false);
 	}
 }
 
-void UExRunnerInputViewModel::OnSlideButtonClicked()
+void UExRunnerInputViewModel::OnSlideButtonPressed()
 {
 	if (UExRunnerInputComponent* InputComp = GetRunnerInputComponent())
 	{
-		// 슬라이드 클릭도 단발성(Started) 액션으로 보냅니다.
+		InputComp->RequestSlideAction(true);
+	}
+}
+
+void UExRunnerInputViewModel::OnSlideButtonReleased()
+{
+	if (UExRunnerInputComponent* InputComp = GetRunnerInputComponent())
+	{
 		InputComp->RequestSlideAction(false);
 	}
 }

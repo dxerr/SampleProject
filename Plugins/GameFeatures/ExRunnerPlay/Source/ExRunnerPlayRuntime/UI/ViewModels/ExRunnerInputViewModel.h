@@ -16,13 +16,21 @@ class EXRUNNERPLAYRUNTIME_API UExRunnerInputViewModel : public UMVVMViewModelBas
 	GENERATED_BODY()
 
 public:
-	// UI 점프 버튼 클릭 시 (ViewBinding 이벤트)
+	// UI 점프 버튼 누름 시 (ViewBinding 이벤트)
 	UFUNCTION(BlueprintCallable, Category="ExUI|RunnerInput")
-	void OnJumpButtonClicked();
+	void OnJumpButtonPressed();
 
-	// UI 슬라이드 버튼 클릭 시 (ViewBinding 이벤트)
+	// UI 점프 버튼 뗌 시 (ViewBinding 이벤트)
 	UFUNCTION(BlueprintCallable, Category="ExUI|RunnerInput")
-	void OnSlideButtonClicked();
+	void OnJumpButtonReleased();
+
+	// UI 슬라이드 버튼 누름 시 (ViewBinding 이벤트)
+	UFUNCTION(BlueprintCallable, Category="ExUI|RunnerInput")
+	void OnSlideButtonPressed();
+
+	// UI 슬라이드 버튼 뗌 시 (ViewBinding 이벤트)
+	UFUNCTION(BlueprintCallable, Category="ExUI|RunnerInput")
+	void OnSlideButtonReleased();
 
 private:
 	// 안전하게 로컬 플레이어의 Runner Input Component를 가져오는 내부 헬퍼
