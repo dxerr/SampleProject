@@ -7,7 +7,9 @@
 #include "UI/Subsystems/ExUIManagerSubsystem.h"
 #include "UI/Widgets/ExHUDLayoutWidget.h"
 #include "Kismet/GameplayStatics.h"
+#include "Engine/AssetManager.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogExExperience, Log, All);
 
 // Sets default values for this component's properties
 UExExperienceManagerComponent::UExExperienceManagerComponent(const FObjectInitializer& ObjectInitializer)
@@ -69,26 +71,50 @@ void UExExperienceManagerComponent::OnRep_CurrentExperience()
 
 void UExExperienceManagerComponent::StartExperienceLoad()
 {
-	if (bLoadComplete)
+	if (bLoadComplete || !CurrentExperience)
 	{
 		return;
 	}
 
-	// ---------------------------------------------------------
-	// [TODO] 비동기 데이터 로딩 도입 위치
-	// 현재는 TSubclassOf (하드 레퍼런스)로 에셋에 설정되어 있으므로 즉시 초기화됩니다.
-	// 향후 TSoftClassPtr로 바인딩한다면 여기서 StreamableManager로 Async Load 후
-	// 그 콜백에서 OnExperienceLoadComplete()를 호출하도록 구조 변경을 기획합니다.
-	// ---------------------------------------------------------
+	TArray<FSoftObjectPath> AssetPaths;
 
-	// 임시: 바로 완료 처리
-	OnExperienceLoadComplete();
+	// 하드 레퍼런스(TSubclassOf)에서 소프트 레퍼런스(TSoftClassPtr)로 변경됨에 따라 
+	// AssetManager의 StreamableManager를 활용해 비동기 로딩을 수행합니다.
+	if (CurrentExperience->DefaultHUDLayout.IsPending())
+	{
+		AssetPaths.AddUnique(CurrentExperience->DefaultHUDLayout.ToSoftObjectPath());
+	}
+
+	for (const TSoftClassPtr<UCommonActivatableWidget>& WidgetClass : CurrentExperience->ExtraWidgetsToLoad)
+	{
+		if (WidgetClass.IsPending())
+		{
+			AssetPaths.AddUnique(WidgetClass.ToSoftObjectPath());
+		}
+	}
+
+	if (AssetPaths.Num() > 0)
+	{
+		UE_LOG(LogExExperience, Log, TEXT("[ExExperienceManagerComponent] 비동기 에셋 로딩을 시작합니다. 대상 개수: %d"), AssetPaths.Num());
+		
+		UAssetManager::GetStreamableManager().RequestAsyncLoad(
+			AssetPaths,
+			FStreamableDelegate::CreateUObject(this, &ThisClass::OnExperienceLoadComplete)
+		);
+	}
+	else
+	{
+		UE_LOG(LogExExperience, Log, TEXT("[ExExperienceManagerComponent] 로딩할 에셋이 없거나 이미 로드되어 있습니다. 곧바로 완료 처리합니다."));
+		OnExperienceLoadComplete();
+	}
 }
 
 void UExExperienceManagerComponent::OnExperienceLoadComplete()
 {
 	bLoadComplete = true;
 
+	UE_LOG(LogExExperience, Log, TEXT("[ExExperienceManagerComponent] Experience 로딩이 완료되었습니다. GameMode 등에 완료 브로드캐스트를 전송합니다."));
+	
 	// 로딩이 완전히 끝났음을 외부(GameMode 등)에 브로드캐스트
 	OnExperienceLoadCompleteEvent.Broadcast();
 }

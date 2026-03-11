@@ -13,10 +13,12 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogExCoreGM, Log, All);
+
 AExGameModeBase::AExGameModeBase()
 {
 	PrimaryActorTick.bCanEverTick = true;
-	PrimaryActorTick.bStartWithTickEnabled = true;
+	PrimaryActorTick.bStartWithTickEnabled = false; // [Fix] 불필요한 빈 Tick 활성화 방지
 
 	// Seamless Travel 사용 (주인님 요청사항)
 	bUseSeamlessTravel = true;
@@ -46,12 +48,12 @@ void AExGameModeBase::BeginPlay()
 			if (UExExperienceManagerComponent* ExpManager = GS->GetComponentByClass<UExExperienceManagerComponent>())
 			{
 				ExpManager->ServerSetCurrentExperience(DefaultExperience);
-				UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] DefaultExperience (%s) automatically injected to Manager."), *DefaultExperience->GetName());
+				UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] DefaultExperience (%s) automatically injected to Manager."), *DefaultExperience->GetName());
 			}
 		}
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] BeginPlay - SpawnDataAsset: %s"), 
+	UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] BeginPlay - SpawnDataAsset: %s"), 
 		SpawnDataAsset ? *SpawnDataAsset->GetName() : TEXT("None"));
 }
 
@@ -89,6 +91,7 @@ void AExGameModeBase::SetMatchPhase(FGameplayTag NewPhase, bool bForceTransition
 
 	// [주인님 요청] 상태 전이 유효성 검사 제거 - 모든 상태 전이를 자유롭게 허용
 	// (기존 AllowedMatchTransitions 맵 기반 검사 삭제)
+	UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] MatchPhase Transition Requested: %s -> %s"), *CurrentPhase.ToString(), *NewPhase.ToString());
 
 	FGameplayTag OldPhase = CurrentPhase;
 	ExGameState->CurrentMatchPhase = NewPhase; // friend 선언으로 접근 가능
@@ -111,7 +114,7 @@ void AExGameModeBase::OnFlowSubsystemRequestTravel(const FString& MapURL)
 {
 	if (UWorld* World = GetWorld())
 	{
-		UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] Performing ServerTravel to URL: %s with Seamless: %s"), *MapURL, bUseSeamlessTravel ? TEXT("True") : TEXT("False"));
+		UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] Performing ServerTravel to URL: %s with Seamless: %s"), *MapURL, bUseSeamlessTravel ? TEXT("True") : TEXT("False"));
 		// bAbsolute=false (상대경로 유지), bShouldSkipGameNotify=false (보통 false)
 		World->ServerTravel(MapURL, false, bUseSeamlessTravel);
 	}
@@ -132,11 +135,11 @@ void AExGameModeBase::CheckAndStartMatch()
 			if (bAutoStartOnReady)
 			{
 				SetMatchPhase(ExMatchTags::Match_Playing);
-				UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] CheckAndStartMatch: All players ready and bAutoStartOnReady is true. Transitioned to Match_Playing."));
+				UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] CheckAndStartMatch: All players ready and bAutoStartOnReady is true. Transitioned to Match_Playing."));
 			}
 			else
 			{
-				UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] CheckAndStartMatch: All players ready but bAutoStartOnReady is false. Waiting for explicit start command."));
+				UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] CheckAndStartMatch: All players ready but bAutoStartOnReady is false. Waiting for explicit start command."));
 			}
 		}
 	}
@@ -168,11 +171,8 @@ void AExGameModeBase::HandleStartingNewPlayer_Implementation(APlayerController* 
 {
 	Super::HandleStartingNewPlayer_Implementation(NewPlayer);
 	
-	// 일단 입장 시점에서 모두가 준비된 상태라면 Playing으로 넘김 (기본 게임 플로우)
-	if (CheckAllPlayersReady())
-	{
-		SetMatchPhase(ExMatchTags::Match_Playing);
-	}
+	// [Fix] 입장 시 무조건 Playing으로 전환하지 않고, CheckAndStartMatch 의도에 맡깁니다.
+	CheckAndStartMatch();
 }
 
 AActor* AExGameModeBase::ChoosePlayerStart_Implementation(AController* Player)
@@ -185,7 +185,7 @@ APawn* AExGameModeBase::SpawnDefaultPawnAtTransform_Implementation(AController* 
 	UWorld* World = GetWorld();
 	if (!World)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[ExGameModeBase] SpawnDefaultPawnAtTransform: World is null"));
+		UE_LOG(LogExCoreGM, Error, TEXT("[ExGameModeBase] SpawnDefaultPawnAtTransform: World is null"));
 		return nullptr;
 	}
 
@@ -205,11 +205,11 @@ APawn* AExGameModeBase::SpawnDefaultPawnAtTransform_Implementation(AController* 
 
 	if (!PawnClassToSpawn)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ExGameModeBase] SpawnDefaultPawnAtTransform: No valid PawnClass to spawn"));
+		UE_LOG(LogExCoreGM, Warning, TEXT("[ExGameModeBase] SpawnDefaultPawnAtTransform: No valid PawnClass to spawn"));
 		return nullptr;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] Spawning Pawn: %s at %s"), 
+	UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] Spawning Pawn: %s at %s"), 
 		*PawnClassToSpawn->GetName(), *SpawnTransform.ToString());
 
 	// 2. 컨테이너 폰 스폰
@@ -226,7 +226,7 @@ APawn* AExGameModeBase::SpawnDefaultPawnAtTransform_Implementation(AController* 
 
 	if (!SpawnedPawn)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[ExGameModeBase] Failed to spawn Pawn"));
+		UE_LOG(LogExCoreGM, Error, TEXT("[ExGameModeBase] Failed to spawn Pawn"));
 		return nullptr;
 	}
 
@@ -240,7 +240,7 @@ APawn* AExGameModeBase::SpawnDefaultPawnAtTransform_Implementation(AController* 
 		}
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] Successfully spawned: %s"), *SpawnedPawn->GetName());
+	UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] Successfully spawned: %s"), *SpawnedPawn->GetName());
 	return SpawnedPawn;
 }
 
@@ -257,7 +257,7 @@ AActor* AExGameModeBase::ApplyVisualOverride(APawn* ContainerPawn, TSubclassOf<A
 		return nullptr;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] Applying VisualOverride: %s to %s"), 
+	UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] Applying VisualOverride: %s to %s"), 
 		*VisualClass->GetName(), *ContainerPawn->GetName());
 
 	// 기존 Visual Actor가 있다면 제거
@@ -284,7 +284,7 @@ AActor* AExGameModeBase::ApplyVisualOverride(APawn* ContainerPawn, TSubclassOf<A
 
 	if (!VisualActor)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[ExGameModeBase] Failed to spawn VisualActor"));
+		UE_LOG(LogExCoreGM, Error, TEXT("[ExGameModeBase] Failed to spawn VisualActor"));
 		return nullptr;
 	}
 
@@ -342,7 +342,7 @@ AActor* AExGameModeBase::ApplyVisualOverride(APawn* ContainerPawn, TSubclassOf<A
 				ContainerMesh->SetAnimInstanceClass(VisualAnimClass);
 			}
 
-			UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] Animation copied from Visual: Mesh=%s, AnimClass=%s"),
+			UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] Animation copied from Visual: Mesh=%s, AnimClass=%s"),
 				VisualSkeletalMesh ? *VisualSkeletalMesh->GetName() : TEXT("None"),
 				VisualAnimClass ? *VisualAnimClass->GetName() : TEXT("None"));
 
@@ -363,13 +363,13 @@ AActor* AExGameModeBase::ApplyVisualOverride(APawn* ContainerPawn, TSubclassOf<A
 			FAttachmentTransformRules::SnapToTargetIncludingScale
 		);
 		
-		UE_LOG(LogTemp, Warning, TEXT("[ExGameModeBase] ContainerPawn has no SkeletalMeshComponent, attached to RootComponent"));
+		UE_LOG(LogExCoreGM, Warning, TEXT("[ExGameModeBase] ContainerPawn has no SkeletalMeshComponent, attached to RootComponent"));
 	}
 
 	// 추적 맵에 등록
 	SpawnedVisualActors.Add(ContainerPawn, VisualActor);
 
-	UE_LOG(LogTemp, Log, TEXT("[ExGameModeBase] VisualOverride applied successfully: %s"), *VisualActor->GetName());
+	UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] VisualOverride applied successfully: %s"), *VisualActor->GetName());
 	return VisualActor;
 }
 
@@ -384,7 +384,7 @@ void AExGameModeBase::ChangeVisualOverride(APawn* TargetPawn, int32 NewVisualInd
 	// 인덱스 유효성 검사
 	if (!SpawnDataAsset->VisualOverrides.IsValidIndex(NewVisualIndex))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ExGameModeBase] ChangeVisualOverride: Invalid index %d"), NewVisualIndex);
+		UE_LOG(LogExCoreGM, Warning, TEXT("[ExGameModeBase] ChangeVisualOverride: Invalid index %d"), NewVisualIndex);
 		return;
 	}
 

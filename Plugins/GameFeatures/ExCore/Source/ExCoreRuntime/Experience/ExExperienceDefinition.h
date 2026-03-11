@@ -20,9 +20,9 @@ class EXCORERUNTIME_API UExExperienceDefinition : public UPrimaryDataAsset
 public:
 	// 이 경험(맵)에서 활성화해야 할 UI 레이아웃 베이스 (예: WBP_ExRunnerHUDLayout)
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
-	TSubclassOf<UExHUDLayoutWidget> DefaultHUDLayout;
+	TSoftClassPtr<UExHUDLayoutWidget> DefaultHUDLayout;
 
 	// 이 경험에서 띄워야 할 시스템 기본 위젯 (ExUIManager를 통해 추가할 내역)
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
-	TArray<TSubclassOf<UCommonActivatableWidget>> ExtraWidgetsToLoad;
+	TArray<TSoftClassPtr<UCommonActivatableWidget>> ExtraWidgetsToLoad;
 };

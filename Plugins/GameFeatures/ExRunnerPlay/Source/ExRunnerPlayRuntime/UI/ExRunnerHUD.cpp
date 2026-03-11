@@ -24,17 +24,7 @@ void AExRunnerHUD::BeginPlay()
 
 	if (HUDLayoutClass)
 	{
-		// CommonUI 기반 위젯이므로 CreateWidget 후 루트 캔버스에 추가
-		SpawnedHUDLayout = CreateWidget<UExHUDLayoutWidget>(PC, HUDLayoutClass);
-		if (SpawnedHUDLayout)
-		{
-			SpawnedHUDLayout->AddToViewport();
-			UE_LOG(LogExRunnerHUD, Log, TEXT("AExRunnerHUD: %s 레이아웃이 화면에 성공적으로 추가되었습니다."), *HUDLayoutClass->GetName());
-		}
-	}
-	else
-	{
-		UE_LOG(LogExRunnerHUD, Warning, TEXT("AExRunnerHUD: HUDLayoutClass가 블루프린트에서 설정되지 않았습니다!"));
+		UE_LOG(LogExRunnerHUD, Log, TEXT("AExRunnerHUD: Experience 시스템이 HUD 렌더링을 담당하므로 HUDLayoutClass 기반 자체 생성 로직을 건너뜁니다. -> %s"), *HUDLayoutClass->GetName());
 	}
 }
 

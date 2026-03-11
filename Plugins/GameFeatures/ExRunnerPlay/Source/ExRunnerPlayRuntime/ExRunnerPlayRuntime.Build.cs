@@ -10,6 +10,7 @@ public class ExRunnerPlayRuntime : ModuleRules
 		
 		PublicIncludePaths.AddRange(
 			new string[] {
+				ModuleDirectory,
 				System.IO.Path.Combine(ModuleDirectory, "Debug"),
 				System.IO.Path.Combine(ModuleDirectory, "Tags"),
 			}

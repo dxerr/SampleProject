@@ -27,6 +27,8 @@ DEFINE_LOG_CATEGORY_STATIC(LogExRunnerPlay, Log, All);
 AExRunnerGameMode::AExRunnerGameMode()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true; // [Fix] AExGameModeBase에서 꺼진 Tick을 플로어 경로 갱신을 위해 재활성화
+
 	// NOTE: 기본 TickGroup(TG_PrePhysics) 사용
 	// 오프셋 기반 보정이므로 X 리셋이 없어 Tick 순서에 민감하지 않음
 

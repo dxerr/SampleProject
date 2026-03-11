@@ -3,6 +3,8 @@
 #include "Subsystems/ExGameFlowSubsystem.h"
 #include "Tags/ExFlowTags.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogExGameFlow, Log, All);
+
 void UExGameFlowSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -49,7 +51,7 @@ void UExGameFlowSubsystem::SetFlowState(FGameplayTag NewState)
 
 	if (!bIsAllowedTransition)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ExGameFlowSubsystem] Invalid transition attempted from %s to %s"), 
+		UE_LOG(LogExGameFlow, Warning, TEXT("[ExGameFlowSubsystem] Invalid transition attempted from %s to %s"), 
 			*CurrentFlowState.ToString(), *NewState.ToString());
 		return;
 	}
@@ -60,14 +62,14 @@ void UExGameFlowSubsystem::SetFlowState(FGameplayTag NewState)
 	// 변경 델리게이트 브로드캐스트
 	OnFlowStateChanged.Broadcast(OldState, CurrentFlowState);
 
-	UE_LOG(LogTemp, Log, TEXT("[ExGameFlowSubsystem] Flow State Changed: %s -> %s"), 
+	UE_LOG(LogExGameFlow, Log, TEXT("[ExGameFlowSubsystem] Flow State Changed: %s -> %s"), 
 		*OldState.ToString(), *CurrentFlowState.ToString());
 }
 
 void UExGameFlowSubsystem::RequestTravel(const FString& MapURL)
 {
 	// GameMode 등 델리게이트를 수신할 수 있는 체계로 알림
-	UE_LOG(LogTemp, Log, TEXT("[ExGameFlowSubsystem] Requesting Travel to %s"), *MapURL);
+	UE_LOG(LogExGameFlow, Log, TEXT("[ExGameFlowSubsystem] Requesting Travel to %s"), *MapURL);
 	OnRequestTravel.Broadcast(MapURL);
 }
 
