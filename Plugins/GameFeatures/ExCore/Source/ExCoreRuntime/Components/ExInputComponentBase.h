@@ -10,7 +10,7 @@
 /**
  * 
  */
-UCLASS(Abstract, Blueprintable, ClassGroup=(ExInput), meta=(BlueprintSpawnableComponent))
+UCLASS(Abstract, ClassGroup=(ExInput))
 class EXCORERUNTIME_API UExInputComponentBase : public UActorComponent
 {
 	GENERATED_BODY()
