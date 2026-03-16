@@ -90,11 +90,17 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 	Inputs.SetMoveInput(EMoveInputType::DirectionalIntent, ForwardDir);
 	Inputs.OrientationIntent = ForwardDir;
 
-	// 모바일 화면에서 확인할 수 있도록 매우 눈에 띄게 출력
-	if (GEngine)
+	// [수정] Mover 컴포넌트의 ProduceInput은 워커 스레드(네트워크 시뮬레이션 등)에서 호출될 수 있습니다.
+	// GEngine->AddOnScreenDebugMessage는 게임 스레드에서만 안전하므로, 이를 여기서 직접 호출하면 모바일/패키징 빌드에서 치명적인 크래시가 발생할 수 있습니다.
+	
+	// 모바일 환경 원인 파악용 로그 (스레드 안전)
+	static double LastLogTime = 0.0;
+	double CurrentTime = FPlatformTime::Seconds();
+	
+	if (CurrentTime - LastLogTime > 1.0) // 1초에 한 번만 출력하여 스팸 방지
 	{
-		FString DebugMsg = FString::Printf(TEXT("[MoveInput] ForwardDir: (%.2f, %.2f) | %s"), ForwardDir.X, ForwardDir.Y, *DebugCtrlStatus);
-		GEngine->AddOnScreenDebugMessage(10, 0.f, FColor::Red, DebugMsg);
+		UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoveInput] ProduceInput Called! ForwardDir: (%.2f, %.2f) | %s"), ForwardDir.X, ForwardDir.Y, *DebugCtrlStatus);
+		LastLogTime = CurrentTime;
 	}
 }
 
