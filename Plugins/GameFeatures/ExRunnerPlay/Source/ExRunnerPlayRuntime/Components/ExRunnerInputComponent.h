@@ -42,12 +42,22 @@ protected:
 	void NativeOnSlideAction(const struct FInputActionValue& Value);
 	void NativeOnSprintAction(const struct FInputActionValue& Value);
 	void NativeOnMoveAction(const struct FInputActionValue& Value);
-
-public:
+	virtual void BeginPlay() override;
 	virtual void InitializeInputBindings(class UEnhancedInputComponent* EnhancedInputComponent) override;
 
 	// ============================================
-	// 1. 이벤트 브로드캐스터 (캐릭터 BP가 이를 구독하여 실제 동작 수행)
+	// 1. Runner 설정 (DA_ExGameModeDataSet 또는 개별 값)
+	// ============================================
+	// 외부에 정의된 GameModeDataSet (할당 시 이 데이터의 설정값을 우선 사용)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="ExInput|Runner|Settings")
+	class UExGameModeDataSet* GameModeDataSet;
+
+	// 조이스틱 값을 실제 회전 델타로 적용할 민감도 스케일 (GameModeDataSet이 없으면 이 값 사용)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="ExInput|Runner|Settings")
+	float RunnerLookSensitivity = 0.5f; // 높은 값이 들어올 경우를 대비해 기본 스케일을 작게 설정
+
+	// ============================================
+	// 2. 이벤트 브로드캐스터 (캐릭터 BP가 이를 구독하여 실제 동작 수행)
 	// ============================================
 	UPROPERTY(BlueprintAssignable, Category="ExInput|Runner|Events")
 	FOnRunnerJumpRequested OnJumpRequested;
@@ -61,6 +71,11 @@ public:
 	UPROPERTY(BlueprintAssignable, Category="ExInput|Runner|Events")
 	FOnRunnerMoveRequested OnMoveRequested;
 
+	// 좌우 방향(Yaw) 회전 요청 브로드캐스트용 (모바일 터치 패드 등에서 호출)
+	UPROPERTY(BlueprintAssignable, Category="ExInput|Runner|Events")
+	FOnRunnerMoveRequested OnLookRequested;
+
+public:
 	// ============================================
 	// 2. Action Requesters (UI 및 Enhanced Input에서 호출하는 진입점)
 	// ============================================
@@ -80,4 +95,18 @@ public:
 	// 이동 요청 (축 입력)
 	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Actions")
 	virtual void RequestMoveAction(float AxisValue);
+
+	// 좌우 회전(Look) 요청 (모바일 델타 입력 등)
+	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Actions")
+	virtual void RequestLookAction(float YawAxisValue);
+
+	// DataSet 또는 폴백 기본값에서 스와이프 발동 퍼센트를 반환
+	// GameModeDataSet이 할당된 경우 DataSet의 SwipeActivationPercentage 우선 사용
+	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Settings")
+	float GetSwipeActivationPercentage() const;
+
+	// 현재 슬라이드 입력이 InjectedInputStates에 등록(true 주입 중)되어 있는지 조회
+	// ViewModel의 로컬 변수 대신, 컴포넌트 내부 맵을 직접 확인하여 동기화 깨짐 최소화
+	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Settings")
+	bool IsSlideInputActive() const;
 };

@@ -69,9 +69,11 @@ private:
 	void UpdateLanePosition(float DeltaTime);
 
 	/** 캐릭터 조향(Rotation) 및 스티어링 업데이트 (GameState의 PathManager 연동) */
+	UFUNCTION(BlueprintCallable, Category = "Runner|Movement")
 	void UpdateCharacterRotation(float DeltaTime);
 
 	/** 상위 Mover Pawn 바인딩 시도 (성공 시 타이머 종료) */
+
 	void TryInitializeMover();
 
 	/** 지연 초기화를 위한 타이머 핸들 */

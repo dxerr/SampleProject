@@ -24,6 +24,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="GameMode")
 	int32 NumRounds = 3;
 
+	// 최대 러너 좌우 이동 각도 제한 (정면 기준, 예: 45도)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="GameMode|Runner")
+	float MaxRunnerYawAngle = 45.0f;
+
+	// 러너 조이스틱 Yaw 회전 민감도 (델타 크기 조절)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="GameMode|Runner")
+	float RunnerLookSensitivity = 1.0f;
+
+	// 스와이프 발동 임계 비율 (터치패드 세로 크기 대비, 0.05 ~ 1.0, 기본 30%)
+	// 점프(위), 슬라이드(아래) 모두 동일한 비율 적용
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="GameMode|Runner", meta=(ClampMin="0.05", ClampMax="1.0"))
+	float SwipeActivationPercentage = 0.3f;
+
 	// 1. 컨테이너 폰 클래스 (예: SandboxCharacter_CMC - 이동/물리 담당)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GameMode")
 	TSubclassOf<APawn> ContainerPawnClass;

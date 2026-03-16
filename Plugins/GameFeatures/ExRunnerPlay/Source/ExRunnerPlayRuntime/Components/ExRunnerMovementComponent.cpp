@@ -13,6 +13,7 @@
 #include "GameFramework/Character.h"
 #include "DrawDebugHelpers.h"
 #include "Util/Actor/ExActorUtil.h"
+#include "ExRunnerInputComponent.h"
 
 // 디버깅용 로그 카테고리 정의
 DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
@@ -212,6 +213,9 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 	FRotator PathDirection = GS->PathManager->GetDirectionAtDistance(PlayerPathDist);
 	FRotator TargetRot = GS->PathManager->GetDirectionAtDistance(LookAheadDist);
 
+	// ★ InputComponent에서 관리하는 조이스틱 좌우 오프셋 각도를 경로 타겟 방향에 누적 합산합니다 ★
+	// (이제 누적 방식이 폐기되었으므로 곡선의 방향을 단독으로 따릅니다)
+
 	// Lateral Error(횡방향 오차) 계산
 	FVector PathPos = GS->PathManager->GetPositionAtDistance(PlayerPathDist);
 	FVector PathRight = FRotationMatrix(PathDirection).GetScaledAxis(EAxis::Y);
@@ -221,15 +225,12 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 	float DesiredLateralOffset = CurrentLaneYOffset;
 	float LateralError = LateralOffset - DesiredLateralOffset;
 
-	// 부드러운 보간 (RInterpTo)
+	// ★ [수정] 강제 회전 방지 및 수동 조작 우선 처리 ★
+	// 컨트롤러의 Yaw 회전은 플레이어의 수동 조각(BP AddControllerYawInput)이 전적으로 담당해야 합니다.
 	FRotator CurrentControlRot = Controller->GetControlRotation();
-	FRotator NewControlRot = FMath::RInterpTo(
-		CurrentControlRot,
-		TargetRot,
-		DeltaTime,
-		GS->PathManager->CurveConfig->CharacterRotationInterpSpeed * 1.5f // 반응성 향상
-	);
+	FRotator NewControlRot = CurrentControlRot;
 
+	// 곡선의 기본 타겟 각도(TargetRot)는 Pitch와 Roll에만 참고용으로 반영합니다 (필요시)
 	NewControlRot.Pitch = CurrentControlRot.Pitch;
 	NewControlRot.Roll = CurrentControlRot.Roll;
 

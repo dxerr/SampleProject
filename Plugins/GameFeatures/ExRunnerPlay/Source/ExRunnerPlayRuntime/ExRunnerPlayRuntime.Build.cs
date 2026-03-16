@@ -28,6 +28,7 @@ public class ExRunnerPlayRuntime : ModuleRules
 			new string[]
 			{
 				"Core",
+				"ExFrameWork", // Required for GameModeDataSet and other base classes
 				"ExCoreRuntime", // Framework Dependency
 				"GameplayTags",	// GameplayTag types (FGameplayTag, native tags)
 				"Mover",
