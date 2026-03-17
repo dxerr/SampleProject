@@ -79,6 +79,12 @@ void UExRunnerMovementComponent::TryInitializeMover()
 
 			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 InputProducer로 등록 완료"), *ParentPawn->GetName());
 
+			if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
+			{
+				// 초기화 완료 시점에 지금까지의 Breadcrumbs를 포함한 진단 리포트 강제 발송
+				SentrySubsystem->CaptureMessage(TEXT("Movement Component Diagnostic Report"), ESentryLevel::Info);
+			}
+
 			// ExRunnerInputComponent를 동일한 Pawn에서 탐색하여 Look 델리게이트를 자동 바인딩합니다.
 			// 블루프린트에서 BindLookInput을 수동 호출할 필요가 없습니다.
 			if (UExRunnerInputComponent* InputComp = ParentPawn->FindComponentByClass<UExRunnerInputComponent>())
