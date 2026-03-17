@@ -146,6 +146,11 @@ void UExRunnerInputViewModel::OnTouchPadReleased()
 			UE_LOG(LogTemp, Warning, TEXT("[ExSlide] *** RELEASE CLEANUP → false *** | InjectedInputStates에서 SlideAction 제거"));
 			InputComp->RequestSlideAction(false);
 		}
+
+		// [회전 원점 복구]
+		// NormX = 0 전송 → MovementComponent의 TargetLookYawOffset가 0이 되면
+		// UpdateCharacterRotation의 FInterpTo가 자동으로 경로 정면(PathYaw)을 향해 부드럽게 복구
+		InputComp->RequestLookAction(0.0f);
 	}
 }
 

@@ -47,6 +47,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Runner|Movement")
 	void SetTargetRunningSpeed(float NewSpeed);
 
+	/** 조이스틱 Look 입력 바인딩 (ExRunnerInputComponent 의 OnLookRequested 델리게이트 연결용) */
+	UFUNCTION(BlueprintCallable, Category = "Runner|Input")
+	void BindLookInput(class UExRunnerInputComponent* InputComp);
+
 	/** 현재 레인의 목표 좌우 오프셋 반환 */
 	UFUNCTION(BlueprintPure, Category = "Runner|Lane")
 	float GetCurrentLaneYOffset() const { return CurrentLaneYOffset; }
@@ -63,6 +67,9 @@ protected:
 	/** 레인 변경 속도 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner|Lane")
 	float LaneChangeSpeed = 10.0f;
+	/** GameModeDataSet (MaxRunnerYawAngle, LookInterpSpeed 참조용) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Runner|Look")
+	class UExGameModeDataSet* GameModeDataSet;
 
 private:
 	/** 레인 위치 업데이트 (Interp) */
@@ -86,6 +93,14 @@ private:
 	// 내부 상태 변수
 	int32 CurrentLaneIndex = 0;
 	float CurrentLaneYOffset = 0.0f;
+
+	// 조이스틱 좌우 입력으로 설정된 목표 Yaw 오프셋 (°) — 경로 기준 정면으로부터의 편차
+	// NormX(-1~1) × MaxRunnerYawAngle 로 계산되며, Release 시 0.0으로 초기화
+	float TargetLookYawOffset = 0.0f;
+
+	// OnLookRequested 델리게이트 콜백 (Dynamic Multicast 바인딩용)
+	UFUNCTION()
+	void OnLookRequestedCallback(float NormX);
 
 
 

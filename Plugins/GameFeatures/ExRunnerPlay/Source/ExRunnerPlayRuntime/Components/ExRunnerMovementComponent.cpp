@@ -14,6 +14,9 @@
 #include "DrawDebugHelpers.h"
 #include "Util/Actor/ExActorUtil.h"
 #include "ExRunnerInputComponent.h"
+#include "Data/Modes/ExGameModeDataSet.h"
+#include "SentrySubsystem.h"
+#include "SentryLibrary.h"
 
 // 디버깅용 로그 카테고리 정의
 DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
@@ -32,6 +35,11 @@ void UExRunnerMovementComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// 1차 시도 (즉시 성공할 수도 있음)
+	if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
+	{
+		SentrySubsystem->AddBreadcrumbWithParams(TEXT("BeginPlay Started"), TEXT("ExRunnerMovement"), TEXT("lifecycle"), {});
+	}
+	
 	TryInitializeMover();
 
 	// 만약 초기화에 실패했다면(부착이 안 끝났다면), 가벼운 타이머(0.1초마다)로 재시도합니다.
@@ -61,7 +69,27 @@ void UExRunnerMovementComponent::TryInitializeMover()
 			
 			// InputProducers 배열에 자신을 추가하여 Mover가 매 틱마다 ProduceInput을 호출하도록 합니다.
 			MoverComp->InputProducers.AddUnique(this);
+			
+			if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
+			{
+				TMap<FString, FSentryVariant> Context;
+				Context.Add(TEXT("PawnName"), ParentPawn->GetName());
+				SentrySubsystem->AddBreadcrumbWithParams(TEXT("Mover Initialized"), TEXT("ExRunnerMovement"), TEXT("init"), Context);
+			}
+
 			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 InputProducer로 등록 완료"), *ParentPawn->GetName());
+
+			// ExRunnerInputComponent를 동일한 Pawn에서 탐색하여 Look 델리게이트를 자동 바인딩합니다.
+			// 블루프린트에서 BindLookInput을 수동 호출할 필요가 없습니다.
+			if (UExRunnerInputComponent* InputComp = ParentPawn->FindComponentByClass<UExRunnerInputComponent>())
+			{
+				BindLookInput(InputComp);
+				UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: ExRunnerInputComponent 탐색 성공, OnLookRequested 자동 바인딩 완료"));
+			}
+			else
+			{
+				UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: ExRunnerInputComponent를 찾지 못했습니다. Look 바인딩 생략."));
+			}
 			
 			// 성공 시 타이머 안전 종료
 			GetWorld()->GetTimerManager().ClearTimer(InitTimerHandle);
@@ -100,6 +128,16 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 	if (CurrentTime - LastLogTime > 1.0) // 1초에 한 번만 출력하여 스팸 방지
 	{
 		UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoveInput] ProduceInput Called! ForwardDir: (%.2f, %.2f) | %s"), ForwardDir.X, ForwardDir.Y, *DebugCtrlStatus);
+		
+		if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
+		{
+			TMap<FString, FSentryVariant> Context;
+			Context.Add(TEXT("ForwardX"), static_cast<float>(ForwardDir.X));
+			Context.Add(TEXT("ForwardY"), static_cast<float>(ForwardDir.Y));
+			Context.Add(TEXT("CtrlStatus"), DebugCtrlStatus);
+			SentrySubsystem->AddBreadcrumbWithParams(TEXT("ProduceInput Tick"), TEXT("ExRunnerMovement"), TEXT("input"), Context);
+		}
+		
 		LastLogTime = CurrentTime;
 	}
 }
@@ -137,14 +175,30 @@ void UExRunnerMovementComponent::MoveRight()
 
 void UExRunnerMovementComponent::SetTargetRunningSpeed(float NewSpeed)
 {
-	// 1. 여기서 실제 Mover의 이동 속도(MaxSpeed 등)를 변경하는 로직 추가 가능 (기획에 맞춰 구현)
-	// UMoverComponent 인터페이스를 통해 속도 수정 로직 삽입 필요 (현재는 UI 테스트를 위한 스니펫)
-
-	// 2. 중앙 집중 데이터 스토어(UI 갱신용)에 통보하여 이벤트를 울리게 합니다 (Zero-Tick)
 	if (CachedStatComponent.IsValid())
 	{
 		CachedStatComponent->SetCurrentRunningSpeed(NewSpeed);
 	}
+}
+
+void UExRunnerMovementComponent::BindLookInput(UExRunnerInputComponent* InputComp)
+{
+	if (!InputComp) return;
+
+	// 기존 바인딩이 있다면 해제 (중복 바인딩 방지)
+	InputComp->OnLookRequested.RemoveDynamic(this, &UExRunnerMovementComponent::OnLookRequestedCallback);
+
+	// OnLookRequested 델리게이트 바인딩:
+	// NormX(-1~1)를 수신하여 TargetLookYawOffset(°)으로 변환하여 저장합니다.
+	InputComp->OnLookRequested.AddDynamic(this, &UExRunnerMovementComponent::OnLookRequestedCallback);
+}
+
+void UExRunnerMovementComponent::OnLookRequestedCallback(float NormX)
+{
+	const float MaxYaw = (GameModeDataSet) ? GameModeDataSet->MaxRunnerYawAngle : 45.0f;
+	TargetLookYawOffset = NormX * MaxYaw;
+
+	UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] NormX: %.3f → TargetLookYawOffset: %.1f°"), NormX, TargetLookYawOffset);
 }
 
 void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
@@ -237,9 +291,24 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 	FRotator CurrentControlRot = Controller->GetControlRotation();
 	FRotator NewControlRot = CurrentControlRot;
 
-	// 곡선의 기본 타겟 각도(TargetRot)는 Pitch와 Roll에만 참고용으로 반영합니다 (필요시)
+	// ★ [핵심 수정] 절대 Yaw 오프셋 기반 보간 방식 ★
+	// 각도 보간 시 FInterpTo는 -180 ~ 180도 경계에서 오작동하여 캐릭터가 빙글 도는 현상이 발생합니다.
+	// 따라서 항상 최단 방향을 찾아주는 RInterpTo(Rotator 구조체 단위)를 사용해야 합니다.
+	
+	// 1. 경로 정면(TargetRot.Yaw)을 기준으로 플랫폼 스와이프 오프셋(TargetLookYawOffset)을 더한 목표 회전값 세팅
+	FRotator TargetControlRot = CurrentControlRot;
+	TargetControlRot.Yaw = TargetRot.Yaw + TargetLookYawOffset;
+
+	// 2. RInterpTo를 사용하여 현재 컨트롤러 회전에서 목표 회전으로 최단 거리(Shortest Path) 부드럽게 보간
+	const float InterpSpeed = (GameModeDataSet) ? GameModeDataSet->LookInterpSpeed : 8.0f;
+	NewControlRot = FMath::RInterpTo(CurrentControlRot, TargetControlRot, DeltaTime, InterpSpeed);
+
+	// UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] PathYaw: %.1f | TargetLookYawOffset: %.1f | FinalTargetYaw: %.1f | CurrentYaw: %.1f → NewYaw: %.1f"),
+	//	TargetRot.Yaw, TargetLookYawOffset, TargetControlRot.Yaw, CurrentControlRot.Yaw, NewControlRot.Yaw);
+
+	// Pitch와 Roll은 기존 컨트롤러 회전값으로 덮어써서 Yaw 연산의 영향만 남김
 	NewControlRot.Pitch = CurrentControlRot.Pitch;
-	NewControlRot.Roll = CurrentControlRot.Roll;
+	NewControlRot.Roll  = CurrentControlRot.Roll;
 
 	Controller->SetControlRotation(NewControlRot);
 

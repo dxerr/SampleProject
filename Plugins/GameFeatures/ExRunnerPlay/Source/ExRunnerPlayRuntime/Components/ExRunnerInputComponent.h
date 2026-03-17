@@ -72,8 +72,12 @@ protected:
 	FOnRunnerMoveRequested OnMoveRequested;
 
 	// 좌우 방향(Yaw) 회전 요청 브로드캐스트용 (모바일 터치 패드 등에서 호출)
+	// public으로 선언해야 외부 클래스(MovementComponent 등)에서 AddDynamic 접근 가능
+public:
 	UPROPERTY(BlueprintAssignable, Category="ExInput|Runner|Events")
 	FOnRunnerMoveRequested OnLookRequested;
+
+protected:
 
 public:
 	// ============================================

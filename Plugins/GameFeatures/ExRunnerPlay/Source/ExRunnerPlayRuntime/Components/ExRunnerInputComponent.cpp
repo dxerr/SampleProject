@@ -122,28 +122,9 @@ void UExRunnerInputComponent::RequestMoveAction(float AxisValue)
 
 void UExRunnerInputComponent::RequestLookAction(float YawAxisValue)
 {
-	float CurrentSensitivity = RunnerLookSensitivity;
-	
-	if (GameModeDataSet)
-	{
-		CurrentSensitivity = GameModeDataSet->RunnerLookSensitivity;
-	}
-
-	// 1. 입력받은 정규화된 조이스틱 값에 회전 민감도를 곱해 YawDelta 산출
-	float YawDelta = YawAxisValue * CurrentSensitivity;
-
-	// 2. 계산된 YawDelta를 브로드캐스팅
-	OnLookRequested.Broadcast(YawDelta);
-
-	// 3. 입력 디버깅 (UExDebugDrawSubsystem 활용)
-	if (UWorld* World = GetWorld())
-	{
-		if (UExDebugDrawSubsystem* DebugDraw = World->GetSubsystem<UExDebugDrawSubsystem>())
-		{
-			FString DebugMsg = FString::Printf(TEXT("[ExRunnerInput] AxisValue: %f / Sensitivity: %f / YawDelta: %f"), YawAxisValue, CurrentSensitivity, YawDelta);
-			DebugDraw->DrawScreenTextChecked(TAG_Ex_Debug_Speed, DebugMsg, FColor::Magenta, 0.0f);
-		}
-	}
+	// NormX(-1.0 ~ 1.0) 값을 그대로 브로드캐스트합니다.
+	// 실제 MaxRunnerYawAngle 곱셈 및 보간 처리는 ExRunnerMovementComponent::UpdateCharacterRotation에서 수행합니다.
+	OnLookRequested.Broadcast(YawAxisValue);
 }
 
 float UExRunnerInputComponent::GetSwipeActivationPercentage() const

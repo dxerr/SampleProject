@@ -32,6 +32,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="GameMode|Runner")
 	float RunnerLookSensitivity = 1.0f;
 
+	// 조이스틱 좌우 회전 보간 속도 (FInterpTo Speed, 낮을수록 느리고 부드럽게 복귀)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="GameMode|Runner")
+	float LookInterpSpeed = 8.0f;
+
 	// 스와이프 발동 임계 비율 (터치패드 세로 크기 대비, 0.05 ~ 1.0, 기본 30%)
 	// 점프(위), 슬라이드(아래) 모두 동일한 비율 적용
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="GameMode|Runner", meta=(ClampMin="0.05", ClampMax="1.0"))
