@@ -70,22 +70,16 @@ void UExRunnerMovementComponent::TryInitializeMover()
 			// InputProducers 배열에 자신을 추가하여 Mover가 매 틱마다 ProduceInput을 호출하도록 합니다.
 			MoverComp->InputProducers.AddUnique(this);
 			
-			// [추가] Mover 시뮬레이션이 특정 모드에 고착되거나 대기 상태일 수 있으므로 Walking 모드 강제 진입을 요청합니다.
+			// Mover 시뮬레이션이 특정 모드에 고착되거나 대기 상태일 수 있으므로 Walking 모드 강제 진입을 요청합니다.
 			MoverComp->QueueNextMode(DefaultModeNames::Walking);
-			
-			if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
-			{
-				TMap<FString, FSentryVariant> Context;
-				Context.Add(TEXT("PawnName"), ParentPawn->GetName());
-				Context.Add(TEXT("RequestedMode"), DefaultModeNames::Walking.ToString());
-				
-				if (MoverComp->MovementModes.Num() > 0)
-				{
-					Context.Add(TEXT("ModesCount"), FString::FromInt(MoverComp->MovementModes.Num()));
-					Context.Add(TEXT("ActiveMode"), MoverComp->GetMovementModeName().ToString());
-				}
 
-				SentrySubsystem->AddBreadcrumbWithParams(TEXT("Mover Initialized"), TEXT("ExRunnerMovement"), TEXT("init"), Context);
+			// [진단] 현재 Mover에 등록된 모든 입력 프로듀서를 확인하여 충돌 대상을 식별합니다.
+			for (UObject* Producer : MoverComp->InputProducers)
+			{
+				if (Producer)
+				{
+					UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: Registered Input Producer: %s"), *Producer->GetName());
+				}
 			}
 
 			UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 등록 완료 및 Walking 모드(%s) 강제 요청"), *ParentPawn->GetName(), *DefaultModeNames::Walking.ToString());
@@ -132,10 +126,25 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 		}
 	}
 
-	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, ForwardDir);
-	Inputs.OrientationIntent = ForwardDir;
+	// [개선] 기존에 설정된 MoveInput을 가져와서 현재의 전진 의도와 병합합니다.
+	// 만약 다른 InputProducer가 (0,0,0)을 줬더라도 우리가 전진 값을 더해주기 때문에 입력을 유지할 수 있습니다.
+	FVector ExistingInput = Inputs.GetMoveInput();
+	FVector MergedInput = ExistingInput + ForwardDir;
 
-	// [수정] OrientationIntent도 Bit Packing 오차 범위를 줄이기 위해 정규화된 벡터를 유지합니다.
+	// 방향성 입력(DirectionalIntent)의 스펙에 맞게 크기를 1.0 이내로 제한합니다.
+	if (MergedInput.SizeSquared() > 1.0f)
+	{
+		MergedInput.Normalize();
+	}
+
+	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, MergedInput);
+	
+	// OrientationIntent도 전진 방향으로 동기화하되, 기존 방향이 있다면 보존할 수 있도록 IsNearlyZero 체크를 수행합니다.
+	if (Inputs.OrientationIntent.IsNearlyZero())
+	{
+		Inputs.OrientationIntent = ForwardDir;
+	}
+
 	if (!Inputs.OrientationIntent.IsNearlyZero())
 	{
 		Inputs.OrientationIntent.Normalize();
