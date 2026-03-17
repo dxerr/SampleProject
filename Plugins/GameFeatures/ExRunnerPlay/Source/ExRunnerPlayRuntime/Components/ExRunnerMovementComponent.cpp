@@ -74,6 +74,18 @@ void UExRunnerMovementComponent::TryInitializeMover()
 			{
 				TMap<FString, FSentryVariant> Context;
 				Context.Add(TEXT("PawnName"), ParentPawn->GetName());
+				
+				// 추가 방어 로직: Mover가 의존하는 데이터 에셋 로딩 상태 체크
+				if (MoverComp->PersistentSyncData.IsValid())
+				{
+					Context.Add(TEXT("MoverDataAsset"), TEXT("Valid"));
+				}
+				else
+				{
+					Context.Add(TEXT("MoverDataAsset"), TEXT("MISSING"));
+					UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: MoverComponent의 데이터 에셋이 아직 유효하지 않습니다. (로딩 지연 의심)"));
+				}
+
 				SentrySubsystem->AddBreadcrumbWithParams(TEXT("Mover Initialized"), TEXT("ExRunnerMovement"), TEXT("init"), Context);
 			}
 
