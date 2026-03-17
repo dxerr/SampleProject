@@ -70,27 +70,25 @@ void UExRunnerMovementComponent::TryInitializeMover()
 			// InputProducers 배열에 자신을 추가하여 Mover가 매 틱마다 ProduceInput을 호출하도록 합니다.
 			MoverComp->InputProducers.AddUnique(this);
 			
+			// [추가] Mover 시뮬레이션이 특정 모드에 고착되거나 대기 상태일 수 있으므로 Walking 모드 강제 진입을 요청합니다.
+			MoverComp->QueueNextMode(DefaultModeNames::Walking);
+			
 			if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
 			{
 				TMap<FString, FSentryVariant> Context;
 				Context.Add(TEXT("PawnName"), ParentPawn->GetName());
+				Context.Add(TEXT("RequestedMode"), DefaultModeNames::Walking.ToString());
 				
-				// 추가 방어 로직: Mover 시스템 준비 상태 체크
 				if (MoverComp->MovementModes.Num() > 0)
 				{
-					Context.Add(TEXT("MovementModesCount"), FString::FromInt(MoverComp->MovementModes.Num()));
-					Context.Add(TEXT("CurrentMode"), MoverComp->GetMovementModeName().ToString());
-				}
-				else
-				{
-					Context.Add(TEXT("MoverStatus"), TEXT("NO_MODES_FOUND"));
-					UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: MoverComponent에 등록된 이동 모드가 없습니다. (에셋 로딩 실패 의심)"));
+					Context.Add(TEXT("ModesCount"), FString::FromInt(MoverComp->MovementModes.Num()));
+					Context.Add(TEXT("ActiveMode"), MoverComp->GetMovementModeName().ToString());
 				}
 
 				SentrySubsystem->AddBreadcrumbWithParams(TEXT("Mover Initialized"), TEXT("ExRunnerMovement"), TEXT("init"), Context);
 			}
 
-			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 InputProducer로 등록 완료"), *ParentPawn->GetName());
+			UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 등록 완료 및 Walking 모드(%s) 강제 요청"), *ParentPawn->GetName(), *DefaultModeNames::Walking.ToString());
 
 			if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
 			{
@@ -134,10 +132,14 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 		}
 	}
 
-	Inputs.SetMoveInput(EMoveInputType::DirectionalIntent, ForwardDir);
+	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, ForwardDir);
 	Inputs.OrientationIntent = ForwardDir;
 
-	// [수정] Mover 컴포넌트의 ProduceInput은 워커 스레드(네트워크 시뮬레이션 등)에서 호출될 수 있습니다.
+	// [수정] OrientationIntent도 Bit Packing 오차 범위를 줄이기 위해 정규화된 벡터를 유지합니다.
+	if (!Inputs.OrientationIntent.IsNearlyZero())
+	{
+		Inputs.OrientationIntent.Normalize();
+	}
 	// GEngine->AddOnScreenDebugMessage는 게임 스레드에서만 안전하므로, 이를 여기서 직접 호출하면 모바일/패키징 빌드에서 치명적인 크래시가 발생할 수 있습니다.
 	
 	// 모바일 환경 원인 파악용 로그 (스레드 안전)
