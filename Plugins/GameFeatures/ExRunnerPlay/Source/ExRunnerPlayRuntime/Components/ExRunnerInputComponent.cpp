@@ -75,6 +75,10 @@ void UExRunnerInputComponent::NativeOnSprintAction(const FInputActionValue& Valu
 void UExRunnerInputComponent::NativeOnMoveAction(const FInputActionValue& Value)
 {
 	float AxisValue = Value.Get<float>();
+	if (FMath::Abs(AxisValue) > 0.1f)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[InputComp] NativeOnMoveAction: %.2f"), AxisValue);
+	}
 	OnMoveRequested.Broadcast(AxisValue);
 }
 

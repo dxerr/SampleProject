@@ -127,14 +127,44 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 	}
 
 	// [개선] 기존에 설정된 MoveInput을 가져와서 현재의 전진 의도와 병합합니다.
-	// 만약 다른 InputProducer가 (0,0,0)을 줬더라도 우리가 전진 값을 더해주기 때문에 입력을 유지할 수 있습니다.
 	FVector ExistingInput = Inputs.GetMoveInput();
 	FVector MergedInput = ExistingInput + ForwardDir;
 
-	// 방향성 입력(DirectionalIntent)의 스펙에 맞게 크기를 1.0 이내로 제한합니다.
 	if (MergedInput.SizeSquared() > 1.0f)
 	{
 		MergedInput.Normalize();
+	}
+
+	// [진단] 현재 Mover에 등록된 모든 입력 프로듀서를 주기적으로 확인합니다.
+	static double LastProducerLogTime = 0.0;
+	double CurrentTimeForProducer = FPlatformTime::Seconds();
+	if (CurrentTimeForProducer - LastProducerLogTime > 5.0)
+	{
+		if (TargetPawn)
+		{
+			if (UMoverComponent* MoverComp = TargetPawn->FindComponentByClass<UMoverComponent>())
+			{
+				for (UObject* Producer : MoverComp->InputProducers)
+				{
+					if (Producer)
+					{
+						UE_LOG(LogExRunnerMovement, Log, TEXT("[MoverStat] Active Producer: %s"), *Producer->GetName());
+					}
+				}
+				
+				UPrimitiveComponent* MovementBase = MoverComp->GetMovementBase();
+				FHitResult FloorHit;
+				bool bHasFloor = MoverComp->TryGetFloorCheckHitResult(FloorHit);
+
+				UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoverStat] Mode: %s | Loc: %s | Vel: %s | Base: %s | Floor: %s"), 
+					*MoverComp->GetMovementModeName().ToString(),
+					*TargetPawn->GetActorLocation().ToString(),
+					*TargetPawn->GetVelocity().ToString(),
+					MovementBase ? *MovementBase->GetName() : TEXT("None"),
+					bHasFloor ? (FloorHit.GetActor() ? *FloorHit.GetActor()->GetName() : TEXT("NoActor")) : TEXT("NoHit"));
+			}
+		}
+		LastProducerLogTime = CurrentTimeForProducer;
 	}
 
 	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, MergedInput);
