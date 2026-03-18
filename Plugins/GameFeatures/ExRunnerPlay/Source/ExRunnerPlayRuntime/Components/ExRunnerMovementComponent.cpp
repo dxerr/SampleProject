@@ -15,8 +15,8 @@
 #include "Util/Actor/ExActorUtil.h"
 #include "ExRunnerInputComponent.h"
 #include "Data/Modes/ExGameModeDataSet.h"
-#include "SentrySubsystem.h"
-#include "SentryLibrary.h"
+#include "ExDebugStateSubsystem.h"
+#include "ExGameplayTags.h"
 
 // 디버깅용 로그 카테고리 정의
 DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
@@ -34,12 +34,6 @@ void UExRunnerMovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 1차 시도 (즉시 성공할 수도 있음)
-	if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
-	{
-		SentrySubsystem->AddBreadcrumbWithParams(TEXT("BeginPlay Started"), TEXT("ExRunnerMovement"), TEXT("lifecycle"), {});
-	}
-	
 	TryInitializeMover();
 
 	// 만약 초기화에 실패했다면(부착이 안 끝났다면), 가벼운 타이머(0.1초마다)로 재시도합니다.
@@ -73,32 +67,10 @@ void UExRunnerMovementComponent::TryInitializeMover()
 			// Mover 시뮬레이션이 특정 모드에 고착되거나 대기 상태일 수 있으므로 Walking 모드 강제 진입을 요청합니다.
 			MoverComp->QueueNextMode(DefaultModeNames::Walking);
 
-			// [진단] 현재 Mover에 등록된 모든 입력 프로듀서를 확인하여 충돌 대상을 식별합니다.
-			for (UObject* Producer : MoverComp->InputProducers)
-			{
-				if (Producer)
-				{
-					UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: Registered Input Producer: %s"), *Producer->GetName());
-				}
-			}
-
-			UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 등록 완료 및 Walking 모드(%s) 강제 요청"), *ParentPawn->GetName(), *DefaultModeNames::Walking.ToString());
-
-			if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
-			{
-				// 초기화 완료 시점에 지금까지의 Breadcrumbs를 포함한 진단 리포트 강제 발송
-				SentrySubsystem->CaptureMessage(TEXT("Movement Component Diagnostic Report"), ESentryLevel::Info);
-			}
-
 			if (UExRunnerInputComponent* InputComp = ParentPawn->FindComponentByClass<UExRunnerInputComponent>())
 			{
 				BindLookInput(InputComp);
 				bIsLookInputBound = true;
-				UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 최초 Init에서 ExRunnerInputComponent 탐색 성공, OnLookRequested 자동 바인딩 완료"));
-			}
-			else
-			{
-				UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 최초 Init에서 ExRunnerInputComponent를 찾지 못했습니다. Tick에서 지연 바인딩을 대기합니다."));
 			}
 			
 			// 성공 시 타이머 안전 종료
@@ -123,52 +95,6 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 	}
 
 	// [입력 주입] IA_Move를 Vector2D(정규화된 방향)로 주입하여 데이터 유실을 방지합니다.
-	if (UExRunnerInputComponent* InputComp = TargetPawn ? TargetPawn->FindComponentByClass<UExRunnerInputComponent>() : nullptr)
-	{
-		// [수정] float -> FVector2D 변환에 맞춰 전진 방향(Y=1.0)을 주입합니다.
-		InputComp->RequestMoveAction(FVector2D(0.0f, 1.0f)); 
-	}
-
-	// [진단] 현재 Mover 상태 및 이동 모드 설정 주기적 확인
-	static double LastProducerLogTime = 0.0;
-	double CurrentTimeForProducer = FPlatformTime::Seconds();
-	if (CurrentTimeForProducer - LastProducerLogTime > 5.0)
-	{
-		if (TargetPawn)
-		{
-			if (UMoverComponent* MoverComp = TargetPawn->FindComponentByClass<UMoverComponent>())
-			{
-				for (UObject* Producer : MoverComp->InputProducers)
-				{
-					if (Producer)
-					{
-						UE_LOG(LogExRunnerMovement, Log, TEXT("[MoverStat] Active Producer: %s"), *Producer->GetName());
-					}
-				}
-				
-				UPrimitiveComponent* MovementBase = MoverComp->GetMovementBase();
-				FHitResult FloorHit;
-				bool bHasFloor = MoverComp->TryGetFloorCheckHitResult(FloorHit);
-
-				// 무브먼트 모드 데이터 추출 (속도 제한 설정 확인용)
-				// 일반적으로 Walking 모드 등에서 MaxSpeed 등을 가져올 수 있음
-				float CurrentMaxSpeed = 0.0f;
-				if (const UCharacterMovementComponent* CMC = TargetPawn->FindComponentByClass<UCharacterMovementComponent>())
-				{
-					CurrentMaxSpeed = CMC->MaxWalkSpeed;
-				}
-
-				UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoverStat] Mode: %s | MaxSpeed: %.1f | Loc: %s | Vel: %s | Base: %s | Floor: %s"), 
-					*MoverComp->GetMovementModeName().ToString(),
-					CurrentMaxSpeed,
-					*TargetPawn->GetActorLocation().ToString(),
-					*TargetPawn->GetVelocity().ToString(),
-					MovementBase ? *MovementBase->GetName() : TEXT("None"),
-					bHasFloor ? (FloorHit.GetActor() ? *FloorHit.GetActor()->GetName() : TEXT("NoActor")) : TEXT("NoHit"));
-			}
-		}
-		LastProducerLogTime = CurrentTimeForProducer;
-	}
 	// [피드백 반영 최종 수정] 
 	// Mover의 물리적 방향과 모델 지향 방향을 결정하는 핵심 벡터 도출.
 	// 1. 경로 정면(ForwardDir)을 회전축(UpVector) 기준으로 TargetLookYawOffset(조이스틱 비율*최대각도) 만큼 회전시킵니다.
@@ -195,25 +121,6 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 	{
 		Inputs.OrientationIntent = MergedInput.GetSafeNormal();
 	}
-
-	// 모바일 환경 원인 파악용 로그 (스레드 안전)
-	static double LastLogTime = 0.0;
-	double CurrentTime = FPlatformTime::Seconds();
-	
-	if (CurrentTime - LastLogTime > 1.0) // 1초에 한 번만 출력하여 스팸 방지
-	{
-		UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoveInput] ProduceInput Called! ForwardDir: %s"), *ForwardDir.ToString());
-		
-		if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
-		{
-			TMap<FString, FSentryVariant> Context;
-			Context.Add(TEXT("ForwardX"), static_cast<float>(ForwardDir.X));
-			Context.Add(TEXT("ForwardY"), static_cast<float>(ForwardDir.Y));
-			SentrySubsystem->AddBreadcrumbWithParams(TEXT("ProduceInput Tick"), TEXT("ExRunnerMovement"), TEXT("input"), Context);
-		}
-		
-		LastLogTime = CurrentTime;
-	}
 }
 
 void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -231,7 +138,6 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 		{
 			BindLookInput(InputComp);
 			bIsLookInputBound = true;
-			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 지연된 ExRunnerInputComponent 탐색 성공, OnLookRequested 자동 바인딩 완료!"));
 		}
 	}
 
@@ -286,13 +192,7 @@ void UExRunnerMovementComponent::OnLookRequestedCallback(float AxisValue)
 	{
 		MaxYaw = GameModeDataSet->MaxRunnerYawAngle;
 	}
-	else
-	{
-		UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] GameModeDataSet이 BP(ExRunnerMovementComponent)에 할당되지 않아 기본값 45.0f를 사용합니다."));
-	}
-
 	TargetLookYawOffset = AxisValue * MaxYaw;
-	UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] AxisValue: %.3f → TargetLookYawOffset: %.1f°"), AxisValue, TargetLookYawOffset);
 }
 
 void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
@@ -403,27 +303,36 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 	// [수정] 수동 위치 보정(AddActorWorldOffset) 로직은 ProduceInput의 CorrectionInput으로 이전되어 Mover 시뮬레이션에 통합되었습니다.
 	// 이를 통해 조향과 이동이 충돌하지 않고 자연스럽게 하나의 시뮬레이션으로 동작합니다.
 
-	// ★ 디버그 드로잉 (시각적 회전 디버깅)
-	// 기존 잡다한 로그/선을 지우고, 기준 방향과 목표 방향을 명확히 화살표로 그림
+	DrawDebugMovementInfo(TargetRot, TargetControlRot, CurrentControlRot);
+}
 
-	FVector DrawStart = TargetPawn->GetActorLocation() + FVector(0, 0, 100.0f); // 머리 위쪽에서 시작
+void UExRunnerMovementComponent::DrawDebugMovementInfo(const FRotator& TargetRot, const FRotator& TargetControlRot, const FRotator& CurrentControlRot)
+{
+	if (!TargetPawn) return;
 
-	// 1. 기준이 되는 방향 (Path 정면 방향, 파란색)
-	FVector BaseDirection = TargetRot.Vector();
-	DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + BaseDirection * 200.0f, 20.0f, FColor::Blue, false, -1.f, 0, 3.0f);
-
-	// 2. 목적 방향 (TargetControlRot, 즉 Path 정면 + Joystick Offset, 빨간색)
-	FVector TargetDirection = TargetControlRot.Vector();
-	DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + TargetDirection * 200.0f, 20.0f, FColor::Red, false, -1.f, 0, 5.0f);
-
-	// 3. 현재 컨트롤러의 실제 보간 중인 방향 (CurrentControlRot, 녹색)
-	FVector CurrentDirection = CurrentControlRot.Vector();
-	DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + CurrentDirection * 200.0f, 20.0f, FColor::Green, false, -1.f, 0, 3.0f);
-
-	// 참고용 텍스트 (화면에 간단히 목표 Yaw만 띄움)
-	if (GEngine)
+	// ★ 디버그 드로잉 (시각적 회전 디버깅) - 치트 시스템 연동
+	UExDebugStateSubsystem* DS = GetWorld()->GetGameInstance()->GetSubsystem<UExDebugStateSubsystem>();
+	if (DS && DS->IsCheatEnabled(TAG_Ex_Debug_Movement))
 	{
-		FString DebugMsg = FString::Printf(TEXT("BaseYaw: %.1f | TargetYaw: %.1f | CurrentYaw: %.1f"), TargetRot.Yaw, TargetControlRot.Yaw, CurrentControlRot.Yaw);
-		GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Yellow, DebugMsg);
+		FVector DrawStart = TargetPawn->GetActorLocation() + FVector(0, 0, 100.0f); // 머리 위쪽에서 시작
+
+		// 1. 기준이 되는 방향 (Path 정면 방향, 파란색)
+		FVector BaseDirection = TargetRot.Vector();
+		DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + BaseDirection * 200.0f, 20.0f, FColor::Blue, false, -1.f, 0, 3.0f);
+
+		// 2. 목적 방향 (TargetControlRot, 즉 Path 정면 + Joystick Offset, 빨간색)
+		FVector TargetDirection = TargetControlRot.Vector();
+		DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + TargetDirection * 200.0f, 20.0f, FColor::Red, false, -1.f, 0, 5.0f);
+
+		// 3. 현재 컨트롤러의 실제 보간 중인 방향 (CurrentControlRot, 녹색)
+		FVector CurrentDirection = CurrentControlRot.Vector();
+		DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + CurrentDirection * 200.0f, 20.0f, FColor::Green, false, -1.f, 0, 3.0f);
+
+		// 참고용 텍스트 (화면에 간단히 목표 Yaw만 띄움)
+		if (GEngine)
+		{
+			FString DebugMsg = FString::Printf(TEXT("BaseYaw: %.1f | TargetYaw: %.1f | CurrentYaw: %.1f"), TargetRot.Yaw, TargetControlRot.Yaw, CurrentControlRot.Yaw);
+			GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Yellow, DebugMsg);
+		}
 	}
 }

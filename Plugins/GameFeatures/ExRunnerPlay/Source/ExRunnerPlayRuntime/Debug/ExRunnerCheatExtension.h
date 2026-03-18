@@ -56,4 +56,10 @@ public:
 	/** Runner 속도 정보 실시간 표시 토글 — TAG_Ex_Debug_Speed */
 	UFUNCTION(Exec)
 	void ExRunnerShowSpeed();
+
+	// ========== 이동/조향 디버그 ==========
+
+	/** Runner 이동 및 조향 정보 시각화 토글 — TAG_Ex_Debug_Movement */
+	UFUNCTION(Exec)
+	void ExRunnerShowMovement();
 };

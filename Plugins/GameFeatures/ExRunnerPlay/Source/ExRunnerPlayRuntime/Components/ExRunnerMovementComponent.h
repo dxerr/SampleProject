@@ -104,6 +104,9 @@ private:
 	// OnLookRequested 델리게이트 콜백 (Dynamic Multicast 바인딩용)
 	UFUNCTION()
 	void OnLookRequestedCallback(float AxisValue);
+	
+	/** 이동/조향 디버그 정보 시각화 (Cheat 전용 독립 함수) */
+	void DrawDebugMovementInfo(const FRotator& TargetRot, const FRotator& TargetControlRot, const FRotator& CurrentControlRot);
 
 
 

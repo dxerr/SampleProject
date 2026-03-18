@@ -96,3 +96,15 @@ void UExRunnerCheatExtension::ExRunnerShowSpeed()
 	UE_LOG(LogExRunnerCheats, Log, TEXT("ExRunnerShowSpeed: 속도 디버그 = %s"), 
 		bNew ? TEXT("ON") : TEXT("OFF"));
 }
+
+// ========== 이동/조향 디버그 ==========
+
+void UExRunnerCheatExtension::ExRunnerShowMovement()
+{
+	UExDebugStateSubsystem* DS = ExRunnerCheatUtil::GetDebugState(this);
+	if (!DS) return;
+
+	const bool bNew = DS->ToggleCheat(TAG_Ex_Debug_Movement);
+	UE_LOG(LogExRunnerCheats, Log, TEXT("ExRunnerShowMovement: 이동/조향 디버그 = %s"), 
+		bNew ? TEXT("ON") : TEXT("OFF"));
+}

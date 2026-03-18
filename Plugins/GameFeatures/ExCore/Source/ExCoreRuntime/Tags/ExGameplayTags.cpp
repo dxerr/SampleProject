@@ -22,5 +22,6 @@ UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Ex_Debug_Path, "Ex.Debug.Path", "경로 시�
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Ex_Debug_Chunk, "Ex.Debug.Chunk", "청크 경계/상태 시각화 토글");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Ex_Debug_Slope, "Ex.Debug.Slope", "꽈배기(경사) 디버그 토글");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Ex_Debug_Speed, "Ex.Debug.Speed", "속도 디버그 토글");
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Ex_Debug_Movement, "Ex.Debug.Movement", "이동/조향 디버그 토글");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Ex_Debug_GodMode, "Ex.Debug.GodMode", "무적 모드 토글");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Ex_Debug_Collision, "Ex.Debug.Collision", "충돌 시각화 토글");
