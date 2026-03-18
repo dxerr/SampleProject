@@ -83,6 +83,15 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 {
 	FCharacterDefaultInputs& Inputs = InputCmdResult.InputCollection.FindOrAddMutableDataByType<FCharacterDefaultInputs>();
 	
+	// 모바일/패키징 빌드 필수 주입 로직 복구 (2cf5527 커밋)
+	if (TargetPawn)
+	{
+		if (UExRunnerInputComponent* InputComp = TargetPawn->FindComponentByClass<UExRunnerInputComponent>())
+		{
+			InputComp->RequestMoveAction(FVector2D(0.0f, 1.0f)); 
+		}
+	}
+	
 	// [개선] 컨트롤러 회전 지연 문제를 해결하기 위해, 경로 매니저로부터 직접 현재 정면(Forward) 벡터를 가져옵니다.
 	// 이는 DrawDebugCoordinateSystem의 Red 축 방향과 일치하며, 물리적으로 가장 정확한 'W' 키 입력을 재현합니다.
 	FVector ForwardDir = FVector::ForwardVector;
