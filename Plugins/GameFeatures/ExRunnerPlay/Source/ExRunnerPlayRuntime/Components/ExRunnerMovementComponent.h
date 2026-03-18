@@ -98,6 +98,9 @@ private:
 	// NormX(-1~1) × MaxRunnerYawAngle 로 계산되며, Release 시 0.0으로 초기화
 	float TargetLookYawOffset = 0.0f;
 
+	// 동적 델리게이트 바인딩 지연 여부 체크
+	bool bIsLookInputBound = false;
+
 	// OnLookRequested 델리게이트 콜백 (Dynamic Multicast 바인딩용)
 	UFUNCTION()
 	void OnLookRequestedCallback(float AxisValue);

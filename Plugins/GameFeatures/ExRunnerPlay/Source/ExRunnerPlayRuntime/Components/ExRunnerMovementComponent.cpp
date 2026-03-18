@@ -90,16 +90,15 @@ void UExRunnerMovementComponent::TryInitializeMover()
 				SentrySubsystem->CaptureMessage(TEXT("Movement Component Diagnostic Report"), ESentryLevel::Info);
 			}
 
-			// ExRunnerInputComponent를 동일한 Pawn에서 탐색하여 Look 델리게이트를 자동 바인딩합니다.
-			// 블루프린트에서 BindLookInput을 수동 호출할 필요가 없습니다.
 			if (UExRunnerInputComponent* InputComp = ParentPawn->FindComponentByClass<UExRunnerInputComponent>())
 			{
 				BindLookInput(InputComp);
-				UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: ExRunnerInputComponent 탐색 성공, OnLookRequested 자동 바인딩 완료"));
+				bIsLookInputBound = true;
+				UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 최초 Init에서 ExRunnerInputComponent 탐색 성공, OnLookRequested 자동 바인딩 완료"));
 			}
 			else
 			{
-				UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: ExRunnerInputComponent를 찾지 못했습니다. Look 바인딩 생략."));
+				UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 최초 Init에서 ExRunnerInputComponent를 찾지 못했습니다. Tick에서 지연 바인딩을 대기합니다."));
 			}
 			
 			// 성공 시 타이머 안전 종료
@@ -170,10 +169,19 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 		}
 		LastProducerLogTime = CurrentTimeForProducer;
 	}
-	// [입력 병합] 수동 입력(Inputs.GetMoveInput()) + 경로 기반 물리 정면 벡터(ForwardDir)
-	// Inputs.GetMoveInput()에는 위에서 주입한 IA_Move(0, 1) 성분 등이 Mover 내부 시스템을 통해 녹아들어 있습니다.
-	FVector MergedInput = Inputs.GetMoveInput() + ForwardDir;
+	// [피드백 반영 최종 수정] 
+	// Mover의 물리적 방향과 모델 지향 방향을 결정하는 핵심 벡터 도출.
+	// 1. 경로 정면(ForwardDir)을 회전축(UpVector) 기준으로 TargetLookYawOffset(조이스틱 비율*최대각도) 만큼 회전시킵니다.
+	FVector GoalDirection = ForwardDir;
+	if (!FMath::IsNearlyZero(TargetLookYawOffset, 0.1f))
+	{
+		GoalDirection = ForwardDir.RotateAngleAxis(TargetLookYawOffset, FVector::UpVector);
+	}
 
+	// 2. 이 최종 타겟 방향을 Mover의 물리적 이동 방향성(DirectionalInput)으로 지정합니다.
+	FVector MergedInput = GoalDirection;
+	MergedInput.Z = 0.0f; // 평면 이동 유지
+	
 	if (MergedInput.SizeSquared() > 1.0f)
 	{
 		MergedInput.Normalize();
@@ -181,10 +189,11 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 
 	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, MergedInput);
 
-	// 시각적 지향 방향(OrientationIntent)도 경로 정면(Red 축)으로 일치시킵니다.
-	if (!ForwardDir.IsNearlyZero())
+	// 3. 캐릭터의 고개가 쳐다볼 방향(OrientationIntent)에도 똑같이 타겟 방향을 꽂습니다.
+	// 이제 Mover 내부 시스템이 자기 자신의 보간(TurnGenerator 등)을 거쳐 부드럽게 캐릭터 캡슐을 회전시킵니다!
+	if (!MergedInput.IsNearlyZero())
 	{
-		Inputs.OrientationIntent = ForwardDir.GetSafeNormal();
+		Inputs.OrientationIntent = MergedInput.GetSafeNormal();
 	}
 
 	// 모바일 환경 원인 파악용 로그 (스레드 안전)
@@ -215,6 +224,16 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 	if (!TargetPawn) return;
 
 	// 속도 수집은 ExRunnerStatComponent의 자체 타이머(StatPollInterval)가 담당합니다.
+
+	if (TargetPawn && !bIsLookInputBound)
+	{
+		if (UExRunnerInputComponent* InputComp = TargetPawn->FindComponentByClass<UExRunnerInputComponent>())
+		{
+			BindLookInput(InputComp);
+			bIsLookInputBound = true;
+			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 지연된 ExRunnerInputComponent 탐색 성공, OnLookRequested 자동 바인딩 완료!"));
+		}
+	}
 
 	// 1. 캐릭터 조향 업데이트 (경로 추적)
 	UpdateCharacterRotation(DeltaTime);
@@ -260,11 +279,19 @@ void UExRunnerMovementComponent::BindLookInput(UExRunnerInputComponent* InputCom
 
 void UExRunnerMovementComponent::OnLookRequestedCallback(float AxisValue)
 {
+	// [수정] GameModeDataSet이 에디터(BP)에서 할당되지 않았을 경우를 대비한 안전 장치.
+	// 할당되어 있다면 그 값(0 포함)을 온전히 따르고, 아예 Null이라면 기본값 45도를 사용합니다.
+	float MaxYaw = 45.0f;
 	if (GameModeDataSet)
 	{
-		// 입력값(AxisValue)을 누적하여 TargetLookYawOffset을 갱신합니다.
-		TargetLookYawOffset += AxisValue * GameModeDataSet->RunnerLookSensitivity;
+		MaxYaw = GameModeDataSet->MaxRunnerYawAngle;
 	}
+	else
+	{
+		UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] GameModeDataSet이 BP(ExRunnerMovementComponent)에 할당되지 않아 기본값 45.0f를 사용합니다."));
+	}
+
+	TargetLookYawOffset = AxisValue * MaxYaw;
 	UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] AxisValue: %.3f → TargetLookYawOffset: %.1f°"), AxisValue, TargetLookYawOffset);
 }
 
@@ -288,7 +315,7 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
 		FVector DeltaMove = RightDir * DeltaY;
 		
 		FHitResult SweepHit;
-		TargetPawn->AddActorWorldOffset(DeltaMove, true, &SweepHit);
+		// TargetPawn->AddActorWorldOffset(DeltaMove, true, &SweepHit);
 		
 		if (SweepHit.bBlockingHit)
 		{
@@ -311,8 +338,8 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 	// IsLocallyControlled 거나 HasAuthority일 때만 컨트롤러 회전을 조작합니다.
 	if (!TargetPawn->IsLocallyControlled() && !TargetPawn->HasAuthority()) return;
 
-	// [Fix] 캐릭터가 Controller 회전을 따르도록 설정 강제
-	TargetPawn->bUseControllerRotationYaw = true;
+	// [Fix] Mover의 OrientationIntent가 캐릭터 회전을 담당하도록, 컨트롤러 회전 강제 의존을 해제합니다.
+	TargetPawn->bUseControllerRotationYaw = false;
 	TargetPawn->bUseControllerRotationPitch = false;
 	TargetPawn->bUseControllerRotationRoll = false;
 
@@ -353,56 +380,50 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 	float DesiredLateralOffset = CurrentLaneYOffset;
 	float LateralError = LateralOffset - DesiredLateralOffset;
 
-	// ★ [수정] 강제 회전 방지 및 수동 조작 우선 처리 ★
-	// 컨트롤러의 Yaw 회전은 플레이어의 수동 조각(BP AddControllerYawInput)이 전적으로 담당해야 합니다.
-	FRotator CurrentControlRot = Controller->GetControlRotation();
-	FRotator NewControlRot = CurrentControlRot;
+	// [최종 수정] Mover 플러그인이 ProduceInput의 OrientationIntent를 통해 
+	// 알아서 부드럽게 모델을 회전(보간)시키므로, Tick에서 강제로 컨트롤러를 RInterpTo로 비틀어버리는 로직을 완전히 삭제합니다.
+	// 이로써 조작 컨트롤러와 물리 Mover 간의 회전 경합(덜덜거림)이 완벽히 해결됩니다.
 
-	// ★ [핵심 수정] 절대 Yaw 오프셋 기반 보간 방식 ★
-	// 각도 보간 시 RInterpTo를 사용하여 현재 컨트롤러 회전에서 목표 회전으로 최단 거리(Shortest Path) 부드럽게 보간합니다.
-	
-	// 1. 경로 정면(TargetRot.Yaw)을 기준으로 플랫폼 스와이프 오프셋(TargetLookYawOffset)을 더한 목표 회전값 세팅
+	// 컨트롤러의 회전은 기본적으로 경로 정면(PathYaw)을 기준으로 유지하되, 
+	// 실제 눈에 보이는 캐릭터의 부드러운 회전은 Mover에게 온전히 위임합니다.
+	FRotator CurrentControlRot = Controller->GetControlRotation();
 	FRotator TargetControlRot = CurrentControlRot;
+	
 	TargetControlRot.Yaw = TargetRot.Yaw + TargetLookYawOffset;
 
-	// 2. 보간 속도를 환경에 맞춰 조정 (곡선에서는 더 빠르게 반응하도록 보정 가능)
-	float DynamicInterpSpeed = (GameModeDataSet) ? GameModeDataSet->LookInterpSpeed : 8.0f;
+	// (주의) Mover가 알아서 보간하므로 Tick 단위의 조잡한 RInterpTo 등은 호출하지 않습니다.
+	// 단, 카메라 등 컨트롤러 회전에 의존하는 요소가 튀는 것을 방지하기 위해 컨트롤러의 타겟 방향만 
+	// 스냅(Snap) 또는 Mover가 회전한 만큼만 따라가게 두셔도 무방합니다. 
+	// 여기서는 카메라 등이 타겟을 부드럽게 비출 수 있게만 최소한의 보간을 남겨둡니다 (캐릭터 모델 덜덜거림과는 무관함).
 	
-	// 현재 Yaw와 목표 Yaw의 차이가 크면(급커브) 보간 속도를 일시적으로 높여 반응성을 확보합니다.
-	float YawDelta = FMath::Abs(FMath::FindDeltaAngleDegrees(CurrentControlRot.Yaw, TargetControlRot.Yaw));
-	if (YawDelta > 15.0f)
-	{
-		DynamicInterpSpeed *= 1.5f;
-	}
-
-	NewControlRot = FMath::RInterpTo(CurrentControlRot, TargetControlRot, DeltaTime, DynamicInterpSpeed);
-
-	// UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] PathYaw: %.1f | TargetLookYawOffset: %.1f | FinalTargetYaw: %.1f | CurrentYaw: %.1f → NewYaw: %.1f"),
-	//	TargetRot.Yaw, TargetLookYawOffset, TargetControlRot.Yaw, CurrentControlRot.Yaw, NewControlRot.Yaw);
-
-	// Pitch와 Roll은 기존 컨트롤러 회전값으로 덮어써서 Yaw 연산의 영향만 남김
-	NewControlRot.Pitch = CurrentControlRot.Pitch;
-	NewControlRot.Roll  = CurrentControlRot.Roll;
-
+	float DynamicInterpSpeed = (GameModeDataSet) ? GameModeDataSet->LookInterpSpeed : 8.0f;
+	FRotator NewControlRot = FMath::RInterpTo(CurrentControlRot, TargetControlRot, DeltaTime, DynamicInterpSpeed);
 	Controller->SetControlRotation(NewControlRot);
 
 	// [수정] 수동 위치 보정(AddActorWorldOffset) 로직은 ProduceInput의 CorrectionInput으로 이전되어 Mover 시뮬레이션에 통합되었습니다.
 	// 이를 통해 조향과 이동이 충돌하지 않고 자연스럽게 하나의 시뮬레이션으로 동작합니다.
 
-	// ★ 디버그 드로잉 (실제 위치와 경로 위치 간의 차이 가시화)
-	DrawDebugCoordinateSystem(GetWorld(), TargetPawn->GetActorLocation(), TargetPawn->GetActorRotation(), 100.f, false, -1.f, 0, 2.f);
-	DrawDebugCoordinateSystem(GetWorld(), PathPos, PathDirection, 100.f, false, -1.f, 0, 2.f);
-	DrawDebugLine(GetWorld(), TargetPawn->GetActorLocation(), PathPos, FColor::Yellow, false, -1.f, 0, 2.f);
+	// ★ 디버그 드로잉 (시각적 회전 디버깅)
+	// 기존 잡다한 로그/선을 지우고, 기준 방향과 목표 방향을 명확히 화살표로 그림
 
-	// 화면 출력 디버깅
+	FVector DrawStart = TargetPawn->GetActorLocation() + FVector(0, 0, 100.0f); // 머리 위쪽에서 시작
+
+	// 1. 기준이 되는 방향 (Path 정면 방향, 파란색)
+	FVector BaseDirection = TargetRot.Vector();
+	DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + BaseDirection * 200.0f, 20.0f, FColor::Blue, false, -1.f, 0, 3.0f);
+
+	// 2. 목적 방향 (TargetControlRot, 즉 Path 정면 + Joystick Offset, 빨간색)
+	FVector TargetDirection = TargetControlRot.Vector();
+	DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + TargetDirection * 200.0f, 20.0f, FColor::Red, false, -1.f, 0, 5.0f);
+
+	// 3. 현재 컨트롤러의 실제 보간 중인 방향 (CurrentControlRot, 녹색)
+	FVector CurrentDirection = CurrentControlRot.Vector();
+	DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + CurrentDirection * 200.0f, 20.0f, FColor::Green, false, -1.f, 0, 3.0f);
+
+	// 참고용 텍스트 (화면에 간단히 목표 Yaw만 띄움)
 	if (GEngine)
 	{
-		FString DebugMsg = FString::Printf(TEXT("Dist: %.0f | Err: %.0f | PathYaw: %.1f | PlayerYaw: %.1f"), 
-			PlayerPathDist, FVector::Dist(TargetPawn->GetActorLocation(), PathPos), PathDirection.Yaw, TargetPawn->GetActorRotation().Yaw);
-		GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Cyan, DebugMsg);
-
-		FString SteeringMsg = FString::Printf(TEXT("Offset: %.1f | FinalYaw: %.1f"), 
-			LateralOffset, TargetRot.Yaw);
-		GEngine->AddOnScreenDebugMessage(2, 0.f, FColor::Orange, SteeringMsg);
+		FString DebugMsg = FString::Printf(TEXT("BaseYaw: %.1f | TargetYaw: %.1f | CurrentYaw: %.1f"), TargetRot.Yaw, TargetControlRot.Yaw, CurrentControlRot.Yaw);
+		GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Yellow, DebugMsg);
 	}
 }
