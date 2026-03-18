@@ -9,7 +9,8 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerJumpRequested, bool, bIsTriggered);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerSlideRequested, bool, bIsTriggered);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerSprintRequested, bool, bIsTriggered);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerMoveRequested, float, AxisValue);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerMoveRequested, FVector2D, AxisValue);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerLookRequested, float, AxisValue);
 
 class UInputAction;
 
@@ -75,7 +76,7 @@ protected:
 	// public으로 선언해야 외부 클래스(MovementComponent 등)에서 AddDynamic 접근 가능
 public:
 	UPROPERTY(BlueprintAssignable, Category="ExInput|Runner|Events")
-	FOnRunnerMoveRequested OnLookRequested;
+	FOnRunnerLookRequested OnLookRequested;
 
 protected:
 
@@ -98,7 +99,7 @@ public:
 
 	// 이동 요청 (축 입력)
 	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Actions")
-	virtual void RequestMoveAction(float AxisValue);
+	virtual void RequestMoveAction(FVector2D AxisValue);
 
 	// 좌우 회전(Look) 요청 (모바일 델타 입력 등)
 	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Actions")

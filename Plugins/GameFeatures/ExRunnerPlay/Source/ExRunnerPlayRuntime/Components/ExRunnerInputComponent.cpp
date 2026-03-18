@@ -74,10 +74,10 @@ void UExRunnerInputComponent::NativeOnSprintAction(const FInputActionValue& Valu
 
 void UExRunnerInputComponent::NativeOnMoveAction(const FInputActionValue& Value)
 {
-	float AxisValue = Value.Get<float>();
-	if (FMath::Abs(AxisValue) > 0.1f)
+	FVector2D AxisValue = Value.Get<FVector2D>();
+	if (AxisValue.SizeSquared() > 0.01f)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[InputComp] NativeOnMoveAction: %.2f"), AxisValue);
+		UE_LOG(LogTemp, Warning, TEXT("[InputComp] NativeOnMoveAction: %s"), *AxisValue.ToString());
 	}
 	OnMoveRequested.Broadcast(AxisValue);
 }
@@ -117,9 +117,13 @@ void UExRunnerInputComponent::RequestSprintAction(bool bIsTriggered)
 	InjectInputBoolForAction(SprintAction, bIsTriggered);
 }
 
-void UExRunnerInputComponent::RequestMoveAction(float AxisValue)
+void UExRunnerInputComponent::RequestMoveAction(FVector2D AxisValue)
 {
-	InjectInputFloatForAction(MoveAction, AxisValue);
+	if (AxisValue.SizeSquared() > 0.0f)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[InputInjection] MoveAction: %s"), *AxisValue.ToString());
+	}
+	InjectInputVectorForAction(MoveAction, FVector(AxisValue, 0.0f));
 }
 
 

@@ -112,30 +112,25 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 {
 	FCharacterDefaultInputs& Inputs = InputCmdResult.InputCollection.FindOrAddMutableDataByType<FCharacterDefaultInputs>();
 	
+	// [개선] 컨트롤러 회전 지연 문제를 해결하기 위해, 경로 매니저로부터 직접 현재 정면(Forward) 벡터를 가져옵니다.
+	// 이는 DrawDebugCoordinateSystem의 Red 축 방향과 일치하며, 물리적으로 가장 정확한 'W' 키 입력을 재현합니다.
 	FVector ForwardDir = FVector::ForwardVector;
-	FString DebugCtrlStatus = TEXT("NoController");
-		
-	if (TargetPawn)
+	AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
+	if (GS && GS->PathManager)
 	{
-		if (AController* PawnController = TargetPawn->GetController())
-		{
-			const FRotator Rotation = PawnController->GetControlRotation();
-			const FRotator YawRotation(0, Rotation.Yaw, 0);
-			ForwardDir = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-			DebugCtrlStatus = FString::Printf(TEXT("CtrlYaw:%.1f"), Rotation.Yaw);
-		}
+		float PlayerPathDist = GS->RealPlayerPathDistance;
+		FRotator PathRot = GS->PathManager->GetDirectionAtDistance(PlayerPathDist);
+		ForwardDir = PathRot.Vector(); // 이것이 바로 캐릭터가 나아가야 할 'Red 축' 방향입니다.
 	}
 
-	// [개선] 기존에 설정된 MoveInput을 가져와서 현재의 전진 의도와 병합합니다.
-	FVector ExistingInput = Inputs.GetMoveInput();
-	FVector MergedInput = ExistingInput + ForwardDir;
-
-	if (MergedInput.SizeSquared() > 1.0f)
+	// [입력 주입] IA_Move를 Vector2D(정규화된 방향)로 주입하여 데이터 유실을 방지합니다.
+	if (UExRunnerInputComponent* InputComp = TargetPawn ? TargetPawn->FindComponentByClass<UExRunnerInputComponent>() : nullptr)
 	{
-		MergedInput.Normalize();
+		// [수정] float -> FVector2D 변환에 맞춰 전진 방향(Y=1.0)을 주입합니다.
+		InputComp->RequestMoveAction(FVector2D(0.0f, 1.0f)); 
 	}
 
-	// [진단] 현재 Mover에 등록된 모든 입력 프로듀서를 주기적으로 확인합니다.
+	// [진단] 현재 Mover 상태 및 이동 모드 설정 주기적 확인
 	static double LastProducerLogTime = 0.0;
 	double CurrentTimeForProducer = FPlatformTime::Seconds();
 	if (CurrentTimeForProducer - LastProducerLogTime > 5.0)
@@ -156,8 +151,17 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 				FHitResult FloorHit;
 				bool bHasFloor = MoverComp->TryGetFloorCheckHitResult(FloorHit);
 
-				UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoverStat] Mode: %s | Loc: %s | Vel: %s | Base: %s | Floor: %s"), 
+				// 무브먼트 모드 데이터 추출 (속도 제한 설정 확인용)
+				// 일반적으로 Walking 모드 등에서 MaxSpeed 등을 가져올 수 있음
+				float CurrentMaxSpeed = 0.0f;
+				if (const UCharacterMovementComponent* CMC = TargetPawn->FindComponentByClass<UCharacterMovementComponent>())
+				{
+					CurrentMaxSpeed = CMC->MaxWalkSpeed;
+				}
+
+				UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoverStat] Mode: %s | MaxSpeed: %.1f | Loc: %s | Vel: %s | Base: %s | Floor: %s"), 
 					*MoverComp->GetMovementModeName().ToString(),
+					CurrentMaxSpeed,
 					*TargetPawn->GetActorLocation().ToString(),
 					*TargetPawn->GetVelocity().ToString(),
 					MovementBase ? *MovementBase->GetName() : TEXT("None"),
@@ -166,35 +170,36 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 		}
 		LastProducerLogTime = CurrentTimeForProducer;
 	}
+	// [입력 병합] 수동 입력(Inputs.GetMoveInput()) + 경로 기반 물리 정면 벡터(ForwardDir)
+	// Inputs.GetMoveInput()에는 위에서 주입한 IA_Move(0, 1) 성분 등이 Mover 내부 시스템을 통해 녹아들어 있습니다.
+	FVector MergedInput = Inputs.GetMoveInput() + ForwardDir;
+
+	if (MergedInput.SizeSquared() > 1.0f)
+	{
+		MergedInput.Normalize();
+	}
 
 	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, MergedInput);
-	
-	// OrientationIntent도 전진 방향으로 동기화하되, 기존 방향이 있다면 보존할 수 있도록 IsNearlyZero 체크를 수행합니다.
-	if (Inputs.OrientationIntent.IsNearlyZero())
+
+	// 시각적 지향 방향(OrientationIntent)도 경로 정면(Red 축)으로 일치시킵니다.
+	if (!ForwardDir.IsNearlyZero())
 	{
-		Inputs.OrientationIntent = ForwardDir;
+		Inputs.OrientationIntent = ForwardDir.GetSafeNormal();
 	}
 
-	if (!Inputs.OrientationIntent.IsNearlyZero())
-	{
-		Inputs.OrientationIntent.Normalize();
-	}
-	// GEngine->AddOnScreenDebugMessage는 게임 스레드에서만 안전하므로, 이를 여기서 직접 호출하면 모바일/패키징 빌드에서 치명적인 크래시가 발생할 수 있습니다.
-	
 	// 모바일 환경 원인 파악용 로그 (스레드 안전)
 	static double LastLogTime = 0.0;
 	double CurrentTime = FPlatformTime::Seconds();
 	
 	if (CurrentTime - LastLogTime > 1.0) // 1초에 한 번만 출력하여 스팸 방지
 	{
-		UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoveInput] ProduceInput Called! ForwardDir: (%.2f, %.2f) | %s"), ForwardDir.X, ForwardDir.Y, *DebugCtrlStatus);
+		UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoveInput] ProduceInput Called! ForwardDir: %s"), *ForwardDir.ToString());
 		
 		if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
 		{
 			TMap<FString, FSentryVariant> Context;
 			Context.Add(TEXT("ForwardX"), static_cast<float>(ForwardDir.X));
 			Context.Add(TEXT("ForwardY"), static_cast<float>(ForwardDir.Y));
-			Context.Add(TEXT("CtrlStatus"), DebugCtrlStatus);
 			SentrySubsystem->AddBreadcrumbWithParams(TEXT("ProduceInput Tick"), TEXT("ExRunnerMovement"), TEXT("input"), Context);
 		}
 		
@@ -253,12 +258,14 @@ void UExRunnerMovementComponent::BindLookInput(UExRunnerInputComponent* InputCom
 	InputComp->OnLookRequested.AddDynamic(this, &UExRunnerMovementComponent::OnLookRequestedCallback);
 }
 
-void UExRunnerMovementComponent::OnLookRequestedCallback(float NormX)
+void UExRunnerMovementComponent::OnLookRequestedCallback(float AxisValue)
 {
-	const float MaxYaw = (GameModeDataSet) ? GameModeDataSet->MaxRunnerYawAngle : 45.0f;
-	TargetLookYawOffset = NormX * MaxYaw;
-
-	UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] NormX: %.3f → TargetLookYawOffset: %.1f°"), NormX, TargetLookYawOffset);
+	if (GameModeDataSet)
+	{
+		// 입력값(AxisValue)을 누적하여 TargetLookYawOffset을 갱신합니다.
+		TargetLookYawOffset += AxisValue * GameModeDataSet->RunnerLookSensitivity;
+	}
+	UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] AxisValue: %.3f → TargetLookYawOffset: %.1f°"), AxisValue, TargetLookYawOffset);
 }
 
 void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
@@ -352,16 +359,23 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 	FRotator NewControlRot = CurrentControlRot;
 
 	// ★ [핵심 수정] 절대 Yaw 오프셋 기반 보간 방식 ★
-	// 각도 보간 시 FInterpTo는 -180 ~ 180도 경계에서 오작동하여 캐릭터가 빙글 도는 현상이 발생합니다.
-	// 따라서 항상 최단 방향을 찾아주는 RInterpTo(Rotator 구조체 단위)를 사용해야 합니다.
+	// 각도 보간 시 RInterpTo를 사용하여 현재 컨트롤러 회전에서 목표 회전으로 최단 거리(Shortest Path) 부드럽게 보간합니다.
 	
 	// 1. 경로 정면(TargetRot.Yaw)을 기준으로 플랫폼 스와이프 오프셋(TargetLookYawOffset)을 더한 목표 회전값 세팅
 	FRotator TargetControlRot = CurrentControlRot;
 	TargetControlRot.Yaw = TargetRot.Yaw + TargetLookYawOffset;
 
-	// 2. RInterpTo를 사용하여 현재 컨트롤러 회전에서 목표 회전으로 최단 거리(Shortest Path) 부드럽게 보간
-	const float InterpSpeed = (GameModeDataSet) ? GameModeDataSet->LookInterpSpeed : 8.0f;
-	NewControlRot = FMath::RInterpTo(CurrentControlRot, TargetControlRot, DeltaTime, InterpSpeed);
+	// 2. 보간 속도를 환경에 맞춰 조정 (곡선에서는 더 빠르게 반응하도록 보정 가능)
+	float DynamicInterpSpeed = (GameModeDataSet) ? GameModeDataSet->LookInterpSpeed : 8.0f;
+	
+	// 현재 Yaw와 목표 Yaw의 차이가 크면(급커브) 보간 속도를 일시적으로 높여 반응성을 확보합니다.
+	float YawDelta = FMath::Abs(FMath::FindDeltaAngleDegrees(CurrentControlRot.Yaw, TargetControlRot.Yaw));
+	if (YawDelta > 15.0f)
+	{
+		DynamicInterpSpeed *= 1.5f;
+	}
+
+	NewControlRot = FMath::RInterpTo(CurrentControlRot, TargetControlRot, DeltaTime, DynamicInterpSpeed);
 
 	// UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] PathYaw: %.1f | TargetLookYawOffset: %.1f | FinalTargetYaw: %.1f | CurrentYaw: %.1f → NewYaw: %.1f"),
 	//	TargetRot.Yaw, TargetLookYawOffset, TargetControlRot.Yaw, CurrentControlRot.Yaw, NewControlRot.Yaw);
@@ -372,13 +386,8 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 
 	Controller->SetControlRotation(NewControlRot);
 
-	// 물리적 횡이동(Drift) 원심력 보정
-	if (FMath::Abs(LateralError) > 1.0f)
-	{
-		const float DriftCorrectionSpeed = 15.0f; // 밀려나는 것을 잡아주는 인력 강도
-		FVector CorrectionDelta = -PathRight * (LateralError * DriftCorrectionSpeed * DeltaTime);
-		TargetPawn->AddActorWorldOffset(CorrectionDelta, true);
-	}
+	// [수정] 수동 위치 보정(AddActorWorldOffset) 로직은 ProduceInput의 CorrectionInput으로 이전되어 Mover 시뮬레이션에 통합되었습니다.
+	// 이를 통해 조향과 이동이 충돌하지 않고 자연스럽게 하나의 시뮬레이션으로 동작합니다.
 
 	// ★ 디버그 드로잉 (실제 위치와 경로 위치 간의 차이 가시화)
 	DrawDebugCoordinateSystem(GetWorld(), TargetPawn->GetActorLocation(), TargetPawn->GetActorRotation(), 100.f, false, -1.f, 0, 2.f);

@@ -100,7 +100,7 @@ private:
 
 	// OnLookRequested 델리게이트 콜백 (Dynamic Multicast 바인딩용)
 	UFUNCTION()
-	void OnLookRequestedCallback(float NormX);
+	void OnLookRequestedCallback(float AxisValue);
 
 
 
