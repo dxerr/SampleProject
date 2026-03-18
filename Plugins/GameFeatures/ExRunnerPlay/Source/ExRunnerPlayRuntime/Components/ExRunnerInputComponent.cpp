@@ -137,12 +137,16 @@ void UExRunnerInputComponent::RequestLookAction(float YawAxisValue)
 
 float UExRunnerInputComponent::GetSwipeActivationPercentage() const
 {
+	// 필수 애셋 누락 시 에디터 크래시(check)를 발생시켜 개발자가 즉시 인지하고 수정하도록 강제합니다. (가이드라인 1.7 준수)
+	checkf(GameModeDataSet, TEXT("UExRunnerInputComponent: GameModeDataSet이 할당되지 않았습니다. 캐릭터 블루프린트에서 설정해주세요."));
+
 	// GameModeDataSet이 할당된 경우 DataSet 값 우선 반환
 	if (GameModeDataSet)
 	{
 		return GameModeDataSet->SwipeActivationPercentage;
 	}
-	// DataSet 미할당 시 기본값(30%) 반환
+	
+	// Shipping 빌드 등 check가 무시되는 환경을 대비한 Fallback (30%)
 	return 0.3f;
 }
 

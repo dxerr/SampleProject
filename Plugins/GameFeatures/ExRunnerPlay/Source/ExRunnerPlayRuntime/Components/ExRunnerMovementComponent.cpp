@@ -187,6 +187,9 @@ void UExRunnerMovementComponent::OnLookRequestedCallback(float AxisValue)
 {
 	// [수정] GameModeDataSet이 에디터(BP)에서 할당되지 않았을 경우를 대비한 안전 장치.
 	// 할당되어 있다면 그 값(0 포함)을 온전히 따르고, 아예 Null이라면 기본값 45도를 사용합니다.
+	// 필수 애셋 누락 시 에디터 크래시(check)를 발생시켜 즉시 인지하고 수정하도록 강제합니다. (가이드라인 1.7 준수)
+	checkf(GameModeDataSet, TEXT("UExRunnerMovementComponent: GameModeDataSet이 할당되지 않았습니다. 캐릭터 블루프린트에서 설정해주세요."));
+
 	float MaxYaw = 45.0f;
 	if (GameModeDataSet)
 	{
