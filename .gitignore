@@ -44,3 +44,5 @@ Config/User/
 
 # Sentry Native Cache
 .sentry-native/
+sentry.properties
+
