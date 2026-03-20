@@ -5,6 +5,7 @@
 #include "../Components/ExRunnerMovementComponent.h"
 #include "../Components/ExChunkSpawner.h"
 #include "../Components/ExObstacleManager.h"
+#include "../Components/ExBeatSyncComponent.h"
 #include "../Components/ExPathManager.h"
 #include "../GameStates/ExRunnerGameState.h"
 #include "../Data/ExCurveConfig.h"
@@ -13,6 +14,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Tags/ExMatchTags.h"
 #include "Subsystems/ExMusicManagerSubsystem.h"
+#include "Data/ExBGMTrackDataAsset.h"
 
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -35,6 +37,7 @@ AExRunnerGameMode::AExRunnerGameMode()
 
 	ChunkSpawner = CreateDefaultSubobject<UExChunkSpawner>(TEXT("ChunkSpawner"));
 	ObstacleManager = CreateDefaultSubobject<UExObstacleManager>(TEXT("ObstacleManager"));
+	BeatSyncComponent = CreateDefaultSubobject<UExBeatSyncComponent>(TEXT("BeatSyncComponent"));
 	
 	// PathManager는 AExRunnerGameState로 이관되었습니다.
 	// [Fix] 블루프린트 생성 시 부모의 게임스테이트가 상속되지 않도록 명시적 기본값 설정
@@ -90,16 +93,17 @@ void AExRunnerGameMode::StartRunnerGame()
 		ObstacleManager->BindToSpawner(ChunkSpawner);
 	}
 
-	// BGM 시작
-	if (BGMSound)
+	if (BeatSyncComponent && ObstacleManager)
+	{
+		BeatSyncComponent->BindToObstacleManager(ObstacleManager);
+	}
+
+	// BGM 시작 (Track Data 적용 시 내부에서 알아서 Phase 믹싱 데이터까지 동기화)
+	if (CurrentStageBGM && CurrentStageBGM->BGMAsset)
 	{
 		if (UExMusicManagerSubsystem* MusicMgr = GetWorld()->GetSubsystem<UExMusicManagerSubsystem>())
 		{
-			if (MusicPhaseData)
-			{
-				MusicMgr->SetPhaseDataAsset(MusicPhaseData);
-			}
-			MusicMgr->StartBGM(BGMSound, DefaultBPM);
+			MusicMgr->StartBGM(CurrentStageBGM);
 		}
 	}
 

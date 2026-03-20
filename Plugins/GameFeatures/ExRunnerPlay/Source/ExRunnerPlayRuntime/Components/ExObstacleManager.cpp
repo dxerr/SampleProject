@@ -42,13 +42,15 @@ void UExObstacleManager::OnChunkSpawned(AExFloorChunk* Chunk)
 {
 	if (!Chunk) return;
 
-	// 커브 구간 청크인 경우 특수 배치 정책 (향후 UExObstacleSpawnStrategy 서브클래스 등으로 확장 가능)
-	// 현재는 커브 청크에서도 기본 배치 허용
+	if (bSuppressDefaultChunkSpawn)
+	{
+		return; // 비트 동기화가 활성화된 경우 기존 청크 기반 스폰 차단
+	}
 
 	// 바닥 청크의 길이 참조
 	float Length = Chunk->ChunkLength;
 	
-	SpawnObstaclesOnChunk(Chunk, 0.f, Length);
+	SpawnObstaclesOnChunk(Chunk, 0.f, Length, false);
 }
 
 void UExObstacleManager::OnChunkDespawned(AExFloorChunk* Chunk)
@@ -61,6 +63,21 @@ void UExObstacleManager::OnChunkDespawned(AExFloorChunk* Chunk)
 	for (AActor* Attached : AttachedActors)
 	{
 		ReturnObstacleToPool(Attached);
+	}
+}
+
+void UExObstacleManager::RequestBeatSpawn()
+{
+	if (!BoundSpawner) return;
+
+	// 현재 활성화된 청크 중 스폰할 곳 찾기
+	// 보통 LastObstacleSafeEndDistance를 덮는 청크를 찾거나, 가장 먼 청크에 스폰 예약.
+	// ChunkSpawner가 자신의 Queue를 가지고 있다면 가장 최근에 스폰된 청크를 타겟으로 삼을 수 있습니다.
+	AExFloorChunk* TargetChunk = BoundSpawner->GetLatestChunk();
+	if (TargetChunk)
+	{
+		// 임시로 해당 청크의 시작 지점으로 스폰 명령 (확률 체크 스킵 -> 무조건 스폰)
+		SpawnObstaclesOnChunk(TargetChunk, 0.f, TargetChunk->ChunkLength, true);
 	}
 }
 
@@ -96,7 +113,7 @@ FBoxSphereBounds UExObstacleManager::GetVisualBounds(AActor* Actor)
 	return FBoxSphereBounds(Origin, Extent, Extent.GetMax());
 }
 
-void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float ChunkStartLocalX, float ChunkLength)
+void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float ChunkStartLocalX, float ChunkLength, bool bForceSpawn)
 {
 	if (ObstacleDefinitions.Num() == 0) return;
 	if (!Chunk) return;
@@ -124,8 +141,9 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 		}
 	}
 
-	// 스포너에 설정된 확률을 통한 장애물 배치 결정
-	if (FMath::FRand() > BoundSpawner->ObstacleConfig->SpawnProbability)
+	// 스포너에 설정된 기본 확률을 통한 장애물 배치 결정
+	// (비트 기반 포스 스폰일 경우는 무조건 통과)
+	if (!bForceSpawn && FMath::FRand() > BoundSpawner->ObstacleConfig->SpawnProbability)
 	{
 		return;
 	}

@@ -4,6 +4,7 @@
 #include "Events/ExGameplayEventSubsystem.h"
 #include "Tags/ExMusicTags.h"
 #include "Data/ExMusicPhaseDataAsset.h"
+#include "Data/ExBGMTrackDataAsset.h"
 #include "Quartz/QuartzSubsystem.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -38,11 +39,11 @@ void UExMusicManagerSubsystem::Deinitialize()
 // BGM 재생 제어
 // ────────────────────────────────────────────────────────────
 
-void UExMusicManagerSubsystem::StartBGM(USoundBase* InBGMSound, float BPM, int32 TimeSignatureNumerator, int32 TimeSignatureDenominator)
+void UExMusicManagerSubsystem::StartBGM(const UExBGMTrackDataAsset* TrackData)
 {
-	if (!ensure(InBGMSound))
+	if (!ensure(TrackData && TrackData->BGMAsset))
 	{
-		UE_LOG(LogExMusic, Error, TEXT("[ExMusicManager] StartBGM 실패: BGM 사운드 에셋이 null입니다."));
+		UE_LOG(LogExMusic, Error, TEXT("[ExMusicManager] StartBGM 실패: BGM 트랙 데이터 에셋 또는 BGM 오디오 에셋이 유효하지 않습니다."));
 		return;
 	}
 
@@ -53,13 +54,13 @@ void UExMusicManagerSubsystem::StartBGM(USoundBase* InBGMSound, float BPM, int32
 		StopBGM(0.f);
 	}
 
-	CurrentBPM = BPM;
-	TimeSignatureNum = TimeSignatureNumerator;
+	CurrentBPM = TrackData->BPM;
+	TimeSignatureNum = TrackData->TimeSignatureNumBeats;
 	CurrentBeatIndex = 0;
 	CurrentBarIndex = 0;
 
 	// 1. Quartz Clock 생성
-	CreateQuartzClock(BPM, TimeSignatureNumerator, TimeSignatureDenominator);
+	CreateQuartzClock(TrackData->BPM, TrackData->TimeSignatureNumBeats, static_cast<int32>(TrackData->TimeSignatureBeatType));
 
 	if (!ensure(BGMClockHandle))
 	{
@@ -71,7 +72,7 @@ void UExMusicManagerSubsystem::StartBGM(USoundBase* InBGMSound, float BPM, int32
 	SubscribeToMetronomeEvents();
 
 	// 3. 오디오 컴포넌트 생성 및 PlayQuantized
-	BaseLayerAudioComp = CreateBGMAudioComponent(InBGMSound);
+	BaseLayerAudioComp = CreateBGMAudioComponent(TrackData->BGMAsset);
 
 	if (!ensure(BaseLayerAudioComp))
 	{
@@ -92,7 +93,8 @@ void UExMusicManagerSubsystem::StartBGM(USoundBase* InBGMSound, float BPM, int32
 
 	bIsPlaying = true;
 
-	// 4. 레이어 상태 초기화 (Phase 데이터 에셋이 설정된 경우)
+	// 4. 이 곡 만을 위한 전용 Phase 데이터로 교체 및 초기화
+	PhaseDataAsset = TrackData->MusicPhaseData;
 	InitializeLayerStates();
 
 	// 5. 초기 Phase 적용 (Phase 데이터 에셋이 설정된 경우)
@@ -102,7 +104,7 @@ void UExMusicManagerSubsystem::StartBGM(USoundBase* InBGMSound, float BPM, int32
 	}
 
 	UE_LOG(LogExMusic, Log, TEXT("[ExMusicManager] BGM 시작: %s (BPM: %.1f, 박자: %d/%d)"),
-		*InBGMSound->GetName(), BPM, TimeSignatureNumerator, TimeSignatureDenominator);
+		*TrackData->BGMAsset->GetName(), TrackData->BPM, TrackData->TimeSignatureNumBeats, static_cast<int32>(TrackData->TimeSignatureBeatType));
 }
 
 void UExMusicManagerSubsystem::StopBGM(float FadeOutDuration)

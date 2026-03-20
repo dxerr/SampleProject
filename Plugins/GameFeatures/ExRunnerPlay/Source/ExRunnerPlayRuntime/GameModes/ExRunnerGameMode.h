@@ -9,8 +9,10 @@
 
 class UExChunkSpawner;
 class UExObstacleManager;
+class UExBeatSyncComponent;
 class UExPathManager;
 class UExCurveConfig;
+class UExBGMTrackDataAsset;
 class UExMusicPhaseDataAsset;
 struct FExGameplayEventPayload;
 
@@ -58,19 +60,9 @@ public:
 	UFUNCTION()
 	void OnTraversalEnd(FGameplayTag EventTag, const FExGameplayEventPayload& Payload);
 
-	// ========== BGM / Phase 연동 (2단계) ==========
-
-	/** BGM MetaSound 사운드 에셋 */
-	UPROPERTY(EditDefaultsOnly, Category = "Runner|Music")
-	TObjectPtr<USoundBase> BGMSound;
-
-	/** 기본 BPM */
-	UPROPERTY(EditDefaultsOnly, Category = "Runner|Music", meta = (ClampMin = "60.0", ClampMax = "300.0"))
-	float DefaultBPM = 140.f;
-
-	/** 음악 Phase 데이터 에셋 (레이어 구성 + Phase 프리셋) */
-	UPROPERTY(EditDefaultsOnly, Category = "Runner|Music")
-	TObjectPtr<UExMusicPhaseDataAsset> MusicPhaseData;
+	/** 이번 스테이지에 사용할 BGM 데이터 로드 (곡, 속도, 박자, 특수 믹싱 통합 에셋) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Runner|Music")
+	TObjectPtr<UExBGMTrackDataAsset> CurrentStageBGM;
 
 	/** 러너 인게임 Phase 전환 */
 	UFUNCTION(BlueprintCallable, Category = "Runner|Music")
@@ -90,6 +82,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UExObstacleManager> ObstacleManager;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UExBeatSyncComponent> BeatSyncComponent;
 
 	/** 커브 설정 데이터 에셋 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Runner|Curve", meta = (AllowPrivateAccess = "true"))

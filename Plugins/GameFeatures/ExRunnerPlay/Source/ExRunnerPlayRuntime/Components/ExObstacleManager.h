@@ -53,6 +53,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Obstacle")
 	void BindToSpawner(UExChunkSpawner* Spawner);
 
+	/**
+	 * 비트 기반 장애물 스폰 요청 (BeatSyncComponent에서 호출)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Obstacle")
+	void RequestBeatSpawn();
+
+	/** 기존 청크 스폰 시 발생되는 장애물 배치를 무시할지 여부 (비트 동기화 시 true) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Obstacle")
+	bool bSuppressDefaultChunkSpawn = false;
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -86,7 +96,7 @@ protected:
 	void ActivateObstacle(AActor* Obstacle);
 	void DeactivateObstacle(AActor* Obstacle);
 
-	void SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float ChunkStartLocalX, float ChunkLength);
+	void SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float ChunkStartLocalX, float ChunkLength, bool bForceSpawn = false);
 	bool CheckFeasibility(float CurrentSpawnX, float& OutNextSafeX);
 	UExObstacleDefinition* SelectRandomDefinition() const;
 

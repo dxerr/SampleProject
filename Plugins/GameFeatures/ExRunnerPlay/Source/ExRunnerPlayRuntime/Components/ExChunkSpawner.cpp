@@ -249,6 +249,15 @@ void UExChunkSpawner::ClearAllChunks()
 	ActiveChunks.Empty();
 }
 
+AExFloorChunk* UExChunkSpawner::GetLatestChunk() const
+{
+	if (ActiveChunks.Num() > 0)
+	{
+		return ActiveChunks.Last();
+	}
+	return nullptr;
+}
+
 
 void UExChunkSpawner::OnChunkReachedKillZ(AExFloorChunk* Chunk)
 {

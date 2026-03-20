@@ -247,8 +247,17 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 	AController* Controller = TargetPawn->GetController();
 	if (!Controller) return;
 
-	// IsLocallyControlled 거나 HasAuthority일 때만 컨트롤러 회전을 조작합니다.
-	if (!TargetPawn->IsLocallyControlled() && !TargetPawn->HasAuthority()) return;
+	// [수정] F8(Eject) 시 에디터 관전 카메라가 강제로 굳어버리는 버그(ControlRotation 덮어쓰기) 방지
+	if (APlayerController* PC = Cast<APlayerController>(Controller))
+	{
+		// 플레이어 컨트롤러지만 현재 화면 뷰(Target)가 이 폰이 아니라면 조작을 중단합니다.
+		if (PC->GetViewTarget() != TargetPawn) return;
+	}
+	else
+	{
+		// AI 컨트롤러 등일 경우 권한(Authority) 여부만 체크
+		if (!TargetPawn->HasAuthority()) return;
+	}
 
 	// [Fix] Mover의 OrientationIntent가 캐릭터 회전을 담당하도록, 컨트롤러 회전 강제 의존을 해제합니다.
 	TargetPawn->bUseControllerRotationYaw = false;

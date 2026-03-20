@@ -13,6 +13,7 @@
 class UAudioComponent;
 class UQuartzSubsystem;
 class UExMusicPhaseDataAsset;
+class UExBGMTrackDataAsset;
 struct FExMusicLayerConfig;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogExMusic, Log, All);
@@ -39,15 +40,12 @@ public:
 	// ========== BGM 재생 제어 ==========
 
 	/**
-	 * BGM 재생 시작
+	 * BGM 재생 시작 (데이터 에셋 기반)
 	 * Quartz Clock을 생성하고 MetaSound Source를 비트 정렬(PlayQuantized)하여 재생합니다.
-	 * @param InBGMSound 재생할 MetaSound Source (또는 SoundWave/SoundCue)
-	 * @param BPM 분당 비트 수 (기본 140)
-	 * @param TimeSignatureNumerator 박자 분자 (기본 4, 4/4 박자)
-	 * @param TimeSignatureDenominator 박자 분모 (기본 4, 4/4 박자)
+	 * @param TrackData 곡 파일, BPM, 박자 정보가 1:1로 묶인 데이터 에셋
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Ex|Music")
-	void StartBGM(USoundBase* InBGMSound, float BPM = 140.f, int32 TimeSignatureNumerator = 4, int32 TimeSignatureDenominator = 4);
+	void StartBGM(const UExBGMTrackDataAsset* TrackData);
 
 	/**
 	 * BGM 정지

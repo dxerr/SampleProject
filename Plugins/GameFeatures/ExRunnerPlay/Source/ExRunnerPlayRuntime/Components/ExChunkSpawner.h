@@ -116,6 +116,10 @@ public:
 	/** 활성 청크 목록 접근자 */
 	const TArray<TObjectPtr<AExFloorChunk>>& GetActiveChunks() const { return ActiveChunks; }
 
+	/** 가장 최신의(멀리 있는) 활성 청크 반환 */
+	UFUNCTION(BlueprintCallable, Category = "Spawner")
+	AExFloorChunk* GetLatestChunk() const;
+
 protected:
 	virtual void BeginPlay() override;
 

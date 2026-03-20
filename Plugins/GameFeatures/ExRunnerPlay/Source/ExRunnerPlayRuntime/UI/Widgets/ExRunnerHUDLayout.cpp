@@ -6,7 +6,13 @@ TOptional<FUIInputConfig> UExRunnerHUDLayout::GetDesiredInputConfig() const
 {
 	// 러너 게임 특성상 게임 패드/가상 조이스틱/터치 입력을 온전히 받아야 하므로 Game 입력 모드로 고정합니다.
 	// UI 네비게이션은 비활성화되고 폰(Pawn)이 입력을 독점적으로 처리하게 됩니다.
+#if WITH_EDITOR
+	// [수정] 에디터 테스트 시 F8(Eject) 뷰포트 마우스 갇힘 버그 방지를 위해 캡처 완화
+	return FUIInputConfig(ECommonInputMode::Game, EMouseCaptureMode::CaptureDuringMouseDown, /*bHideCursor=*/ false);
+#else
+	// 모바일 실제 기기나 패키징 빌드에서는 입력 유실 방지를 위해 영구 캡처 및 커서 숨김 유지
 	return FUIInputConfig(ECommonInputMode::Game, EMouseCaptureMode::CapturePermanently, /*bHideCursor=*/ true);
+#endif
 }
 
 void UExRunnerHUDLayout::NativeOnActivated()
