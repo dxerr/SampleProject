@@ -113,6 +113,10 @@
 		{
 			"Name": "Sentry",
 			"Enabled": true
+		},
+		{
+			"Name": "Metasound",
+			"Enabled": true
 		}
 	],
 	"EpicSampleNameHash": "1673045636"
