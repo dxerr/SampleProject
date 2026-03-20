@@ -12,6 +12,7 @@
 #include "ExGameplayEventSubsystem.h"
 #include "Kismet/GameplayStatics.h"
 #include "Tags/ExMatchTags.h"
+#include "Subsystems/ExMusicManagerSubsystem.h"
 
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -89,11 +90,30 @@ void AExRunnerGameMode::StartRunnerGame()
 		ObstacleManager->BindToSpawner(ChunkSpawner);
 	}
 
+	// BGM 시작
+	if (BGMSound)
+	{
+		if (UExMusicManagerSubsystem* MusicMgr = GetWorld()->GetSubsystem<UExMusicManagerSubsystem>())
+		{
+			if (MusicPhaseData)
+			{
+				MusicMgr->SetPhaseDataAsset(MusicPhaseData);
+			}
+			MusicMgr->StartBGM(BGMSound, DefaultBPM);
+		}
+	}
+
 	UE_LOG(LogExRunnerPlay, Log, TEXT("ExRunnerGameMode Started (World Moved Mode)"));
 }
 
 void AExRunnerGameMode::StopRunnerGame()
 {
+	// BGM 정지
+	if (UExMusicManagerSubsystem* MusicMgr = GetWorld()->GetSubsystem<UExMusicManagerSubsystem>())
+	{
+		MusicMgr->StopBGM(1.5f);
+	}
+
 	bRunnerModeEnabled = false;
 	UE_LOG(LogExRunnerPlay, Log, TEXT("ExRunnerGameMode: Runner Game Stopped."));
 }
@@ -189,6 +209,15 @@ void AExRunnerGameMode::OnMatchEnded_Implementation()
 	}
 }
 
+// ──────────────────────────────────────────────
+// BGM / Phase 연동
+// ──────────────────────────────────────────────
+void AExRunnerGameMode::SetRunnerPhase(FGameplayTag NewPhase)
+{
+	if (UExMusicManagerSubsystem* MusicMgr = GetWorld()->GetSubsystem<UExMusicManagerSubsystem>())
+	{
+		MusicMgr->TransitionToPhase(NewPhase);
+	}
 
-
-
+	UE_LOG(LogExRunnerPlay, Log, TEXT("러너 Phase 전환: %s"), *NewPhase.ToString());
+}

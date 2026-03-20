@@ -41,6 +41,7 @@ public class ExCoreRuntime : ModuleRules
 				"Core",
 				"CoreUObject",
 				"Engine",
+				"AudioMixer",		// Quartz Clock (UQuartzSubsystem, UQuartzClockHandle)
 				"ModularGameplay",
 				"GameFeatures",
 				"GameplayAbilities",

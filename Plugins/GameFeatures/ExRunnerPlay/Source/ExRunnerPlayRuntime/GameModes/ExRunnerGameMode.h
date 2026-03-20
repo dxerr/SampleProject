@@ -11,6 +11,7 @@ class UExChunkSpawner;
 class UExObstacleManager;
 class UExPathManager;
 class UExCurveConfig;
+class UExMusicPhaseDataAsset;
 struct FExGameplayEventPayload;
 
 /**
@@ -56,6 +57,24 @@ public:
 	
 	UFUNCTION()
 	void OnTraversalEnd(FGameplayTag EventTag, const FExGameplayEventPayload& Payload);
+
+	// ========== BGM / Phase 연동 (2단계) ==========
+
+	/** BGM MetaSound 사운드 에셋 */
+	UPROPERTY(EditDefaultsOnly, Category = "Runner|Music")
+	TObjectPtr<USoundBase> BGMSound;
+
+	/** 기본 BPM */
+	UPROPERTY(EditDefaultsOnly, Category = "Runner|Music", meta = (ClampMin = "60.0", ClampMax = "300.0"))
+	float DefaultBPM = 140.f;
+
+	/** 음악 Phase 데이터 에셋 (레이어 구성 + Phase 프리셋) */
+	UPROPERTY(EditDefaultsOnly, Category = "Runner|Music")
+	TObjectPtr<UExMusicPhaseDataAsset> MusicPhaseData;
+
+	/** 러너 인게임 Phase 전환 */
+	UFUNCTION(BlueprintCallable, Category = "Runner|Music")
+	void SetRunnerPhase(FGameplayTag NewPhase);
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
