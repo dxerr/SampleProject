@@ -5,6 +5,7 @@
 #include "../Components/ExRunnerMovementComponent.h"
 #include "../Components/ExChunkSpawner.h"
 #include "../Components/ExObstacleManager.h"
+#include "../Components/ExRunnerItemManager.h"
 #include "../Components/ExBeatSyncComponent.h"
 #include "../Components/ExPathManager.h"
 #include "../GameStates/ExRunnerGameState.h"
@@ -37,6 +38,7 @@ AExRunnerGameMode::AExRunnerGameMode()
 
 	ChunkSpawner = CreateDefaultSubobject<UExChunkSpawner>(TEXT("ChunkSpawner"));
 	ObstacleManager = CreateDefaultSubobject<UExObstacleManager>(TEXT("ObstacleManager"));
+	ItemManager = CreateDefaultSubobject<UExRunnerItemManager>(TEXT("ItemManager"));
 	BeatSyncComponent = CreateDefaultSubobject<UExBeatSyncComponent>(TEXT("BeatSyncComponent"));
 	
 	// PathManager는 AExRunnerGameState로 이관되었습니다.
@@ -88,9 +90,15 @@ void AExRunnerGameMode::StartRunnerGame()
 		ChunkSpawner->InitializeSpawner();
 	}
 
-	if (ObstacleManager && ChunkSpawner)
+	if (ObstacleManager && ItemManager && ChunkSpawner)
 	{
+		ChunkSpawner->SetManagers(ObstacleManager, ItemManager);
+		
+		// 장애물 매니저의 내부 참조(BoundSpawner) 및 OnChunkDespawned 이벤트 연결을 위해 호출 필수
 		ObstacleManager->BindToSpawner(ChunkSpawner);
+
+		// 아이템 매니저도 OnChunkDespawned 이벤트를 받아 액터를 풀에 반환/파괴할 수 있도록 연결
+		ItemManager->BindToSpawner(ChunkSpawner);
 	}
 
 	if (BeatSyncComponent && ObstacleManager)

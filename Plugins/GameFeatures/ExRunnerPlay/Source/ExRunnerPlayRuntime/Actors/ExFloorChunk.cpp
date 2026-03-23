@@ -779,7 +779,11 @@ FTransform AExFloorChunk::GetLocalTransformAtDistance(float LocalDistance) const
 	
 	if (!FMath::IsNearlyZero(CachedHeightOffset))
 	{
-		LocalTangent.Z = CachedHeightOffset / ParentsScale.Z;
+		// [수정] WorldTangent는 길이가 1인 단위 벡터(Unit Vector)임.
+		// CachedHeightOffset은 전체 길이(ChunkLength) 대비 월드 Z축 변화량이므로,
+		// 단위 길이당 Z 변화량(기울기, Slope)을 구해 대입해야 함.
+		float Slope = CachedHeightOffset / ChunkLength;
+		LocalTangent.Z = Slope / ParentsScale.Z;
 	}
 	
 	FRotator Rot = LocalTangent.Rotation();

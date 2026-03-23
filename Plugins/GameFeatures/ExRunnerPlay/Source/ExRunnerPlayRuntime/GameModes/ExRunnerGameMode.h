@@ -9,6 +9,7 @@
 
 class UExChunkSpawner;
 class UExObstacleManager;
+class UExRunnerItemManager;
 class UExBeatSyncComponent;
 class UExPathManager;
 class UExCurveConfig;
@@ -82,6 +83,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UExObstacleManager> ObstacleManager;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UExRunnerItemManager> ItemManager;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UExBeatSyncComponent> BeatSyncComponent;

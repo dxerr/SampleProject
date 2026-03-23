@@ -120,6 +120,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Spawner")
 	AExFloorChunk* GetLatestChunk() const;
 
+	/**
+	 * 중앙 제어를 위해 연동할 매니저들을 등록한다.
+	 * (장애물 배치 완료 후 아이템 배치가 순차적으로 발생하도록 함)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Spawn")
+	void SetManagers(UExObstacleManager* InObstacleManager, UExRunnerItemManager* InItemManager);
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -166,4 +173,12 @@ private:
 	 * @return 새로 생성된 청크, 실패 시 nullptr
 	 */
 	AExFloorChunk* CreateNewChunk();
+	/** [중앙 제어] 캐싱된 장애물 매니저 */
+	UPROPERTY(Transient)
+	TObjectPtr<UExObstacleManager> CachedObstacleManager;
+
+	/** [중앙 제어] 캐싱된 아이템 매니저 */
+	UPROPERTY(Transient)
+	TObjectPtr<UExRunnerItemManager> CachedItemManager;
+
 };

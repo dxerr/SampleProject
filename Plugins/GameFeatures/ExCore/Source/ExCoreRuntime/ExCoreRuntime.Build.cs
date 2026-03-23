@@ -16,11 +16,15 @@ public class ExCoreRuntime : ModuleRules
 				Path.Combine(ModuleDirectory, "Data"),
 				Path.Combine(ModuleDirectory, "Components"),
 				Path.Combine(ModuleDirectory, "Actors"),
+				Path.Combine(ModuleDirectory, "Player"),
 				Path.Combine(ModuleDirectory, "Tags"),
 				Path.Combine(ModuleDirectory, "Events"),
 				Path.Combine(ModuleDirectory, "Util"),
 				Path.Combine(ModuleDirectory, "Util", "Events"),
 				Path.Combine(ModuleDirectory, "Debug"),
+				Path.Combine(ModuleDirectory, "Items"),
+				Path.Combine(ModuleDirectory, "Items", "Effects"),
+				Path.Combine(ModuleDirectory, "Struct", "Items"),
 				Path.Combine(ModuleDirectory, "UI"),
 				Path.Combine(ModuleDirectory, "UI", "Subsystems"),
 				Path.Combine(ModuleDirectory, "UI", "Widgets"),
@@ -46,6 +50,7 @@ public class ExCoreRuntime : ModuleRules
 				"GameFeatures",
 				"GameplayAbilities",
 				"GameplayTags",	// NEW: Native GameplayTag 지원
+				"Niagara",		// 아이템 VFX (TSoftObjectPtr<UNiagaraSystem>)
 				"EnhancedInput",
 				"Mover",
 				"MotionWarping", // Centralized Warp Logic

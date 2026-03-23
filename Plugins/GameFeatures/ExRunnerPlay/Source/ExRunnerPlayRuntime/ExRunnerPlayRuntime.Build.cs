@@ -13,6 +13,10 @@ public class ExRunnerPlayRuntime : ModuleRules
 				ModuleDirectory,
 				System.IO.Path.Combine(ModuleDirectory, "Debug"),
 				System.IO.Path.Combine(ModuleDirectory, "Tags"),
+				System.IO.Path.Combine(ModuleDirectory, "Components"),
+				System.IO.Path.Combine(ModuleDirectory, "Data"),
+				System.IO.Path.Combine(ModuleDirectory, "Struct"),
+				System.IO.Path.Combine(ModuleDirectory, "Actors"),
 			}
 			);
 				

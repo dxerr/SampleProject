@@ -11,6 +11,8 @@
 #include "ExPathManager.h"
 #include "../GameStates/ExRunnerGameState.h"
 #include "../Data/ExCurveConfig.h"
+#include "../Components/ExObstacleManager.h"
+#include "../Components/ExRunnerItemManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -77,6 +79,12 @@ void UExChunkSpawner::InitializeSpawner()
 	{
 		SpawnNextChunk(-1);
 	}
+}
+
+void UExChunkSpawner::SetManagers(UExObstacleManager* InObstacleManager, UExRunnerItemManager* InItemManager)
+{
+	CachedObstacleManager = InObstacleManager;
+	CachedItemManager = InItemManager;
 }
 
 AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
@@ -198,6 +206,17 @@ AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
 	if (OnChunkSpawned.IsBound())
 	{
 		OnChunkSpawned.Broadcast(Chunk);
+	}
+
+	// [중앙 제어] 명시적인 순서로 매니저 호출 (장애물 먼저, 그 이후 아이템)
+	if (CachedObstacleManager)
+	{
+		CachedObstacleManager->SpawnObstaclesOnChunk(Chunk, 0.f, Chunk->ChunkLength, false);
+	}
+
+	if (CachedItemManager)
+	{
+		CachedItemManager->SpawnItemsOnChunk(Chunk, CachedObstacleManager);
 	}
 
 	return Chunk;

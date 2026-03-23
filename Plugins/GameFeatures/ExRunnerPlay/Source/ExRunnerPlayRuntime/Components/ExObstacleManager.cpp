@@ -29,7 +29,7 @@ void UExObstacleManager::BindToSpawner(UExChunkSpawner* Spawner)
 	if (Spawner)
 	{
 		BoundSpawner = Spawner;
-		Spawner->OnChunkSpawned.AddDynamic(this, &UExObstacleManager::OnChunkSpawned);
+		// OnChunkSpawned는 이제 중앙 제어(ExChunkSpawner)에서 순차적으로 직접 호출하므로 바인딩 해제
 		Spawner->OnChunkDespawned.AddDynamic(this, &UExObstacleManager::OnChunkDespawned);
 		
 		UE_LOG(LogExObstacleManager, Log, TEXT("Bound to ChunkSpawner: %s"), *Spawner->GetName());
@@ -40,17 +40,8 @@ void UExObstacleManager::BindToSpawner(UExChunkSpawner* Spawner)
 
 void UExObstacleManager::OnChunkSpawned(AExFloorChunk* Chunk)
 {
-	if (!Chunk) return;
-
-	if (bSuppressDefaultChunkSpawn)
-	{
-		return; // 비트 동기화가 활성화된 경우 기존 청크 기반 스폰 차단
-	}
-
-	// 바닥 청크의 길이 참조
-	float Length = Chunk->ChunkLength;
-	
-	SpawnObstaclesOnChunk(Chunk, 0.f, Length, false);
+	// [레거시] 기존 델리게이트 바인딩 기반 스폰 로직은 중앙 제어 방식으로 대체됨.
+	// 이제 ExChunkSpawner::SpawnNextChunk 마지막에 명시적으로 SpawnObstaclesOnChunk를 호출함.
 }
 
 void UExObstacleManager::OnChunkDespawned(AExFloorChunk* Chunk)
@@ -62,7 +53,21 @@ void UExObstacleManager::OnChunkDespawned(AExFloorChunk* Chunk)
 	Chunk->GetAttachedActors(AttachedActors);
 	for (AActor* Attached : AttachedActors)
 	{
-		ReturnObstacleToPool(Attached);
+		// 이 매니저가 관리하는 장애물인 경우에만 풀로 반환 (코인 등 다른 액터가 오염되는 것 방지)
+		bool bIsObstacle = false;
+		for (const UExObstacleDefinition* Def : ObstacleDefinitions)
+		{
+			if (Def && Attached->IsA(Def->ObstacleClass))
+			{
+				bIsObstacle = true;
+				break;
+			}
+		}
+
+		if (bIsObstacle)
+		{
+			ReturnObstacleToPool(Attached);
+		}
 	}
 }
 
@@ -349,5 +354,97 @@ void UExObstacleManager::ReturnObstacleToPool(AActor* Obstacle)
 		ObstaclePool.Add(Key, TArray<AActor*>());
 	}
 	ObstaclePool[Key].Add(Obstacle);
+}
+
+bool UExObstacleManager::QueryObstacleAtDistance(float PathDist, float QueryRadius, FExObstacleContext& OutContext) const
+{
+	OutContext = FExObstacleContext();
+
+	if (!BoundSpawner)
+	{
+		return false;
+	}
+
+	// 활성 청크에 Attach된 장애물들을 순회하여 거리 기반 검색
+	const TArray<TObjectPtr<AExFloorChunk>>& ActiveChunks = BoundSpawner->GetActiveChunks();
+
+	for (const TObjectPtr<AExFloorChunk>& Chunk : ActiveChunks)
+	{
+		if (!Chunk) continue;
+
+		float ChunkHalfLen = Chunk->ChunkLength * 0.5f;
+		float ChunkStartDist = Chunk->PathDistance - ChunkHalfLen;
+		float ChunkEndDist = Chunk->PathDistance + ChunkHalfLen;
+
+		// 이 청크가 질의 범위에 포함되는지 빠르게 검사
+		if (PathDist + QueryRadius < ChunkStartDist || PathDist - QueryRadius > ChunkEndDist)
+		{
+			continue;
+		}
+
+		TArray<AActor*> AttachedActors;
+		Chunk->GetAttachedActors(AttachedActors);
+
+		for (AActor* Attached : AttachedActors)
+		{
+			if (!Attached || Attached->IsHidden())
+			{
+				continue;
+			}
+
+			// 장애물 액터의 월드 위치를 PathDistance로 근사
+			float ObstacleX = Attached->GetActorLocation().X;
+			float ChunkX = Chunk->GetActorLocation().X;
+			// 로컬 오프셋을 PathDistance에 매핑
+			float ObstacleLocalDist = ChunkStartDist + (ObstacleX - (ChunkX - ChunkHalfLen * Chunk->GetActorForwardVector().X));
+
+			// 대략적 거리 체크 (장애물 바운드 고려)
+			FBoxSphereBounds ObsBounds = GetVisualBounds(Attached);
+			float ObstacleHalfExtentX = ObsBounds.BoxExtent.X;
+
+			// [Fix] PathDist(논리적 누적 거리)와 ActorLocation.X(월드 절대 좌표)를 비교하는 오류 수정
+			// 사전에 계산된 ObstacleLocalDist(PathDistance 스페이스로 변환된 장애물의 위치)와 비교해야 함.
+			float DistToObstacle = FMath::Abs(PathDist - ObstacleLocalDist);
+			if (DistToObstacle > QueryRadius + ObstacleHalfExtentX)
+			{
+				continue;
+			}
+
+			// 장애물 Definition 매칭 (ObstacleDefinitions에서 클래스로 역참조)
+			EExObstacleType FoundType = EExObstacleType::None;
+			bool bFoundClimbable = false;
+			float ClimbableThreshold = 200.f;
+
+			for (const UExObstacleDefinition* Def : ObstacleDefinitions)
+			{
+				if (Def && Attached->IsA(Def->ObstacleClass))
+				{
+					FoundType = Def->Type;
+					// Slide 타입: ClimbHeight가 설정되어 있고, 장애물 높이가 임계값 이하면 올라갈 수 있음
+					if (FoundType == EExObstacleType::Slide)
+					{
+						float ObstacleHeight = ObsBounds.BoxExtent.Z * 2.f;
+						bFoundClimbable = (ObstacleHeight <= Def->ClimbHeight);
+						ClimbableThreshold = Def->ClimbHeight;
+					}
+					break;
+				}
+			}
+
+			OutContext.bHasObstacle = true;
+			OutContext.ObstacleType = FoundType;
+			OutContext.ObstacleBounds = FBox(
+				ObsBounds.Origin - ObsBounds.BoxExtent,
+				ObsBounds.Origin + ObsBounds.BoxExtent);
+			OutContext.ObstacleTopZ = ObsBounds.Origin.Z + ObsBounds.BoxExtent.Z;
+			OutContext.ObstacleBottomZ = ObsBounds.Origin.Z - ObsBounds.BoxExtent.Z;
+			OutContext.bCanClimbOver = bFoundClimbable;
+			OutContext.ClimbableHeightThreshold = ClimbableThreshold;
+
+			return true; // 가장 먼저 발견된 장애물 반환
+		}
+	}
+
+	return false;
 }
 

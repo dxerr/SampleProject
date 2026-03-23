@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "../Struct/FExPathSegment.h"
+#include "../Struct/FExObstacleContext.h"
 #include "ExObstacleManager.generated.h"
 
 class AExFloorChunk;
@@ -96,7 +97,21 @@ protected:
 	void ActivateObstacle(AActor* Obstacle);
 	void DeactivateObstacle(AActor* Obstacle);
 
+public:
 	void SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float ChunkStartLocalX, float ChunkLength, bool bForceSpawn = false);
+
+	/**
+	 * 특정 PathDistance 근처에 장애물이 있는지 질의한다.
+	 * UExRunnerItemManager가 아이템 Z축 배치를 결정할 때 호출.
+	 * @param PathDist 질의할 경로 기반 거리
+	 * @param QueryRadius 검색 반경 (cm)
+	 * @param OutContext 결과가 채워지는 구조체
+	 * @return 장애물이 발견되었으면 true
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Obstacle")
+	bool QueryObstacleAtDistance(float PathDist, float QueryRadius, FExObstacleContext& OutContext) const;
+
+protected:
 	bool CheckFeasibility(float CurrentSpawnX, float& OutNextSafeX);
 	UExObstacleDefinition* SelectRandomDefinition() const;
 
