@@ -36,6 +36,13 @@ protected:
 	virtual FReply NativeOnTouchMoved(const FGeometry& InGeometry, const FPointerEvent& InGestureEvent) override;
 	virtual FReply NativeOnTouchEnded(const FGeometry& InGeometry, const FPointerEvent& InGestureEvent) override;
 
+#if WITH_EDITOR
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual FReply NativeOnMouseMove(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual FReply NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual void NativeOnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent) override;
+#endif
+
 	// 터치 시작 시 블루프린트로 알림
 	UFUNCTION(BlueprintImplementableEvent, Category = "ExUI|TouchPad", meta = (DisplayName = "On Touch Pad Started"))
 	void BP_OnTouchPadStarted(FVector2D LocalPosition);

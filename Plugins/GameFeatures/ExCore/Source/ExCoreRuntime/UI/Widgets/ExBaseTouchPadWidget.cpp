@@ -9,6 +9,11 @@ void UExBaseTouchPadWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
+#if WITH_EDITOR
+	// 에디터 환경에서 마우스 클릭 시 포커스를 획득하여 캡처 유실 방지
+	SetIsFocusable(true);
+#endif
+
 	bIsTouching = false;
 	TouchPointerIndex = -1;
 	LastTouchPosition = FVector2D::ZeroVector;
@@ -104,6 +109,56 @@ FReply UExBaseTouchPadWidget::NativeOnTouchEnded(const FGeometry& InGeometry, co
 
 	return FReply::Unhandled();
 }
+
+#if WITH_EDITOR
+FReply UExBaseTouchPadWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+	UE_LOG(LogTemp, Warning, TEXT("[ExTouchPad] MouseDown - Index: %d, Pos: %s"), InMouseEvent.GetPointerIndex(), *InMouseEvent.GetScreenSpacePosition().ToString());
+	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton || InMouseEvent.IsMouseButtonDown(EKeys::LeftMouseButton))
+	{
+		// C++ 터치 로직 실행
+		NativeOnTouchStarted(InGeometry, InMouseEvent);
+		
+		// CommonUI나 다른 서브시스템이 마우스 포커스를 뺏어 캡처가 풀리는 것을 방지하기 위해 강제로 Focus 지정
+		return FReply::Handled().CaptureMouse(TakeWidget()).SetUserFocus(TakeWidget(), EFocusCause::Mouse);
+	}
+	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+}
+
+FReply UExBaseTouchPadWidget::NativeOnMouseMove(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+	if (bIsTouching && InMouseEvent.IsMouseButtonDown(EKeys::LeftMouseButton))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ExTouchPad] MouseMove - Pos: %s"), *InMouseEvent.GetScreenSpacePosition().ToString());
+		return NativeOnTouchMoved(InGeometry, InMouseEvent);
+	}
+	return Super::NativeOnMouseMove(InGeometry, InMouseEvent);
+}
+
+FReply UExBaseTouchPadWidget::NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+	UE_LOG(LogTemp, Warning, TEXT("[ExTouchPad] MouseUp - Index: %d"), InMouseEvent.GetPointerIndex());
+	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+	{
+		return NativeOnTouchEnded(InGeometry, InMouseEvent);
+	}
+	return Super::NativeOnMouseButtonUp(InGeometry, InMouseEvent);
+}
+
+void UExBaseTouchPadWidget::NativeOnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent)
+{
+	Super::NativeOnMouseCaptureLost(CaptureLostEvent);
+	if (bIsTouching)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ExTouchPad] MouseCaptureLost!!"));
+		bIsTouching = false;
+		TouchPointerIndex = -1;
+		LastTouchPosition = FVector2D::ZeroVector;
+		ResetThumbPosition();
+		BP_OnTouchPadEnded();
+	}
+}
+#endif
 
 void UExBaseTouchPadWidget::UpdateThumbPosition(const FVector2D& LocalPosition, const FVector2D& PadSize)
 {

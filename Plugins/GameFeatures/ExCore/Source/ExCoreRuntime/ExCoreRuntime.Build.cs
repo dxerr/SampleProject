@@ -52,6 +52,7 @@ public class ExCoreRuntime : ModuleRules
 				"GameplayTags",	// NEW: Native GameplayTag 지원
 				"Niagara",		// 아이템 VFX (TSoftObjectPtr<UNiagaraSystem>)
 				"EnhancedInput",
+				"InputCore", // EKeys::LeftMouseButton 링크 에러 해결
 				"Mover",
 				"MotionWarping", // Centralized Warp Logic
 				
