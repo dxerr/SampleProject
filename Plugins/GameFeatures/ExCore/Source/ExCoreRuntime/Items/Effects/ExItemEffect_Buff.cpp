@@ -34,9 +34,7 @@ void UExItemEffect_Buff::Execute_Implementation(AActor* Instigator, const UExIte
 	Payload.Instigator = Instigator;
 	Payload.Target = Cast<AActor>(Instigator);
 	Payload.OptionalValue = Magnitude;
-	// NOTE: Duration은 현재 FExGameplayEventPayload에 전용 필드가 없으므로
-	// 수신 측에서 BuffTag별로 Duration을 해석하거나, 페이로드 확장이 필요할 수 있다.
-	// 향후 FExGameplayEventPayload에 Duration 필드를 추가하는 것을 권장한다.
+	Payload.Duration = Duration;
 
 	// 버프 태그 이벤트 브로드캐스트 (수신 측: MovementComp, StatComp 등)
 	EventSub->BroadcastEvent(BuffTag, Payload);

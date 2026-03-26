@@ -27,6 +27,10 @@ struct EXCORERUNTIME_API FExGameplayEventPayload
 	/** 추가 데이터 (선택적) */
 	UPROPERTY(BlueprintReadWrite, Category = "Ex|Event")
 	float OptionalValue = 0.0f;
+
+	/** 버프/효과 지속 시간 (선택적, 초) */
+	UPROPERTY(BlueprintReadWrite, Category = "Ex|Event")
+	float Duration = 0.0f;
 };
 
 /** 이벤트 델리게이트 정의 */

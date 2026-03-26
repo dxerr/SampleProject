@@ -9,6 +9,8 @@
 class UMoverComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerSpeedChanged, float, NewSpeed);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCoinCountChanged, int32, NewCount);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSprintTimeChanged, float, RemainingTime);
 
 /**
  * [아키텍처 2.2 도메인별 데이터 중앙 집중화 체계]
@@ -55,29 +57,75 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Runner|Stats")
 	void SetCurrentRunningSpeed(float NewSpeed);
 
+	// -- 코인 시스템 --
+
+	/** 코인 개수가 변경될 때 발행되는 이벤트 */
+	UPROPERTY(BlueprintAssignable, Category = "Runner|Stats|Events")
+	FOnCoinCountChanged OnCoinCountChanged;
+
+	/** 현재 코인 개수 반환 */
+	UFUNCTION(BlueprintPure, Category = "Runner|Stats")
+	int32 GetCoinCount() const { return CoinCount; }
+
+	/** 코인 개수를 강제로 조절합니다. (+/-) */
+	UFUNCTION(BlueprintCallable, Category = "Runner|Stats")
+	void AddCoinCount(int32 Amount);
+
+	// -- 스프린트(달리기) 시스템 --
+
+	/** 스프린트 남은 시간이 변경될 때 발행되는 이벤트 */
+	UPROPERTY(BlueprintAssignable, Category = "Runner|Stats|Events")
+	FOnSprintTimeChanged OnSprintTimeChanged;
+
+	/** 현재 남은 스프린트 가능 시간 (초) 반환 */
+	UFUNCTION(BlueprintPure, Category = "Runner|Stats")
+	float GetSprintRemainingTime() const { return SprintRemainingTime; }
+
+	/** 특정 시간(초)만큼 스프린트 모드를 활성화/연장합니다. */
+	UFUNCTION(BlueprintCallable, Category = "Runner|Stats")
+	void ActivateSprint(float Duration);
+
 private:
 	/** 소유 Pawn 캐시 (BeginPlay 시 설정) */
 	TWeakObjectPtr<APawn> BoundPawn;
 
-	/**
-	 * Mover 시스템 컴포넌트 캐시.
-	 * APawn::GetVelocity()는 Mover에서 0을 반환하므로, MoverComponent::GetVelocity()를 직접 사용합니다.
-	 */
+	/** Mover 시스템 캐시 (속도 폴링용) */
 	TWeakObjectPtr<UMoverComponent> CachedMoverComponent;
+
+	/** Runner InputComponent 캐시 (스프린트 상태 제어용) */
+	TWeakObjectPtr<class UExRunnerInputComponent> CachedInputComponent;
 
 	/** 타이머 핸들 (컴포넌트 소멸 시 자동 정리) */
 	FTimerHandle StatPollTimerHandle;
 
-	/**
-	 * StatPollInterval 주기로 호출되는 스탯 수집 함수.
-	 * 새로운 스탯 추가 시 이 함수에서 수집 로직을 확장합니다.
-	 */
+	/** StatPollInterval 주기로 호출되는 스탯 수집 함수 */
 	UFUNCTION()
 	void UpdateStats();
 
-	// -- 내부 스탯 저장 변수 --
+	/** 스탯 수집 루프 중 스프린트 시간 차감을 담당 */
+	void UpdateSprintTimer();
+
+	// -- ExGameplayEventSubsystem 구독 이벤트 콜백 --
+
+	/** 점수(코인 등) 아이템 획득 이벤트 수신 */
+	UFUNCTION()
+	void OnScorePickedUp(FGameplayTag Tag, const struct FExGameplayEventPayload& Payload);
+
+	/** 속도 증가 버프 획득 이벤트 수신 */
+	UFUNCTION()
+	void OnSpeedUpBuff(FGameplayTag Tag, const struct FExGameplayEventPayload& Payload);
+
+	// -- 내부 상태 데이터 --
 
 	/** 현재 달리기 속도 (cm/s). 멀티플레이 확장 시 ReplicatedUsing으로 전환 가능 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner|Stats", meta=(AllowPrivateAccess))
 	float CurrentRunningSpeed = 0.0f;
+
+	/** 획득한 총 코인 점수 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner|Stats", meta=(AllowPrivateAccess))
+	int32 CoinCount = 0;
+
+	/** 현재 남은 스프린트 활성화 시간 (초) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner|Stats", meta=(AllowPrivateAccess))
+	float SprintRemainingTime = 0.0f;
 };
