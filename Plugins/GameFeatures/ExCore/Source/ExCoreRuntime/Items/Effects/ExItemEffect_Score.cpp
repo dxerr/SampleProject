@@ -21,22 +21,28 @@ void UExItemEffect_Score::Execute_Implementation(AActor* Instigator, const UExIt
 		return;
 	}
 
-	// PlayerState 획득 및 타입 검사 (assert 대신 일반 분기문 사용)
+	// PlayerState 획득 및 타입 검사 (선택적)
 	AExPlayerStateBase* PS = Pawn->GetPlayerState<AExPlayerStateBase>();
-	if (!PS)
+	if (PS)
 	{
-		UE_LOG(LogExItemSystem, Warning, TEXT("[ExItemEffect_Score] %s의 PlayerState를 AExPlayerStateBase로 캐스팅할 수 없습니다. 점수를 추가하지 못했습니다."), *Instigator->GetName());
-		return;
+		PS->AddScore(ScoreAmount);
 	}
-
-	PS->AddScore(ScoreAmount);
+	else
+	{
+		UE_LOG(LogExItemSystem, Warning, TEXT("[ExItemEffect_Score] %s의 PlayerState를 찾지 못했습니다. (UI 연동용 이벤트는 계속 발생합니다)"), *Instigator->GetName());
+	}
 
 	// 이벤트 브로드캐스트 (UI/사운드 구독용)
 	if (UWorld* World = Instigator->GetWorld())
 	{
 		if (UExGameplayEventSubsystem* EventSub = World->GetSubsystem<UExGameplayEventSubsystem>())
 		{
-			EventSub->BroadcastEventSimple(TAG_Ex_Item_PickedUp_Score, Instigator);
+			FExGameplayEventPayload Payload;
+			Payload.Instigator = Instigator;
+			Payload.Target = Pawn;
+			Payload.OptionalValue = ScoreAmount; // 코인 증가량을 UI에 전달
+			
+			EventSub->BroadcastEvent(TAG_Ex_Item_PickedUp_Score, Payload);
 		}
 	}
 

@@ -25,15 +25,48 @@ public:
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Setter, Getter, meta=(AllowPrivateAccess))
 	float CurrentSpeed = 0.0f;
 
+	/** 코인 획득 수 */
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Setter, Getter, meta=(AllowPrivateAccess))
+	int32 CoinCount = 0;
+
+	/** 스프린트 버프 남은 시간 */
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Setter, Getter, meta=(AllowPrivateAccess))
+	float SprintRemainingTime = 0.0f;
+
+	/** 가장 최근 발동한 스프린트 버프의 전체 지속 시간 (진행률 계산용) */
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Setter, Getter, meta=(AllowPrivateAccess))
+	float MaxSprintTime = 1.0f;
+
 public:
 	// -- Getter / Setter --
 
 	float GetCurrentSpeed() const { return CurrentSpeed; }
 	void SetCurrentSpeed(float NewSpeed);
 
+	int32 GetCoinCount() const { return CoinCount; }
+	void SetCoinCount(int32 NewCount);
+
+	float GetSprintRemainingTime() const { return SprintRemainingTime; }
+	void SetSprintRemainingTime(float NewTime);
+
+	float GetMaxSprintTime() const { return MaxSprintTime; }
+	void SetMaxSprintTime(float NewMaxTime);
+
 	/** 현재 스피드를 텍스트 포맷으로 반환 (파생 계산값 - Source 전용) */
 	UFUNCTION(BlueprintPure, FieldNotify, Category="ExUI|RunnerViewModel")
 	FText GetCurrentSpeedText() const;
+
+	/** 코인 갯수를 텍스트 포맷으로 반환 */
+	UFUNCTION(BlueprintPure, FieldNotify, Category="ExUI|RunnerViewModel")
+	FText GetCoinCountText() const;
+
+	/** 현재 스프린트 남은 시간을 텍스트 포맷으로 반환 */
+	UFUNCTION(BlueprintPure, FieldNotify, Category="ExUI|RunnerViewModel")
+	FText GetSprintRemainingTimeText() const;
+
+	/** 남은 시간 / 최대 시간 진행률 반환 (0.0 ~ 1.0) 프로그레스 바 전용 */
+	UFUNCTION(BlueprintPure, FieldNotify, Category="ExUI|RunnerViewModel")
+	float GetSprintProgress() const;
 
 	// -- 바인딩 초기화 세팅 --
 
@@ -68,4 +101,10 @@ private:
 	 */
 	UFUNCTION()
 	void OnSpeedUpdated(float NewSpeed);
+
+	UFUNCTION()
+	void OnCoinCountUpdated(int32 NewCount);
+
+	UFUNCTION()
+	void OnSprintTimeUpdated(float RemainingTime);
 };

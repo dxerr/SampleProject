@@ -164,17 +164,17 @@ void UpdateSprintTimer();
        - `CachedInputComponent->RequestSprintAction(false)`
        - `OnSprintTimeChanged.Broadcast(0.f)`
 
-### 2.3 UI 바인딩 (Blueprint)
+### 2.3 UI 바인딩 (MVVM - ExRunnerStatsViewModel)
+
+#### [MODIFY] ExRunnerStatsViewModel.h / .cpp
+- 경로: `Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/UI/ViewModels/ExRunnerStatsViewModel`
+- 추가 내역:
+  - `CoinCount`, `SprintRemainingTime`, `MaxSprintTime` 필드 추가 (FieldNotify)
+  - `GetSprintRemainingTimeText` (FText 변환), `GetSprintProgress` (0.0~1.0 비율) 보조 함수 추가
+  - `InitializeRunnerBindings`에서 `StatComponent`의 이벤트(`OnCoinCountChanged`, `OnSprintTimeChanged`)를 구독해 ViewModel의 필드 갱신
 
 #### [MODIFY] WBP_ExRunnerSpeedBar (Blueprint Widget)
-- 경로: `Plugins/GameFeatures/ExRunnerPlay/Content/UI/Parts/WBP_ExRunnerSpeedBar.uasset`
-
-> ⚠️ 이 위젯은 `.uasset`(블루프린트)이므로 **에디터에서 직접 수정**이 필요
-
-에디터에서 수행할 작업:
-1. `WBP_ExRunnerSpeedBar`에 코인 갯수 표시용 `TextBlock` 추가
-2. 스프린트 잔여 시간 표시용 `ProgressBar` 또는 `TextBlock` 추가
-3. `StatComponent`의 `OnCoinCountChanged` / `OnSprintTimeChanged` 델리게이트에 바인딩
+- 수동 바인딩: Event Graph에서 `AutoInitialize` 노드 단 하나로 데이터 초기화 수행. View Bindings 패널에서 Text, ProgressBar 속성에 ViewModel 속성을 1:1 디클래러티브(Declarative) 매핑 수행.
 
 ---
 

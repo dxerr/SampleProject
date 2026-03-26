@@ -21,7 +21,7 @@ class EXCORERUNTIME_API UExItemEffect_Score : public UExItemEffect
 public:
 	/** 획득 시 추가할 점수 (설정값, 런타임 불변) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Effect|Score", meta = (ClampMin = "0"))
-	float ScoreAmount = 10.f;
+	float ScoreAmount = 1.f;
 
 	virtual void Execute_Implementation(AActor* Instigator, const UExItemDefinition* ItemDefinition, AExItemPickupBase* ItemActor) override;
 	virtual FText GetEffectDescription_Implementation() const override;
