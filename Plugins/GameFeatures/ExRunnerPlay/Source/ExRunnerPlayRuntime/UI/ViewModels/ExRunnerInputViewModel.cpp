@@ -138,11 +138,14 @@ void UExRunnerInputViewModel::OnTouchPadReleased()
 
 	// [슬라이드] Restore 재트리거 로직과 Release 정리는 분리해야 함.
 	// HandleSlideInput(0, 9999)를 사용하면 Restore 분기(bCurrentlyInjected=true)에서 true를 재전송해버림.
-	// → Release 시에는 InjectedInputStates 여부와 무관하게 무조건 false를 직접 호출하여 영구 Crouch 굳힘 버그 차단 (Fail-safe)
+	// → Release 시에는 실제 슬라이드 입력이 활성 상태일 때만 false를 호출하여 의도치 않은 토글 오작동 방지 (주인님 지침 반영)
 	if (UExRunnerInputComponent* InputComp = GetRunnerInputComponent())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ExSlide] *** RELEASE CLEANUP → 무조건 false *** | 슬라이드 강제 해제"));
-		InputComp->RequestSlideAction(false);
+		if (InputComp->IsSlideInputActive())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[ExSlide] *** RELEASE CLEANUP → false *** | 활성 상태일 때만 슬라이드 해제"));
+			InputComp->RequestSlideAction(false);
+		}
 
 		// [회전 원점 복구]
 		// NormX = 0 전송 → MovementComponent의 TargetLookYawOffset가 0이 되면

@@ -26,8 +26,7 @@ void UExRunnerInputComponent::InitializeInputBindings(UEnhancedInputComponent* E
 		{
 			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this, &UExRunnerInputComponent::NativeOnJumpAction);
 			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started,   this, &UExRunnerInputComponent::NativeOnJumpAction);
-			// 방어 코드: 키보드 물리 입력 유저의 점프 홀드 해제(Completed) 감지 및 명시적 false 브로드캐스트
-			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &UExRunnerInputComponent::NativeOnJumpCompleted);
+			// Completed 바인딩 제거: Completed 콜백에서는 Value.Get<bool>()이 true를 반환하는 Enhanced Input 스펙과 주입(false→true) 동일 프레임 패턴〈 혹은`}
 		}
 
 		// 슈라이드 바인딩
@@ -37,8 +36,7 @@ void UExRunnerInputComponent::InitializeInputBindings(UEnhancedInputComponent* E
 		{
 			EnhancedInputComponent->BindAction(SlideAction, ETriggerEvent::Triggered, this, &UExRunnerInputComponent::NativeOnSlideAction);
 			EnhancedInputComponent->BindAction(SlideAction, ETriggerEvent::Started,   this, &UExRunnerInputComponent::NativeOnSlideAction);
-			// 방어 코드: 라벨 상태 고착 방지를 위해 Completed 발생 시 무조건 false를 브로드캐스트
-			EnhancedInputComponent->BindAction(SlideAction, ETriggerEvent::Completed, this, &UExRunnerInputComponent::NativeOnSlideCompleted);
+			// Completed 바인딩 제거: false는 Request 함수에서 직접 처리
 		}
 
 		// 스프린트 바인딩 (체크박스 지속/해제 처리에 적합하도록 Triggered와 Completed 바인딩)
@@ -62,20 +60,10 @@ void UExRunnerInputComponent::NativeOnJumpAction(const FInputActionValue& Value)
 	OnJumpRequested.Broadcast(bIsPressed);
 }
 
-void UExRunnerInputComponent::NativeOnJumpCompleted(const FInputActionValue& Value)
-{
-	OnJumpRequested.Broadcast(false);
-}
-
 void UExRunnerInputComponent::NativeOnSlideAction(const FInputActionValue& Value)
 {
 	bool bIsPressed = Value.Get<bool>();
 	OnSlideRequested.Broadcast(bIsPressed);
-}
-
-void UExRunnerInputComponent::NativeOnSlideCompleted(const FInputActionValue& Value)
-{
-	OnSlideRequested.Broadcast(false);
 }
 
 void UExRunnerInputComponent::NativeOnSprintAction(const FInputActionValue& Value)
@@ -105,8 +93,7 @@ void UExRunnerInputComponent::RequestJumpAction(bool bIsTriggered)
 	// → false 되는 순간 직접 Broadcast로 BP 이벤트를 확실히 전달
 	if (!bIsTriggered)
 	{
-		float CurrentTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
-		UE_LOG(LogTemp, Warning, TEXT("[ExRunnerInput] RequestJumpAction(false) → OnJumpRequested.Broadcast(false) 직접 호출 | Time: %.3f"), CurrentTime);
+		UE_LOG(LogTemp, Warning, TEXT("[ExRunnerInput] RequestJumpAction(false) → OnJumpRequested.Broadcast(false) 직접 호출"));
 		OnJumpRequested.Broadcast(false);
 	}
 }
@@ -121,8 +108,7 @@ void UExRunnerInputComponent::RequestSlideAction(bool bIsTriggered)
 	// → false 되는 순간 직접 Broadcast로 BP 이벤트를 확실히 전달
 	if (!bIsTriggered)
 	{
-		float CurrentTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
-		UE_LOG(LogTemp, Warning, TEXT("[ExRunnerInput] RequestSlideAction(false) → OnSlideRequested.Broadcast(false) 직접 호출 | Time: %.3f"), CurrentTime);
+		UE_LOG(LogTemp, Warning, TEXT("[ExRunnerInput] RequestSlideAction(false) → OnSlideRequested.Broadcast(false) 직접 호출"));
 		OnSlideRequested.Broadcast(false);
 	}
 }
