@@ -113,7 +113,7 @@ FReply UExBaseTouchPadWidget::NativeOnTouchEnded(const FGeometry& InGeometry, co
 #if WITH_EDITOR
 FReply UExBaseTouchPadWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-	UE_LOG(LogTemp, Warning, TEXT("[ExTouchPad] MouseDown - Index: %d, Pos: %s"), InMouseEvent.GetPointerIndex(), *InMouseEvent.GetScreenSpacePosition().ToString());
+	// UE_LOG(LogTemp, Warning, TEXT("[ExTouchPad] MouseDown - Index: %d, Pos: %s"), InMouseEvent.GetPointerIndex(), *InMouseEvent.GetScreenSpacePosition().ToString());
 	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton || InMouseEvent.IsMouseButtonDown(EKeys::LeftMouseButton))
 	{
 		// C++ 터치 로직 실행
@@ -129,7 +129,7 @@ FReply UExBaseTouchPadWidget::NativeOnMouseMove(const FGeometry& InGeometry, con
 {
 	if (bIsTouching && InMouseEvent.IsMouseButtonDown(EKeys::LeftMouseButton))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ExTouchPad] MouseMove - Pos: %s"), *InMouseEvent.GetScreenSpacePosition().ToString());
+		// UE_LOG(LogTemp, Warning, TEXT("[ExTouchPad] MouseMove - Pos: %s"), *InMouseEvent.GetScreenSpacePosition().ToString());
 		return NativeOnTouchMoved(InGeometry, InMouseEvent);
 	}
 	return Super::NativeOnMouseMove(InGeometry, InMouseEvent);
@@ -137,7 +137,7 @@ FReply UExBaseTouchPadWidget::NativeOnMouseMove(const FGeometry& InGeometry, con
 
 FReply UExBaseTouchPadWidget::NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-	UE_LOG(LogTemp, Warning, TEXT("[ExTouchPad] MouseUp - Index: %d"), InMouseEvent.GetPointerIndex());
+	// UE_LOG(LogTemp, Warning, TEXT("[ExTouchPad] MouseUp - Index: %d"), InMouseEvent.GetPointerIndex());
 	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
 		return NativeOnTouchEnded(InGeometry, InMouseEvent);
@@ -150,7 +150,7 @@ void UExBaseTouchPadWidget::NativeOnMouseCaptureLost(const FCaptureLostEvent& Ca
 	Super::NativeOnMouseCaptureLost(CaptureLostEvent);
 	if (bIsTouching)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ExTouchPad] MouseCaptureLost!!"));
+		// UE_LOG(LogTemp, Warning, TEXT("[ExTouchPad] MouseCaptureLost!!"));
 		bIsTouching = false;
 		TouchPointerIndex = -1;
 		LastTouchPosition = FVector2D::ZeroVector;

@@ -91,9 +91,9 @@ void UExRunnerInputViewModel::OnTouchPadMoved(FVector2D FrameDelta, FVector2D Lo
 	const float JumpThreshold  = -SwipePct;   // 위로 SwipePct만큼 슬라이드하면 점프
 	const float SlideThreshold =  SwipePct;   // 아래로 SwipePct만큼 슬라이드하면 슬라이드
 
-	// 디버그 로그 (출력 로그 사용)
-	UE_LOG(LogTemp, Warning, TEXT("[ExTouchPadMoved] NormX: %.3f | NormY: %.3f | StartY: %.3f | RelY: %.3f | Thr: [%.3f / %.3f]"),
-		NormalizedOffset.X, NormalizedOffset.Y, SwipeStartNormY, RelativeY, JumpThreshold, SlideThreshold);
+	// 디버그 로그 (출력 로그 사용) 지움
+	// UE_LOG(LogTemp, Warning, TEXT("[ExTouchPadMoved] NormX: %.3f | NormY: %.3f | StartY: %.3f | RelY: %.3f | Thr: [%.3f / %.3f]"),
+	//	NormalizedOffset.X, NormalizedOffset.Y, SwipeStartNormY, RelativeY, JumpThreshold, SlideThreshold);
 
 	// 화면 디버그 텍스트
 	if (UWorld* World = GetWorld())

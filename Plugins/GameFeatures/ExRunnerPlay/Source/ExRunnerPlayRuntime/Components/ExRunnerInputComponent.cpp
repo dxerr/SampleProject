@@ -77,7 +77,8 @@ void UExRunnerInputComponent::NativeOnMoveAction(const FInputActionValue& Value)
 	FVector2D AxisValue = Value.Get<FVector2D>();
 	if (AxisValue.SizeSquared() > 0.01f)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[InputComp] NativeOnMoveAction: %s"), *AxisValue.ToString());
+		// 로그 스팸 방지를 위해 주석 처리
+		// UE_LOG(LogTemp, Warning, TEXT("[InputComp] NativeOnMoveAction: %s"), *AxisValue.ToString());
 	}
 	OnMoveRequested.Broadcast(AxisValue);
 }
@@ -121,7 +122,8 @@ void UExRunnerInputComponent::RequestMoveAction(FVector2D AxisValue)
 {
 	if (AxisValue.SizeSquared() > 0.0f)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[InputInjection] MoveAction: %s"), *AxisValue.ToString());
+		// 로그 스팸 방지를 위해 주석 처리
+		// UE_LOG(LogTemp, Warning, TEXT("[InputInjection] MoveAction: %s"), *AxisValue.ToString());
 	}
 	InjectInputVectorForAction(MoveAction, FVector(AxisValue, 0.0f));
 }
