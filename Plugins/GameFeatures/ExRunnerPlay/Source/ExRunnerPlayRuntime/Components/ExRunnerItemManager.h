@@ -109,10 +109,16 @@ private:
 	/** 코인 라인 배치 */
 	void SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManager* ObstacleManager, float StartDistance, float EndDistance);
 
+	/** 코인 객체로부터 실제 충돌 반경을 동적으로 획득하여 캐싱 */
+	float GetCachedCoinRadius();
+
 	/** 청크 내 버프 아이템 스폰 (단독 또는 코인 라인 중 삽입) */
 	void SpawnBuffItem(AExFloorChunk* Chunk, UExObstacleManager* ObstacleManager, float AtDistance, float LateralOffset = 0.f);
 
 protected:
+	/** 코인 획득 반경 캐싱 (여백 계산용) */
+	UPROPERTY(Transient)
+	float CachedCoinRadius = -1.f;
 	/** 뱀 패턴을 끊김 없이 이어가기 위한 지속 상태 변수 */
 	UPROPERTY(Transient)
 	float PersistentSnakeOffset = 0.f;

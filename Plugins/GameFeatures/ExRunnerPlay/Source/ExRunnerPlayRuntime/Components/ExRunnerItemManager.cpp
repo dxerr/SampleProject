@@ -9,6 +9,7 @@
 #include "ExFloorChunk.h"
 #include "ExChunkSpawner.h"
 #include "Curves/CurveFloat.h"
+#include "Components/SphereComponent.h"
 
 UExRunnerItemManager::UExRunnerItemManager()
 {
@@ -146,7 +147,10 @@ void UExRunnerItemManager::SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManage
 		FBox BaseBounds = Chunk->GetFloorBounds();
 		HalfWidth = BaseBounds.GetExtent().Y * Chunk->GetActorScale3D().Y;
 	}
-	float SafeMargin = 70.f; // 코인의 충돌 크기(반지름) 여유분
+
+	// [수정] 코인 객체의 실제 콜리전 반지름을 가져와서 2배의 여백(Margin) 확보
+	float CoinRadius = GetCachedCoinRadius();
+	float SafeMargin = CoinRadius * 2.f; 
 	float RealMaxOffset = FMath::Max(0.f, HalfWidth - SafeMargin);
 	
 	// 기획자가 설정한 제한값과 청크의 실제 폭 제한값 중 작은 쪽(안전한 쪽) 선택
@@ -257,6 +261,40 @@ void UExRunnerItemManager::SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManage
 		PersistentNextCoinDistance = 0.f;
 		PersistentSnakeOffset = 0.f;
 	}
+}
+
+float UExRunnerItemManager::GetCachedCoinRadius()
+{
+	// 캐싱된 값이 있으면 즉시 반환
+	if (CachedCoinRadius > 0.f)
+	{
+		return CachedCoinRadius;
+	}
+
+	// 스폰 테이블의 첫 번째 코인 애셋 정보를 실시간으로 질의하여 반지름 획득
+	if (SpawnTable && SpawnTable->CoinEntries.Num() > 0)
+	{
+		if (const UExItemDefinition* CoinDef = SpawnTable->CoinEntries[0].ItemDefinition)
+		{
+			if (TSubclassOf<AExItemPickupBase> PickupClass = CoinDef->PickupActorClass)
+			{
+				if (AExItemPickupBase* CDO = PickupClass.GetDefaultObject())
+				{
+					// CDO에서 구체 컴포넌트를 찾아 설정된 반지름을 가져옴
+					if (const USphereComponent* Sphere = CDO->FindComponentByClass<USphereComponent>())
+					{
+						CachedCoinRadius = Sphere->GetUnscaledSphereRadius();
+						UE_LOG(LogExItemSystem, Log, TEXT("[ExRunnerItemManager] Coin Radius Cached: %.2f (Margin will be %.2f)"), 
+							CachedCoinRadius, CachedCoinRadius * 2.f);
+						return CachedCoinRadius;
+					}
+				}
+			}
+		}
+	}
+
+	// 데이터가 없거나 로드 전인 경우 안전한 기본값 반환 (캐싱은 하지 않음)
+	return 100.f;
 }
 
 // ── 버프 아이템 배치 ──

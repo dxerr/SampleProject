@@ -209,6 +209,13 @@ AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
 	}
 
 	// [중앙 제어] 명시적인 순서로 매니저 호출 (장애물 먼저, 그 이후 아이템)
+	// ★ 개발 중 Hot Reload(Re-instancing)로 인해 포인터가 stale해지는 경우를 대비해 유효성 체크 강화
+	if (!CachedObstacleManager || !CachedItemManager || !CachedItemManager->SpawnTable)
+	{
+		CachedObstacleManager = GetOwner()->FindComponentByClass<UExObstacleManager>();
+		CachedItemManager = GetOwner()->FindComponentByClass<UExRunnerItemManager>();
+	}
+
 	if (CachedObstacleManager)
 	{
 		CachedObstacleManager->SpawnObstaclesOnChunk(Chunk, 0.f, Chunk->ChunkLength, false);
