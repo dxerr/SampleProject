@@ -40,7 +40,9 @@ protected:
 
 	// 자동 바인딩을 위한 네이티브 콜백 (Enhanced Input 시그니처)
 	void NativeOnJumpAction(const struct FInputActionValue& Value);
+	void NativeOnJumpCompleted(const struct FInputActionValue& Value);
 	void NativeOnSlideAction(const struct FInputActionValue& Value);
+	void NativeOnSlideCompleted(const struct FInputActionValue& Value);
 	void NativeOnSprintAction(const struct FInputActionValue& Value);
 	void NativeOnMoveAction(const struct FInputActionValue& Value);
 	virtual void BeginPlay() override;

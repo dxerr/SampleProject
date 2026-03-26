@@ -138,14 +138,11 @@ void UExRunnerInputViewModel::OnTouchPadReleased()
 
 	// [슬라이드] Restore 재트리거 로직과 Release 정리는 분리해야 함.
 	// HandleSlideInput(0, 9999)를 사용하면 Restore 분기(bCurrentlyInjected=true)에서 true를 재전송해버림.
-	// → Release 시에는 InjectedInputStates에서 SlideAction을 제거하는 false를 직접 호출
+	// → Release 시에는 InjectedInputStates 여부와 무관하게 무조건 false를 직접 호출하여 영구 Crouch 굳힘 버그 차단 (Fail-safe)
 	if (UExRunnerInputComponent* InputComp = GetRunnerInputComponent())
 	{
-		if (InputComp->IsSlideInputActive())
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[ExSlide] *** RELEASE CLEANUP → false *** | InjectedInputStates에서 SlideAction 제거"));
-			InputComp->RequestSlideAction(false);
-		}
+		UE_LOG(LogTemp, Warning, TEXT("[ExSlide] *** RELEASE CLEANUP → 무조건 false *** | 슬라이드 강제 해제"));
+		InputComp->RequestSlideAction(false);
 
 		// [회전 원점 복구]
 		// NormX = 0 전송 → MovementComponent의 TargetLookYawOffset가 0이 되면
@@ -167,8 +164,9 @@ bool UExRunnerInputViewModel::HandleJumpInput(float RelativeY, float Threshold)
 		if (!bIsJumpActive)
 		{
 			// 새로 임계값 돌파: True 1회 전송
-			UE_LOG(LogTemp, Warning, TEXT("[ExJump] *** ACTIVATED *** | RelY: %.3f | Thr: %.3f | bIsJumpActive: false → true"),
-				RelativeY, Threshold);
+			float CurrentTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+			UE_LOG(LogTemp, Warning, TEXT("[ExJump] *** ACTIVATED *** | Time: %.3f | RelY: %.3f | Thr: %.3f | bIsJumpActive: false → true"),
+				CurrentTime, RelativeY, Threshold);
 			InputComp->RequestJumpAction(true);
 			bIsJumpActive = true;
 			return true;
@@ -181,8 +179,9 @@ bool UExRunnerInputViewModel::HandleJumpInput(float RelativeY, float Threshold)
 		if (bIsJumpActive)
 		{
 			// 임계값 미달 또는 Release → False 전송
-			UE_LOG(LogTemp, Warning, TEXT("[ExJump] *** DEACTIVATED *** | RelY: %.3f | Thr: %.3f | bIsJumpActive: true → false"),
-				RelativeY, Threshold);
+			float CurrentTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+			UE_LOG(LogTemp, Warning, TEXT("[ExJump] *** DEACTIVATED *** | Time: %.3f | RelY: %.3f | Thr: %.3f | bIsJumpActive: true → false"),
+				CurrentTime, RelativeY, Threshold);
 			InputComp->RequestJumpAction(false);
 			bIsJumpActive = false;
 		}
