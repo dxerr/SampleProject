@@ -38,4 +38,35 @@ public:
 	 * @return 찾은 APawn 포인터. 없으면 nullptr
 	 */
 	static APawn* FindOwnerPawn(UActorComponent* InComponent);
+
+	/**
+	 * 컴포넌트의 Owner Actor 계층에서 특정 타입의 컴포넌트를 탐색합니다.
+	 * Owner Actor → AttachParent Actor 순서로 탐색합니다.
+	 *
+	 * 탐색 순서:
+	 *   1. InComponent->GetOwner()에서 탐색
+	 *   2. GetOwner()->GetAttachParentActor()에서 탐색
+	 *      (컴포넌트가 Visual Actor(Child Actor)에 부착된 구조 대응)
+	 *
+	 * @param InComponent  탐색 기준 컴포넌트
+	 * @return 찾은 컴포넌트 포인터. 없으면 nullptr
+	 */
+	template<typename T>
+	static T* FindComponentInHierarchy(UActorComponent* InComponent)
+	{
+		if (!InComponent) return nullptr;
+
+		if (AActor* Owner = InComponent->GetOwner())
+		{
+			if (T* Found = Owner->FindComponentByClass<T>())
+				return Found;
+
+			if (AActor* Parent = Owner->GetAttachParentActor())
+			{
+				if (T* Found = Parent->FindComponentByClass<T>())
+					return Found;
+			}
+		}
+		return nullptr;
+	}
 };
