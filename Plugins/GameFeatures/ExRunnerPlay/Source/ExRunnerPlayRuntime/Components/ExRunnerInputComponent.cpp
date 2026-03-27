@@ -7,10 +7,17 @@
 #include "GameFramework/Pawn.h"
 #include "Debug/ExDebugDrawSubsystem.h"
 #include "Tags/ExGameplayTags.h"
+#include "InputStrategies/ExRunnerInputStrategy.h"
+#include "InputStrategies/ExRunnerInputStrategy_Manual.h"
+#include "InputStrategies/ExRunnerInputStrategy_AutoRun.h"
+#include "ExRunnerMovementComponent.h"
 
 void UExRunnerInputComponent::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// DefaultInputMode에 설정된 모드로 Strategy 초기화
+	ApplyInputMode(DefaultInputMode);
 }
 
 void UExRunnerInputComponent::InitializeInputBindings(UEnhancedInputComponent* EnhancedInputComponent)
@@ -75,12 +82,22 @@ void UExRunnerInputComponent::NativeOnSprintAction(const FInputActionValue& Valu
 void UExRunnerInputComponent::NativeOnMoveAction(const FInputActionValue& Value)
 {
 	FVector2D AxisValue = Value.Get<FVector2D>();
-	if (AxisValue.SizeSquared() > 0.01f)
+
+	if (GEngine) GEngine->AddOnScreenDebugMessage(84, 0.0f, FColor::Purple, FString::Printf(TEXT("[InputComp] OnMoveAction Received: X=%.2f, Y=%.2f"), AxisValue.X, AxisValue.Y));
+
+
+	// Strategy에 좌우 입력 위임
+	// Manual 모드: OnMoveRequested.Broadcast
+	// AutoRun 모드: OnLaneChangeRequested 스냅 판정
+	if (ActiveStrategy)
 	{
-		// 로그 스팸 방지를 위해 주석 처리
-		// UE_LOG(LogTemp, Warning, TEXT("[InputComp] NativeOnMoveAction: %s"), *AxisValue.ToString());
+		ActiveStrategy->HandleHorizontalInput(AxisValue);
 	}
-	OnMoveRequested.Broadcast(AxisValue);
+	else
+	{
+		// Fallback: Strategy 미초기화 시 기존 동작 유지
+		OnMoveRequested.Broadcast(AxisValue);
+	}
 }
 
 void UExRunnerInputComponent::RequestJumpAction(bool bIsTriggered)
@@ -100,12 +117,14 @@ void UExRunnerInputComponent::RequestJumpAction(bool bIsTriggered)
 
 void UExRunnerInputComponent::RequestSlideAction(bool bIsTriggered)
 {
+	// Strategy 게이트: AutoRun 모드에서는 쿨다운 중 차단
+	if (ActiveStrategy && !ActiveStrategy->CanRequestSlide(bIsTriggered))
+	{
+		return;
+	}
+
 	InjectInputBoolForAction(SlideAction, bIsTriggered);
 
-	// [false 직접 Broadcast]
-	// Enhanced Input Completed 콜백의 Value.Get<bool>()은 true를 반환하는 경우가 있어 불안정
-	// (false → true 동일 프레임 패턴이나 Enhanced Input 스펙 문제)
-	// → false 되는 순간 직접 Broadcast로 BP 이벤트를 확실히 전달
 	if (!bIsTriggered)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[ExRunnerInput] RequestSlideAction(false) → OnSlideRequested.Broadcast(false) 직접 호출"));
@@ -115,6 +134,11 @@ void UExRunnerInputComponent::RequestSlideAction(bool bIsTriggered)
 
 void UExRunnerInputComponent::RequestSprintAction(bool bIsTriggered)
 {
+	// Strategy 게이트: 필요시 AutoRun 모드에서 스프린트 제한 가능
+	if (ActiveStrategy && !ActiveStrategy->CanRequestSprint(bIsTriggered))
+	{
+		return;
+	}
 	InjectInputBoolForAction(SprintAction, bIsTriggered);
 }
 
@@ -132,9 +156,15 @@ void UExRunnerInputComponent::RequestMoveAction(FVector2D AxisValue)
 
 void UExRunnerInputComponent::RequestLookAction(float YawAxisValue)
 {
-	// NormX(-1.0 ~ 1.0) 값을 그대로 브로드캐스트합니다.
-	// 실제 MaxRunnerYawAngle 곱셈 및 보간 처리는 ExRunnerMovementComponent::UpdateCharacterRotation에서 수행합니다.
-	OnLookRequested.Broadcast(YawAxisValue);
+	if (ActiveStrategy)
+	{
+		ActiveStrategy->HandleHorizontalInput(FVector2D(YawAxisValue, 0.0f));
+	}
+	else
+	{
+		// Fallback: Strategy가 아직 안 붙었다면 원래 하던 대로 Broadcast 허용
+		OnLookRequested.Broadcast(YawAxisValue);
+	}
 }
 
 float UExRunnerInputComponent::GetSwipeActivationPercentage() const
@@ -157,4 +187,78 @@ bool UExRunnerInputComponent::IsSlideInputActive() const
 	// InjectedInputStates 맵에 SlideAction이 존재하면 슬라이드 입력이 현재 주입 중
 	// ViewModel의 bIsSlideActive 등 별도 추적 변수 없이도 실제 컴포넌트 상태를 정확히 반영
 	return SlideAction && InjectedInputStates.Contains(SlideAction);
+}
+
+void UExRunnerInputComponent::SetInputMode(EExRunnerInputMode NewMode)
+{
+	if (CurrentInputMode == NewMode) return; // 동일 모드 전환 무시
+	ApplyInputMode(NewMode);
+}
+
+void UExRunnerInputComponent::RegisterMovementComponent(UExRunnerMovementComponent* InMovementComp)
+{
+	if (!InMovementComp) return;
+
+	CachedMovementComp = InMovementComp;
+
+	// 컴포넌트가 등록되는 시점에 이미 활성화된 Strategy가 있다면 즉시 바인딩 수행
+	if (ActiveStrategy)
+	{
+		ActiveStrategy->BindToMovement(CachedMovementComp);
+		UE_LOG(LogTemp, Log, TEXT("[ExRunnerInput] 지연 등록된 MovementComponent에 Strategy를 성공적으로 바인딩했습니다."));
+	}
+}
+
+void UExRunnerInputComponent::ApplyInputMode(EExRunnerInputMode NewMode)
+{
+	// 1. 현재 Strategy가 있으면 MovementComponent 바인딩 해제
+	if (ActiveStrategy)
+	{
+		if (CachedMovementComp)
+		{
+			ActiveStrategy->UnbindFromMovement(CachedMovementComp);
+		}
+		ActiveStrategy = nullptr;
+	}
+
+	// 2. None 모드: Strategy 없이 입력 무시
+	if (NewMode == EExRunnerInputMode::None)
+	{
+		CurrentInputMode = NewMode;
+		return;
+	}
+
+	// 3. 새 Strategy 인스턴스 생성
+	TSubclassOf<UExRunnerInputStrategy> StrategyClass = nullptr;
+	switch (NewMode)
+	{
+		case EExRunnerInputMode::Manual:
+			StrategyClass = UExRunnerInputStrategy_Manual::StaticClass();
+			break;
+		case EExRunnerInputMode::AutoRun:
+			StrategyClass = UExRunnerInputStrategy_AutoRun::StaticClass();
+			break;
+		default:
+			break;
+	}
+
+	if (!StrategyClass) return;
+
+	ActiveStrategy = NewObject<UExRunnerInputStrategy>(this, StrategyClass);
+	ActiveStrategy->Initialize(this);
+
+	// 4. MovementComponent에 모드별 델리게이트 바인딩
+	if (CachedMovementComp)
+	{
+		ActiveStrategy->BindToMovement(CachedMovementComp);
+	}
+	else
+	{
+		// 이 로그는 정상입니다. 컨테이너 폰의 MovementComponent가 시각 폰 InputComponent보다 늦게 생성될 수 있습니다.
+		// 차후 MovementComponent가 Timer를 거쳐 자신을 RegisterMovementComponent로 등록하면 그때 바인딩됩니다.
+		UE_LOG(LogTemp, Log, TEXT("[ExRunnerInput] MovementComponent가 아직 식별되지 않았습니다. 대기 상태로 전환합니다."));
+	}
+
+	CurrentInputMode = NewMode;
+	UE_LOG(LogTemp, Log, TEXT("[ExRunnerInput] InputMode 전환 완료: %s"), *UEnum::GetValueAsString(NewMode));
 }

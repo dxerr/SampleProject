@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ExInputComponentBase.h"
+#include "InputStrategies/ExRunnerInputMode.h"
 #include "ExRunnerInputComponent.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerJumpRequested, bool, bIsTriggered);
@@ -11,8 +12,13 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerSlideRequested, bool, bIsTr
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerSprintRequested, bool, bIsTriggered);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerMoveRequested, FVector2D, AxisValue);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerLookRequested, float, AxisValue);
+/** AutoRun 모드 전용: 레인 이동 방향 (+1=우, -1=좌) */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerLaneChangeRequested, int32, LaneDirection);
 
 class UInputAction;
+class UExRunnerInputStrategy;
+class UExGameModeDataSet;
+class UExRunnerMovementComponent;
 
 /**
  * 러너 게임용 특화 입력 라우터 컴포넌트
@@ -58,7 +64,17 @@ protected:
 	float RunnerLookSensitivity = 0.5f; // 높은 값이 들어올 경우를 대비해 기본 스케일을 작게 설정
 
 	// ============================================
+	// 3. 입력 모드 (Strategy Pattern)
+	// ============================================
+	/** 기본 입력 모드 — BP 에디터 디테일 패널에서 설정 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="ExInput|Runner|Mode")
+	EExRunnerInputMode DefaultInputMode = EExRunnerInputMode::Manual;
+
+	
+public:
+	// ============================================
 	// 2. 이벤트 브로드캐스터 (캐릭터 BP가 이를 구독하여 실제 동작 수행)
+	// [NOTE] Strategy 클래스가 직접 Broadcast해야 하므로 모두 public 선언
 	// ============================================
 	UPROPERTY(BlueprintAssignable, Category="ExInput|Runner|Events")
 	FOnRunnerJumpRequested OnJumpRequested;
@@ -72,15 +88,24 @@ protected:
 	UPROPERTY(BlueprintAssignable, Category="ExInput|Runner|Events")
 	FOnRunnerMoveRequested OnMoveRequested;
 
-	// 좌우 방향(Yaw) 회전 요청 브로드캐스트용 (모바일 터치 패드 등에서 호출)
-	// public으로 선언해야 외부 클래스(MovementComponent 등)에서 AddDynamic 접근 가능
 public:
+	// 좌우 방향(Yaw) 회전 요청 — public (MovementComponent AddDynamic 접근 필요)
 	UPROPERTY(BlueprintAssignable, Category="ExInput|Runner|Events")
 	FOnRunnerLookRequested OnLookRequested;
 
+	/** AutoRun 모드 전용: 레인 이동 방향 (+1=우, -1=좌) */
+	UPROPERTY(BlueprintAssignable, Category="ExInput|Runner|Events")
+	FOnRunnerLaneChangeRequested OnLaneChangeRequested;
+
 protected:
+	/** 현재 활성화된 입력 Strategy 인스턴스 */
+	UPROPERTY()
+	TObjectPtr<UExRunnerInputStrategy> ActiveStrategy;
 
 public:
+	/** GameModeDataSet 접근자 (Strategy 초기화 시 쿨다운 등 설정 값 로드용) */
+	UFUNCTION(BlueprintPure, Category="ExInput|Runner|Settings")
+	UExGameModeDataSet* GetGameModeDataSet() const { return GameModeDataSet; }
 	// ============================================
 	// 2. Action Requesters (UI 및 Enhanced Input에서 호출하는 진입점)
 	// ============================================
@@ -105,13 +130,33 @@ public:
 	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Actions")
 	virtual void RequestLookAction(float YawAxisValue);
 
+	/** 입력 모드 전환 (Manual ↔ AutoRun 등). BP에서 상황에 따라 호출 */
+	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Mode")
+	void SetInputMode(EExRunnerInputMode NewMode);
+
+	/** 현재 활성 입력 모드 반환 */
+	UFUNCTION(BlueprintPure, Category="ExInput|Runner|Mode")
+	EExRunnerInputMode GetCurrentInputMode() const { return CurrentInputMode; }
+
+	// MovementComponent가 초기화 완료 시 자신을 등록하는 콜백 함수
+	void RegisterMovementComponent(UExRunnerMovementComponent* InMovementComp);
+
 	// DataSet 또는 폴백 기본값에서 스와이프 발동 퍼센트를 반환
-	// GameModeDataSet이 할당된 경우 DataSet의 SwipeActivationPercentage 우선 사용
 	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Settings")
 	float GetSwipeActivationPercentage() const;
 
-	// 현재 슬라이드 입력이 InjectedInputStates에 등록(true 주입 중)되어 있는지 조회
-	// ViewModel의 로컬 변수 대신, 컴포넌트 내부 맵을 직접 확인하여 동기화 깨짐 최소화
+	// 현재 슬라이드 입력이 InjectedInputStates에 등록되어 있는지 조회
 	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Settings")
 	bool IsSlideInputActive() const;
+
+private:
+	/** 런타임 현재 모드 추적용 */
+	EExRunnerInputMode CurrentInputMode = EExRunnerInputMode::None;
+
+	/** 등록된 MovementComponent 캐시 */
+	UPROPERTY(Transient)
+	TObjectPtr<UExRunnerMovementComponent> CachedMovementComp;
+
+	/** Strategy 인스턴스 생성 후 초기화 + MovementComponent 바인딩 수행 */
+	void ApplyInputMode(EExRunnerInputMode NewMode);
 };

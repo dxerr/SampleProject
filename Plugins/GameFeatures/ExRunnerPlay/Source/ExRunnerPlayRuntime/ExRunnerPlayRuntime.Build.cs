@@ -17,6 +17,7 @@ public class ExRunnerPlayRuntime : ModuleRules
 				System.IO.Path.Combine(ModuleDirectory, "Data"),
 				System.IO.Path.Combine(ModuleDirectory, "Struct"),
 				System.IO.Path.Combine(ModuleDirectory, "Actors"),
+				System.IO.Path.Combine(ModuleDirectory, "InputStrategies"),
 			}
 			);
 				

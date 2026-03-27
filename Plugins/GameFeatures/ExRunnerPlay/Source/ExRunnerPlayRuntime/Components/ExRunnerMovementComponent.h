@@ -55,6 +55,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Runner|Lane")
 	float GetCurrentLaneYOffset() const { return CurrentLaneYOffset; }
 
+	/** AutoRun 모드 활성화 여부 설정 (AutoRun Strategy에서 호출) */
+	UFUNCTION(BlueprintCallable, Category = "Runner|Mode")
+	void SetAutoRunMode(bool bEnabled);
+
+	/** AutoRun 전용 레인 변경 콜백 — OnLaneChangeRequested 델리게이트에 바인딩 */
+	UFUNCTION()
+	void OnLaneChangeRequestedCallback(int32 LaneDirection);
+
 protected:
 	/** 제어 대상 폰 (Mover) - Pawn 기반 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner")
@@ -62,7 +70,7 @@ protected:
 
 	/** 레인 폭 (단위: cm) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner|Lane")
-	float LaneWidth = 300.0f;
+	float LaneWidth = 100.0f;
 
 	/** 레인 변경 속도 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner|Lane")
@@ -93,6 +101,10 @@ private:
 	// 내부 상태 변수
 	int32 CurrentLaneIndex = 0;
 	float CurrentLaneYOffset = 0.0f;
+	bool bIsLaneWidthCalculated = false;
+
+	/** AutoRun 모드 플래그 — UpdateLanePosition 보간 연산 활성화 여부 제어 */
+	bool bIsAutoRunMode = false;
 
 	// 조이스틱 좌우 입력으로 설정된 목표 Yaw 오프셋 (°) — 경로 기준 정면으로부터의 편차
 	// NormX(-1~1) × MaxRunnerYawAngle 로 계산되며, Release 시 0.0으로 초기화
@@ -101,10 +113,14 @@ private:
 	// 동적 델리게이트 바인딩 지연 여부 체크
 	bool bIsLookInputBound = false;
 
+
+public:
 	// OnLookRequested 델리게이트 콜백 (Dynamic Multicast 바인딩용)
+	// Strategy 클래스에서 RemoveDynamic 참조를 위해 public 선언
 	UFUNCTION()
 	void OnLookRequestedCallback(float AxisValue);
-	
+
+private:
 	/** 이동/조향 디버그 정보 시각화 (Cheat 전용 독립 함수) */
 	void DrawDebugMovementInfo(const FRotator& TargetRot, const FRotator& TargetControlRot, const FRotator& CurrentControlRot);
 

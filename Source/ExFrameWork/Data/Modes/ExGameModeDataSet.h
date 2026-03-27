@@ -48,4 +48,13 @@ public:
 	// 2. 로컬 플레이어 캐릭터 클래스 (예: BP_Twinblast - 비주얼/특수 로직 담당)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GameMode")
 	TSubclassOf<AActor> LocalPlayerClass;
+
+	// ============================================
+	// AutoRun 모드 전용 설정
+	// ============================================
+
+	/** AutoRun 모드 점프/슬라이드 연속 발동 방지 쿨다운 (초). 기본 0.3초 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GameMode|Runner|AutoRun", meta = (ClampMin = "0.0", ClampMax = "5.0"))
+	float AutoRunActionCooldown = 0.3f;
 };
+

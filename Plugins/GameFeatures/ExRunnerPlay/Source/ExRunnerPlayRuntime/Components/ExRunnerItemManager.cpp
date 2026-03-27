@@ -106,23 +106,17 @@ void UExRunnerItemManager::SpawnItemsOnChunk(AExFloorChunk* TargetChunk, UExObst
 	}
 	else 
 	{
-		// 스폰 확률에 탈락하여 라인이 끊기면 이월 데이터와 뱀 패턴을 0으로 초기화0
+		// 스폰 확률에 탈락하여 라인이 끊기면 이월 데이터와 뱀 패턴을 초기화
 		PersistentNextCoinDistance = 0.f;
-		PersistentSnakeOffset = 0.f;
+		CurrentLaneYOffset = 0.f;
+		RemainingCoinsInCurrentLane = 0;
 	}
 
-	// 코인 라인 중 버프 삽입 확률
-	if (bCoinLineSpawned && FMath::FRand() < SpawnTable->BuffSpawnProbability)
-	{
-		float BuffDistance = FMath::FRandRange(SafeStart, SafeEnd);
-		float SnakeOffset = SpawnTable->bUseSnakePattern ? PersistentSnakeOffset : 0.f;
-		SpawnBuffItem(TargetChunk, ObstacleManager, BuffDistance, SnakeOffset);
-	}
 	// 코인 라인 없는 청크: 단독 버프 배치
-	else if (!bCoinLineSpawned && FMath::FRand() < SpawnTable->BuffSoloSpawnProbability)
+	if (!bCoinLineSpawned && FMath::FRand() < SpawnTable->BuffSoloSpawnProbability)
 	{
 		float BuffDistance = FMath::FRandRange(SafeStart, SafeEnd);
-		float SnakeOffset = SpawnTable->bUseSnakePattern ? PersistentSnakeOffset : 0.f;
+		float SnakeOffset = SpawnTable->bUseSnakePattern ? CurrentLaneYOffset : 0.f;
 		SpawnBuffItem(TargetChunk, ObstacleManager, BuffDistance, SnakeOffset);
 	}
 }
@@ -136,85 +130,113 @@ void UExRunnerItemManager::SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManage
 		return;
 	}
 
-	const int32 CoinCount = FMath::RandRange(SpawnTable->MinCoinsPerLine, SpawnTable->MaxCoinsPerLine);
 	const float Spacing = SpawnTable->CoinSpacing;
 	float CurrentDistance = StartDistance;
 
-	// 청크의 실제 단위 폭을 기반으로 안전한 이동 범위 도출
-	float HalfWidth = 400.f;
+	// 바닥의 실제 Y 범위 구해 LaneWidth 산출 (레벨 디자인상 3등분 폭)
+	float LaneWidth = 100.f;
 	if (Chunk)
 	{
-		FBox BaseBounds = Chunk->GetFloorBounds();
-		HalfWidth = BaseBounds.GetExtent().Y * Chunk->GetActorScale3D().Y;
+		float TotalWidth = Chunk->GetFloorBounds().GetSize().Y * Chunk->GetActorScale3D().Y;
+		LaneWidth = TotalWidth / 3.0f;
 	}
 
-	// [수정] 코인 객체의 실제 콜리전 반지름을 가져와서 2배의 여백(Margin) 확보
-	float CoinRadius = GetCachedCoinRadius();
-	float SafeMargin = CoinRadius * 2.f; 
-	float RealMaxOffset = FMath::Max(0.f, HalfWidth - SafeMargin);
+	// 이번 청크(호출 주기) 내에서 스폰 가능한 최대 횟수를 예상
+	int32 EstimatedSpawns = FMath::Max(1, FMath::CeilToInt((EndDistance - StartDistance) / Spacing));
+	int32 MaxIterCount = 100; // 절대 무한루프 방지
 	
-	// 기획자가 설정한 제한값과 청크의 실제 폭 제한값 중 작은 쪽(안전한 쪽) 선택
-	float EffectiveMaxOffset = FMath::Min(SpawnTable->MaxLateralOffset, RealMaxOffset);
-
-	for (int32 i = 0; i < CoinCount && CurrentDistance < EndDistance; ++i)
+	// 라인 중 버프 교체 삽입 (확률 판정 후 임의의 슬롯 인덱스 지정)
+	int32 BuffReplaceIndex = -1;
+	if (FMath::FRand() < SpawnTable->BuffSpawnProbability)
 	{
-		// 코인 라인 끊김 확률
+		BuffReplaceIndex = FMath::RandRange(0, EstimatedSpawns - 1);
+	}
+
+	for (int32 i = 0; i < MaxIterCount && CurrentDistance < EndDistance; ++i)
+	{
+		// 현재 레인의 잔여 갯수가 0이면 새로운 목표 레인 결정
+		if (RemainingCoinsInCurrentLane <= 0)
+		{
+			// 지그재그 유도: 기존 레인과 다른 레인을 강제 무작위 추첨
+			TArray<int32> PossibleLanes = {-1, 0, 1};
+			PossibleLanes.Remove(PersistentTargetLane);
+			PersistentTargetLane = PossibleLanes[FMath::RandRange(0, PossibleLanes.Num() - 1)];
+
+			// 할당량 갱신
+			RemainingCoinsInCurrentLane = FMath::RandRange(SpawnTable->MinCoinsPerLine, SpawnTable->MaxCoinsPerLine);
+		}
+
+		// 코인 라인 중간 끊김 판정
 		if (i > 0 && FMath::FRand() < SpawnTable->CoinLineBreakProbability)
 		{
 			CurrentDistance += Spacing * 2.f; // 끊김 시 간격 2배
+			
+			// 끊김이 발생하면 대각선 뱀 패턴 스킵 후, 곧장 새 목표 레인으로 이동(스냅)
+			CurrentLaneYOffset = PersistentTargetLane * LaneWidth;
 			continue;
 		}
 
-		// 코인 선택
-		const UExItemDefinition* CoinDef = SpawnTable->SelectRandomCoin(0.f); // TODO: 현재 속도 연동
-		if (!CoinDef)
+		// 스폰할 아이템 정의서 결정 (교체형 버프 vs 코인)
+		const UExItemDefinition* ItemDef = nullptr;
+		if (i == BuffReplaceIndex && SpawnTable->BuffEntries.Num() > 0)
+		{
+			ItemDef = SpawnTable->SelectRandomBuff(0.f); 
+		}
+		else
+		{
+			ItemDef = SpawnTable->SelectRandomCoin(0.f);
+		}
+
+		if (!ItemDef)
 		{
 			CurrentDistance += Spacing;
 			continue;
 		}
 
-		// 뱀(Snake) 패턴 로직에 의한 지속적 좌우 위치 업데이트 (상태 저장)
-		if (SpawnTable->bUseSnakePattern && EffectiveMaxOffset > 0.f)
+		// 뱀(Snake) 패턴 보간 계산 (목표 레인을 향해 한 걸음씩 드리프트)
+		if (SpawnTable->bUseSnakePattern)
 		{
-			// 현재 방향으로 드리프트 이동
-			PersistentSnakeOffset += PersistentSnakeDir * SpawnTable->LateralDriftPerCoin;
-
-			// 설정된(또는 청크의) 최대 범위를 넘어가면 강제 반전. (당분간 반대 방향 유지)
-			if (PersistentSnakeOffset >= EffectiveMaxOffset)
+			float TargetY = PersistentTargetLane * LaneWidth;
+			float DistanceToTarget = TargetY - CurrentLaneYOffset;
+			
+			if (FMath::Abs(DistanceToTarget) > KINDA_SMALL_NUMBER)
 			{
-				PersistentSnakeOffset = EffectiveMaxOffset;
-				PersistentSnakeDir = -1.f;
-			}
-			else if (PersistentSnakeOffset <= -EffectiveMaxOffset)
-			{
-				PersistentSnakeOffset = -EffectiveMaxOffset;
-				PersistentSnakeDir = 1.f;
+				float Drift = SpawnTable->LateralDriftPerCoin;
+				if (FMath::Abs(DistanceToTarget) <= Drift)
+				{
+					CurrentLaneYOffset = TargetY;
+				}
+				else
+				{
+					CurrentLaneYOffset += FMath::Sign(DistanceToTarget) * Drift;
+				}
 			}
 		}
 		else
 		{
-			PersistentSnakeOffset = 0.f;
+			CurrentLaneYOffset = PersistentTargetLane * LaneWidth;
 		}
 
-		// 청크 표면 트랜스폼 획득 및 월드 스페이스 변환 (곡선 청크 대응)
+		// 이동 중(보간 중)인 상황도 횟수 차감 포함
+		RemainingCoinsInCurrentLane--;
+
+		// 곡선 청크 대응 월드 트랜스폼 산출
 		FTransform LocalTransform = Chunk->GetLocalTransformAtDistance(CurrentDistance);
 		
-		// 스레드밀의 X축(Forward) 기준으로 측면(Y축) 오프셋을 Local Transform에 적용
-		if (SpawnTable->bUseSnakePattern && !FMath::IsNearlyZero(PersistentSnakeOffset))
+		if (!FMath::IsNearlyZero(CurrentLaneYOffset))
 		{
 			FVector SplineRightVector = LocalTransform.GetRotation().GetRightVector();
-			LocalTransform.SetLocation(LocalTransform.GetLocation() + SplineRightVector * PersistentSnakeOffset);
+			LocalTransform.SetLocation(LocalTransform.GetLocation() + SplineRightVector * CurrentLaneYOffset);
 		}
 		
-		// [수정] FRotator 덧셈은 Gimbal Lock 및 3차원 축 왜곡을 발생시키므로 행렬 곱을 사용해야 함
 		FTransform GlobalTransform = LocalTransform * Chunk->GetActorTransform();
 		FVector SpawnLocation = GlobalTransform.GetLocation();
 		FRotator SpawnRotation = GlobalTransform.Rotator();
 
-		// 실제 글로벌 PathDistance 매핑 (Chunk->PathDistance는 세그먼트의 중심임)
+		// 실제 글로벌 PathDistance
 		float GlobalPathDistance = Chunk->PathDistance - (Chunk->ChunkLength * 0.5f) + CurrentDistance;
 
-		// 장애물 질의 및 Z축 결정
+		// 장애물 질의를 통한 최종 Z 보정
 		float AlphaInGap = 0.f;
 		FExObstacleContext Context;
 
@@ -222,7 +244,6 @@ void UExRunnerItemManager::SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManage
 		{
 			ObstacleManager->QueryObstacleAtDistance(GlobalPathDistance, Spacing * 0.5f, Context);
 			
-			// Gap 장애물인 경우 포물선 비례값(AlphaInGap) 계산
 			if (Context.ObstacleType == EExObstacleType::Gap && Context.ObstacleBounds.IsValid)
 			{
 				float GapStart = Context.ObstacleBounds.Min.X;
@@ -235,13 +256,9 @@ void UExRunnerItemManager::SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManage
 			}
 		}
 
-		// 무조건 CalculateItemZ를 거쳐서 파묻힘 방지 Z Offset을 포함하도록 함
-		float FinalZ = CalculateItemZ(Context, SpawnLocation.Z, AlphaInGap);
+		SpawnLocation.Z = CalculateItemZ(Context, SpawnLocation.Z, AlphaInGap);
 
-		SpawnLocation.Z = FinalZ;
-
-		// 아이템 스폰 및 청크에 부착
-		AExItemPickupBase* SpawnedItem = SpawnItem(CoinDef, FTransform(SpawnRotation, SpawnLocation));
+		AExItemPickupBase* SpawnedItem = SpawnItem(ItemDef, FTransform(SpawnRotation, SpawnLocation));
 		if (SpawnedItem)
 		{
 			SpawnedItem->AttachToActor(Chunk, FAttachmentTransformRules::KeepWorldTransform);
@@ -250,16 +267,17 @@ void UExRunnerItemManager::SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManage
 		CurrentDistance += Spacing;
 	}
 
-	// 청크를 다 채워서 루프가 끝났다면, 완벽한 간격 유지를 위해 남은 거리를 이월
+	// 청크를 다 채웠다면, 완벽한 간격 유지를 위해 남은 거리를 이월 (상태값 보존)
 	if (CurrentDistance >= EndDistance)
 	{
 		PersistentNextCoinDistance = CurrentDistance - Chunk->ChunkLength;
 	}
 	else
 	{
-		// 청크를 다 채우기 전에 CoinCount(갯수 제한)를 다 소모해버렸다면 라인 종료
+		// 이전에 EndDistance에 도달 못 한 건 MaxIter에 걸린 예외 스폰이므로 리셋
 		PersistentNextCoinDistance = 0.f;
-		PersistentSnakeOffset = 0.f;
+		CurrentLaneYOffset = 0.f;
+		RemainingCoinsInCurrentLane = 0;
 	}
 }
 

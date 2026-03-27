@@ -121,10 +121,13 @@ protected:
 	float CachedCoinRadius = -1.f;
 	/** 뱀 패턴을 끊김 없이 이어가기 위한 지속 상태 변수 */
 	UPROPERTY(Transient)
-	float PersistentSnakeOffset = 0.f;
+	int32 PersistentTargetLane = 0; // -1, 0, 1 중 하나
 
 	UPROPERTY(Transient)
-	float PersistentSnakeDir = 1.f;
+	int32 RemainingCoinsInCurrentLane = 0; // 현재 타겟 레인에서 스폰해야 할 남은 코인 수
+
+	UPROPERTY(Transient)
+	float CurrentLaneYOffset = 0.f; // 현재 보간 중인 실제 Y 오프셋 좌표
 
 	/** 청크 범위를 넘어갈 때, 다음 청크에서 코인이 시작해야 할 오프셋 이월값 */
 	UPROPERTY(Transient)
