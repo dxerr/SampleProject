@@ -8,10 +8,11 @@ void UExRunnerInputStrategy_Manual::HandleHorizontalInput(const FVector2D& AxisV
 {
 	if (!OwnerInput) return;
 
-	// [핵심] 기존 NativeOnMoveAction 동작 그대로 유지:
-	// - Move 이동값만 브로드캐스트
-	// - Look(회전)은 스와이프/RequestLookAction 별도 경로가 담당하므로 여기서 절대 호출하지 않음
+	// [핵심] 기존 수동 모드 조향 복구
+	// 스와이프(RequestLookAction)와 가상 조이스틱 모두 Strategy 통합 함수(HandleHorizontalInput)로 유입되므로,
+	// 실제 캐릭터를 회전시키는 OnLookRequested 델리게이트를 여기서 수동으로 호출해야 정상적으로 좌/우 조향이 가능합니다.
 	OwnerInput->OnMoveRequested.Broadcast(AxisValue);
+	OwnerInput->OnLookRequested.Broadcast(AxisValue.X);
 }
 
 void UExRunnerInputStrategy_Manual::BindToMovement(UExRunnerMovementComponent* MovementComp)
