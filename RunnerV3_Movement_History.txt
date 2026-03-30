@@ -1,0 +1,2642 @@
+﻿commit fc1d7e7e8092a630d3793c872ce39b87adc1bfbc
+Author: july1981 <july1981@naver.com>
+Date:   Fri Mar 20 17:10:42 2026 +0900
+
+    [BGM System] 비트-장애물 동기화 및 BGM 메타데이터 통합 구조 완성
+    
+    * Beat-Obstacle Sync 구현 (Phase 3)
+      - UExBeatSyncComponent 추가: Quartz 비트 이벤트 수신 및 확률 기반 스폰 요청
+      - UExObstacleManager에 RequestBeatSpawn() 인터페이스 추가
+      - BeatSync 활성화 시 기존 청크 기반 스폰과 충돌하지 않도록 상호 배제(Mutually Exclusive) 로직 추가
+      - FExGameplayEventSubsystem 구독 방식을 GetEventDelegate().AddDynamic으로 수정하여 API 단일화
+    
+    * BGM 데이터 드리븐 통합 리팩토링 (Phase 4)
+      - UExBGMTrackDataAsset 신설: 사운드 에셋, BPM, 박자, 특수 믹싱 데이터(MusicPhaseData)를 1:1로 통합
+      - UExMusicManagerSubsystem::StartBGM 로직을 Track Data Asset 단일 참조만 받도록 개선
+      - ExRunnerGameMode 속성 의존성을 CurrentStageBGM 에셋 하나로 간소화하여 편의성/안정성 극대화
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index cf79f55..db725d6 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -247,8 +247,17 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
+ 	AController* Controller = TargetPawn->GetController();
+ 	if (!Controller) return;
+ 
+-	// IsLocallyControlled 거나 HasAuthority일 때만 컨트롤러 회전을 조작합니다.
+-	if (!TargetPawn->IsLocallyControlled() && !TargetPawn->HasAuthority()) return;
++	// [수정] F8(Eject) 시 에디터 관전 카메라가 강제로 굳어버리는 버그(ControlRotation 덮어쓰기) 방지
++	if (APlayerController* PC = Cast<APlayerController>(Controller))
++	{
++		// 플레이어 컨트롤러지만 현재 화면 뷰(Target)가 이 폰이 아니라면 조작을 중단합니다.
++		if (PC->GetViewTarget() != TargetPawn) return;
++	}
++	else
++	{
++		// AI 컨트롤러 등일 경우 권한(Authority) 여부만 체크
++		if (!TargetPawn->HasAuthority()) return;
++	}
+ 
+ 	// [Fix] Mover의 OrientationIntent가 캐릭터 회전을 담당하도록, 컨트롤러 회전 강제 의존을 해제합니다.
+ 	TargetPawn->bUseControllerRotationYaw = false;
+
+commit 82251fab2659d7bee827902f4635a5a02be0f9ab
+Author: july1981 <july1981@naver.com>
+Date:   Wed Mar 18 18:54:03 2026 +0900
+
+    Fix: 리팩토링 과정에서 삭제되었던 모바일 빌드용 필수 전진(MoveAction) 입력 주입 로직 복구
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 2adc1fb..cf79f55 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -83,6 +83,15 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ {
+ 	FCharacterDefaultInputs& Inputs = InputCmdResult.InputCollection.FindOrAddMutableDataByType<FCharacterDefaultInputs>();
+ 	
++	// 모바일/패키징 빌드 필수 주입 로직 복구 (2cf5527 커밋)
++	if (TargetPawn)
++	{
++		if (UExRunnerInputComponent* InputComp = TargetPawn->FindComponentByClass<UExRunnerInputComponent>())
++		{
++			InputComp->RequestMoveAction(FVector2D(0.0f, 1.0f)); 
++		}
++	}
++	
+ 	// [개선] 컨트롤러 회전 지연 문제를 해결하기 위해, 경로 매니저로부터 직접 현재 정면(Forward) 벡터를 가져옵니다.
+ 	// 이는 DrawDebugCoordinateSystem의 Red 축 방향과 일치하며, 물리적으로 가장 정확한 'W' 키 입력을 재현합니다.
+ 	FVector ForwardDir = FVector::ForwardVector;
+
+commit d1fc68ec1543f0e3838628ecfdd4f46cd56bb532
+Author: july1981 <july1981@naver.com>
+Date:   Wed Mar 18 16:50:46 2026 +0900
+
+    Fix: GameModeDataSet 미할당 시 크래시를 유발하여 사전 인지 강제 (가이드라인 1.7 준수)
+    - ExRunnerInputComponent: SwipeActivationPercentage 조회 시 checkf 추가
+    - ExRunnerMovementComponent: MaxRunnerYawAngle 조회 시 checkf 추가
+    - BP_ExRunnerCharacter_Mover_Child: GameModeDataSet 에셋 연결 누락 수정 반영
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index c19ae6f..2adc1fb 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -187,6 +187,9 @@ void UExRunnerMovementComponent::OnLookRequestedCallback(float AxisValue)
+ {
+ 	// [수정] GameModeDataSet이 에디터(BP)에서 할당되지 않았을 경우를 대비한 안전 장치.
+ 	// 할당되어 있다면 그 값(0 포함)을 온전히 따르고, 아예 Null이라면 기본값 45도를 사용합니다.
++	// 필수 애셋 누락 시 에디터 크래시(check)를 발생시켜 즉시 인지하고 수정하도록 강제합니다. (가이드라인 1.7 준수)
++	checkf(GameModeDataSet, TEXT("UExRunnerMovementComponent: GameModeDataSet이 할당되지 않았습니다. 캐릭터 블루프린트에서 설정해주세요."));
++
+ 	float MaxYaw = 45.0f;
+ 	if (GameModeDataSet)
+ 	{
+
+commit fc6470f26b8595e4c59994d566114629b7bc3a6e
+Author: july1981 <july1981@naver.com>
+Date:   Wed Mar 18 16:42:34 2026 +0900
+
+    Refactor: 불필요한 로그, Sentry 제거 및 치트 시스템으로 디버그 분리
+    - ExRunnerMovementComponent 내의 정보/경고 로그 및 Sentry 연동 삭제
+    - ExFrameWork_Guidelines.md 1.11항목 추가 (치트/디버그 로직은 독립된 함수 구성)
+    - 새 가이드에 맞춰 UpdateCharacterRotation 내부의 시각화 로직을 DrawDebugMovementInfo() 독립 함수로 추출
+    - TAG_Ex_Debug_Movement 생성 및 ExRunnerShowMovement 치트 추가
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 3d2c35d..c19ae6f 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -15,8 +15,8 @@
+ #include "Util/Actor/ExActorUtil.h"
+ #include "ExRunnerInputComponent.h"
+ #include "Data/Modes/ExGameModeDataSet.h"
+-#include "SentrySubsystem.h"
+-#include "SentryLibrary.h"
++#include "ExDebugStateSubsystem.h"
++#include "ExGameplayTags.h"
+ 
+ // 디버깅용 로그 카테고리 정의
+ DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
+@@ -34,12 +34,6 @@ void UExRunnerMovementComponent::BeginPlay()
+ {
+ 	Super::BeginPlay();
+ 
+-	// 1차 시도 (즉시 성공할 수도 있음)
+-	if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
+-	{
+-		SentrySubsystem->AddBreadcrumbWithParams(TEXT("BeginPlay Started"), TEXT("ExRunnerMovement"), TEXT("lifecycle"), {});
+-	}
+-	
+ 	TryInitializeMover();
+ 
+ 	// 만약 초기화에 실패했다면(부착이 안 끝났다면), 가벼운 타이머(0.1초마다)로 재시도합니다.
+@@ -73,32 +67,10 @@ void UExRunnerMovementComponent::TryInitializeMover()
+ 			// Mover 시뮬레이션이 특정 모드에 고착되거나 대기 상태일 수 있으므로 Walking 모드 강제 진입을 요청합니다.
+ 			MoverComp->QueueNextMode(DefaultModeNames::Walking);
+ 
+-			// [진단] 현재 Mover에 등록된 모든 입력 프로듀서를 확인하여 충돌 대상을 식별합니다.
+-			for (UObject* Producer : MoverComp->InputProducers)
+-			{
+-				if (Producer)
+-				{
+-					UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: Registered Input Producer: %s"), *Producer->GetName());
+-				}
+-			}
+-
+-			UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 등록 완료 및 Walking 모드(%s) 강제 요청"), *ParentPawn->GetName(), *DefaultModeNames::Walking.ToString());
+-
+-			if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
+-			{
+-				// 초기화 완료 시점에 지금까지의 Breadcrumbs를 포함한 진단 리포트 강제 발송
+-				SentrySubsystem->CaptureMessage(TEXT("Movement Component Diagnostic Report"), ESentryLevel::Info);
+-			}
+-
+ 			if (UExRunnerInputComponent* InputComp = ParentPawn->FindComponentByClass<UExRunnerInputComponent>())
+ 			{
+ 				BindLookInput(InputComp);
+ 				bIsLookInputBound = true;
+-				UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 최초 Init에서 ExRunnerInputComponent 탐색 성공, OnLookRequested 자동 바인딩 완료"));
+-			}
+-			else
+-			{
+-				UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 최초 Init에서 ExRunnerInputComponent를 찾지 못했습니다. Tick에서 지연 바인딩을 대기합니다."));
+ 			}
+ 			
+ 			// 성공 시 타이머 안전 종료
+@@ -123,52 +95,6 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ 	}
+ 
+ 	// [입력 주입] IA_Move를 Vector2D(정규화된 방향)로 주입하여 데이터 유실을 방지합니다.
+-	if (UExRunnerInputComponent* InputComp = TargetPawn ? TargetPawn->FindComponentByClass<UExRunnerInputComponent>() : nullptr)
+-	{
+-		// [수정] float -> FVector2D 변환에 맞춰 전진 방향(Y=1.0)을 주입합니다.
+-		InputComp->RequestMoveAction(FVector2D(0.0f, 1.0f)); 
+-	}
+-
+-	// [진단] 현재 Mover 상태 및 이동 모드 설정 주기적 확인
+-	static double LastProducerLogTime = 0.0;
+-	double CurrentTimeForProducer = FPlatformTime::Seconds();
+-	if (CurrentTimeForProducer - LastProducerLogTime > 5.0)
+-	{
+-		if (TargetPawn)
+-		{
+-			if (UMoverComponent* MoverComp = TargetPawn->FindComponentByClass<UMoverComponent>())
+-			{
+-				for (UObject* Producer : MoverComp->InputProducers)
+-				{
+-					if (Producer)
+-					{
+-						UE_LOG(LogExRunnerMovement, Log, TEXT("[MoverStat] Active Producer: %s"), *Producer->GetName());
+-					}
+-				}
+-				
+-				UPrimitiveComponent* MovementBase = MoverComp->GetMovementBase();
+-				FHitResult FloorHit;
+-				bool bHasFloor = MoverComp->TryGetFloorCheckHitResult(FloorHit);
+-
+-				// 무브먼트 모드 데이터 추출 (속도 제한 설정 확인용)
+-				// 일반적으로 Walking 모드 등에서 MaxSpeed 등을 가져올 수 있음
+-				float CurrentMaxSpeed = 0.0f;
+-				if (const UCharacterMovementComponent* CMC = TargetPawn->FindComponentByClass<UCharacterMovementComponent>())
+-				{
+-					CurrentMaxSpeed = CMC->MaxWalkSpeed;
+-				}
+-
+-				UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoverStat] Mode: %s | MaxSpeed: %.1f | Loc: %s | Vel: %s | Base: %s | Floor: %s"), 
+-					*MoverComp->GetMovementModeName().ToString(),
+-					CurrentMaxSpeed,
+-					*TargetPawn->GetActorLocation().ToString(),
+-					*TargetPawn->GetVelocity().ToString(),
+-					MovementBase ? *MovementBase->GetName() : TEXT("None"),
+-					bHasFloor ? (FloorHit.GetActor() ? *FloorHit.GetActor()->GetName() : TEXT("NoActor")) : TEXT("NoHit"));
+-			}
+-		}
+-		LastProducerLogTime = CurrentTimeForProducer;
+-	}
+ 	// [피드백 반영 최종 수정] 
+ 	// Mover의 물리적 방향과 모델 지향 방향을 결정하는 핵심 벡터 도출.
+ 	// 1. 경로 정면(ForwardDir)을 회전축(UpVector) 기준으로 TargetLookYawOffset(조이스틱 비율*최대각도) 만큼 회전시킵니다.
+@@ -195,25 +121,6 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ 	{
+ 		Inputs.OrientationIntent = MergedInput.GetSafeNormal();
+ 	}
+-
+-	// 모바일 환경 원인 파악용 로그 (스레드 안전)
+-	static double LastLogTime = 0.0;
+-	double CurrentTime = FPlatformTime::Seconds();
+-	
+-	if (CurrentTime - LastLogTime > 1.0) // 1초에 한 번만 출력하여 스팸 방지
+-	{
+-		UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoveInput] ProduceInput Called! ForwardDir: %s"), *ForwardDir.ToString());
+-		
+-		if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
+-		{
+-			TMap<FString, FSentryVariant> Context;
+-			Context.Add(TEXT("ForwardX"), static_cast<float>(ForwardDir.X));
+-			Context.Add(TEXT("ForwardY"), static_cast<float>(ForwardDir.Y));
+-			SentrySubsystem->AddBreadcrumbWithParams(TEXT("ProduceInput Tick"), TEXT("ExRunnerMovement"), TEXT("input"), Context);
+-		}
+-		
+-		LastLogTime = CurrentTime;
+-	}
+ }
+ 
+ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+@@ -231,7 +138,6 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
+ 		{
+ 			BindLookInput(InputComp);
+ 			bIsLookInputBound = true;
+-			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 지연된 ExRunnerInputComponent 탐색 성공, OnLookRequested 자동 바인딩 완료!"));
+ 		}
+ 	}
+ 
+@@ -286,13 +192,7 @@ void UExRunnerMovementComponent::OnLookRequestedCallback(float AxisValue)
+ 	{
+ 		MaxYaw = GameModeDataSet->MaxRunnerYawAngle;
+ 	}
+-	else
+-	{
+-		UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] GameModeDataSet이 BP(ExRunnerMovementComponent)에 할당되지 않아 기본값 45.0f를 사용합니다."));
+-	}
+-
+ 	TargetLookYawOffset = AxisValue * MaxYaw;
+-	UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] AxisValue: %.3f → TargetLookYawOffset: %.1f°"), AxisValue, TargetLookYawOffset);
+ }
+ 
+ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
+@@ -403,27 +303,36 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
+ 	// [수정] 수동 위치 보정(AddActorWorldOffset) 로직은 ProduceInput의 CorrectionInput으로 이전되어 Mover 시뮬레이션에 통합되었습니다.
+ 	// 이를 통해 조향과 이동이 충돌하지 않고 자연스럽게 하나의 시뮬레이션으로 동작합니다.
+ 
+-	// ★ 디버그 드로잉 (시각적 회전 디버깅)
+-	// 기존 잡다한 로그/선을 지우고, 기준 방향과 목표 방향을 명확히 화살표로 그림
++	DrawDebugMovementInfo(TargetRot, TargetControlRot, CurrentControlRot);
++}
++
++void UExRunnerMovementComponent::DrawDebugMovementInfo(const FRotator& TargetRot, const FRotator& TargetControlRot, const FRotator& CurrentControlRot)
++{
++	if (!TargetPawn) return;
+ 
+-	FVector DrawStart = TargetPawn->GetActorLocation() + FVector(0, 0, 100.0f); // 머리 위쪽에서 시작
++	// ★ 디버그 드로잉 (시각적 회전 디버깅) - 치트 시스템 연동
++	UExDebugStateSubsystem* DS = GetWorld()->GetGameInstance()->GetSubsystem<UExDebugStateSubsystem>();
++	if (DS && DS->IsCheatEnabled(TAG_Ex_Debug_Movement))
++	{
++		FVector DrawStart = TargetPawn->GetActorLocation() + FVector(0, 0, 100.0f); // 머리 위쪽에서 시작
+ 
+-	// 1. 기준이 되는 방향 (Path 정면 방향, 파란색)
+-	FVector BaseDirection = TargetRot.Vector();
+-	DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + BaseDirection * 200.0f, 20.0f, FColor::Blue, false, -1.f, 0, 3.0f);
++		// 1. 기준이 되는 방향 (Path 정면 방향, 파란색)
++		FVector BaseDirection = TargetRot.Vector();
++		DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + BaseDirection * 200.0f, 20.0f, FColor::Blue, false, -1.f, 0, 3.0f);
+ 
+-	// 2. 목적 방향 (TargetControlRot, 즉 Path 정면 + Joystick Offset, 빨간색)
+-	FVector TargetDirection = TargetControlRot.Vector();
+-	DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + TargetDirection * 200.0f, 20.0f, FColor::Red, false, -1.f, 0, 5.0f);
++		// 2. 목적 방향 (TargetControlRot, 즉 Path 정면 + Joystick Offset, 빨간색)
++		FVector TargetDirection = TargetControlRot.Vector();
++		DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + TargetDirection * 200.0f, 20.0f, FColor::Red, false, -1.f, 0, 5.0f);
+ 
+-	// 3. 현재 컨트롤러의 실제 보간 중인 방향 (CurrentControlRot, 녹색)
+-	FVector CurrentDirection = CurrentControlRot.Vector();
+-	DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + CurrentDirection * 200.0f, 20.0f, FColor::Green, false, -1.f, 0, 3.0f);
++		// 3. 현재 컨트롤러의 실제 보간 중인 방향 (CurrentControlRot, 녹색)
++		FVector CurrentDirection = CurrentControlRot.Vector();
++		DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + CurrentDirection * 200.0f, 20.0f, FColor::Green, false, -1.f, 0, 3.0f);
+ 
+-	// 참고용 텍스트 (화면에 간단히 목표 Yaw만 띄움)
+-	if (GEngine)
+-	{
+-		FString DebugMsg = FString::Printf(TEXT("BaseYaw: %.1f | TargetYaw: %.1f | CurrentYaw: %.1f"), TargetRot.Yaw, TargetControlRot.Yaw, CurrentControlRot.Yaw);
+-		GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Yellow, DebugMsg);
++		// 참고용 텍스트 (화면에 간단히 목표 Yaw만 띄움)
++		if (GEngine)
++		{
++			FString DebugMsg = FString::Printf(TEXT("BaseYaw: %.1f | TargetYaw: %.1f | CurrentYaw: %.1f"), TargetRot.Yaw, TargetControlRot.Yaw, CurrentControlRot.Yaw);
++			GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Yellow, DebugMsg);
++		}
+ 	}
+ }
+
+commit f3678e7244835e26660f8a18bbeb51997f6c5d45
+Author: july1981 <july1981@naver.com>
+Date:   Wed Mar 18 16:28:47 2026 +0900
+
+    Fix: 진작 해결했어야 할 러너 회전 덜덜거림 버그 및 Mover 네이티브 조향 수정
+    - ExRunnerInputComponent 지연 주입 대응 레이지 바인딩 추가
+    - UpdateCharacterRotation의 RInterpTo 삭제 및 컨트롤러 보간 충돌 우회 (bUseControllerRotationYaw 해제)
+    - ProduceInput에서 목표 오프셋 각도를 파악해 OrientationIntent에 직접 주입하도록 구조 개선
+    - BP의 AddControllerYawInput 의존성 완전 제거
+    - GameModeDataSet의 에디터 미할당 시 발생하던 예외(Silent Failure) 방어 로직 수정 및 가이드라인 반영
+    - 관련 디버깅 및 버그 보고서(Bug/) 작성 완료
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 70c064c..3d2c35d 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -90,16 +90,15 @@ void UExRunnerMovementComponent::TryInitializeMover()
+ 				SentrySubsystem->CaptureMessage(TEXT("Movement Component Diagnostic Report"), ESentryLevel::Info);
+ 			}
+ 
+-			// ExRunnerInputComponent를 동일한 Pawn에서 탐색하여 Look 델리게이트를 자동 바인딩합니다.
+-			// 블루프린트에서 BindLookInput을 수동 호출할 필요가 없습니다.
+ 			if (UExRunnerInputComponent* InputComp = ParentPawn->FindComponentByClass<UExRunnerInputComponent>())
+ 			{
+ 				BindLookInput(InputComp);
+-				UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: ExRunnerInputComponent 탐색 성공, OnLookRequested 자동 바인딩 완료"));
++				bIsLookInputBound = true;
++				UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 최초 Init에서 ExRunnerInputComponent 탐색 성공, OnLookRequested 자동 바인딩 완료"));
+ 			}
+ 			else
+ 			{
+-				UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: ExRunnerInputComponent를 찾지 못했습니다. Look 바인딩 생략."));
++				UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 최초 Init에서 ExRunnerInputComponent를 찾지 못했습니다. Tick에서 지연 바인딩을 대기합니다."));
+ 			}
+ 			
+ 			// 성공 시 타이머 안전 종료
+@@ -170,10 +169,19 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ 		}
+ 		LastProducerLogTime = CurrentTimeForProducer;
+ 	}
+-	// [입력 병합] 수동 입력(Inputs.GetMoveInput()) + 경로 기반 물리 정면 벡터(ForwardDir)
+-	// Inputs.GetMoveInput()에는 위에서 주입한 IA_Move(0, 1) 성분 등이 Mover 내부 시스템을 통해 녹아들어 있습니다.
+-	FVector MergedInput = Inputs.GetMoveInput() + ForwardDir;
++	// [피드백 반영 최종 수정] 
++	// Mover의 물리적 방향과 모델 지향 방향을 결정하는 핵심 벡터 도출.
++	// 1. 경로 정면(ForwardDir)을 회전축(UpVector) 기준으로 TargetLookYawOffset(조이스틱 비율*최대각도) 만큼 회전시킵니다.
++	FVector GoalDirection = ForwardDir;
++	if (!FMath::IsNearlyZero(TargetLookYawOffset, 0.1f))
++	{
++		GoalDirection = ForwardDir.RotateAngleAxis(TargetLookYawOffset, FVector::UpVector);
++	}
+ 
++	// 2. 이 최종 타겟 방향을 Mover의 물리적 이동 방향성(DirectionalInput)으로 지정합니다.
++	FVector MergedInput = GoalDirection;
++	MergedInput.Z = 0.0f; // 평면 이동 유지
++	
+ 	if (MergedInput.SizeSquared() > 1.0f)
+ 	{
+ 		MergedInput.Normalize();
+@@ -181,10 +189,11 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ 
+ 	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, MergedInput);
+ 
+-	// 시각적 지향 방향(OrientationIntent)도 경로 정면(Red 축)으로 일치시킵니다.
+-	if (!ForwardDir.IsNearlyZero())
++	// 3. 캐릭터의 고개가 쳐다볼 방향(OrientationIntent)에도 똑같이 타겟 방향을 꽂습니다.
++	// 이제 Mover 내부 시스템이 자기 자신의 보간(TurnGenerator 등)을 거쳐 부드럽게 캐릭터 캡슐을 회전시킵니다!
++	if (!MergedInput.IsNearlyZero())
+ 	{
+-		Inputs.OrientationIntent = ForwardDir.GetSafeNormal();
++		Inputs.OrientationIntent = MergedInput.GetSafeNormal();
+ 	}
+ 
+ 	// 모바일 환경 원인 파악용 로그 (스레드 안전)
+@@ -216,6 +225,16 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
+ 
+ 	// 속도 수집은 ExRunnerStatComponent의 자체 타이머(StatPollInterval)가 담당합니다.
+ 
++	if (TargetPawn && !bIsLookInputBound)
++	{
++		if (UExRunnerInputComponent* InputComp = TargetPawn->FindComponentByClass<UExRunnerInputComponent>())
++		{
++			BindLookInput(InputComp);
++			bIsLookInputBound = true;
++			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 지연된 ExRunnerInputComponent 탐색 성공, OnLookRequested 자동 바인딩 완료!"));
++		}
++	}
++
+ 	// 1. 캐릭터 조향 업데이트 (경로 추적)
+ 	UpdateCharacterRotation(DeltaTime);
+ 
+@@ -260,11 +279,19 @@ void UExRunnerMovementComponent::BindLookInput(UExRunnerInputComponent* InputCom
+ 
+ void UExRunnerMovementComponent::OnLookRequestedCallback(float AxisValue)
+ {
++	// [수정] GameModeDataSet이 에디터(BP)에서 할당되지 않았을 경우를 대비한 안전 장치.
++	// 할당되어 있다면 그 값(0 포함)을 온전히 따르고, 아예 Null이라면 기본값 45도를 사용합니다.
++	float MaxYaw = 45.0f;
+ 	if (GameModeDataSet)
+ 	{
+-		// 입력값(AxisValue)을 누적하여 TargetLookYawOffset을 갱신합니다.
+-		TargetLookYawOffset += AxisValue * GameModeDataSet->RunnerLookSensitivity;
++		MaxYaw = GameModeDataSet->MaxRunnerYawAngle;
++	}
++	else
++	{
++		UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] GameModeDataSet이 BP(ExRunnerMovementComponent)에 할당되지 않아 기본값 45.0f를 사용합니다."));
+ 	}
++
++	TargetLookYawOffset = AxisValue * MaxYaw;
+ 	UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] AxisValue: %.3f → TargetLookYawOffset: %.1f°"), AxisValue, TargetLookYawOffset);
+ }
+ 
+@@ -288,7 +315,7 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
+ 		FVector DeltaMove = RightDir * DeltaY;
+ 		
+ 		FHitResult SweepHit;
+-		TargetPawn->AddActorWorldOffset(DeltaMove, true, &SweepHit);
++		// TargetPawn->AddActorWorldOffset(DeltaMove, true, &SweepHit);
+ 		
+ 		if (SweepHit.bBlockingHit)
+ 		{
+@@ -311,8 +338,8 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
+ 	// IsLocallyControlled 거나 HasAuthority일 때만 컨트롤러 회전을 조작합니다.
+ 	if (!TargetPawn->IsLocallyControlled() && !TargetPawn->HasAuthority()) return;
+ 
+-	// [Fix] 캐릭터가 Controller 회전을 따르도록 설정 강제
+-	TargetPawn->bUseControllerRotationYaw = true;
++	// [Fix] Mover의 OrientationIntent가 캐릭터 회전을 담당하도록, 컨트롤러 회전 강제 의존을 해제합니다.
++	TargetPawn->bUseControllerRotationYaw = false;
+ 	TargetPawn->bUseControllerRotationPitch = false;
+ 	TargetPawn->bUseControllerRotationRoll = false;
+ 
+@@ -353,56 +380,50 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
+ 	float DesiredLateralOffset = CurrentLaneYOffset;
+ 	float LateralError = LateralOffset - DesiredLateralOffset;
+ 
+-	// ★ [수정] 강제 회전 방지 및 수동 조작 우선 처리 ★
+-	// 컨트롤러의 Yaw 회전은 플레이어의 수동 조각(BP AddControllerYawInput)이 전적으로 담당해야 합니다.
+-	FRotator CurrentControlRot = Controller->GetControlRotation();
+-	FRotator NewControlRot = CurrentControlRot;
++	// [최종 수정] Mover 플러그인이 ProduceInput의 OrientationIntent를 통해 
++	// 알아서 부드럽게 모델을 회전(보간)시키므로, Tick에서 강제로 컨트롤러를 RInterpTo로 비틀어버리는 로직을 완전히 삭제합니다.
++	// 이로써 조작 컨트롤러와 물리 Mover 간의 회전 경합(덜덜거림)이 완벽히 해결됩니다.
+ 
+-	// ★ [핵심 수정] 절대 Yaw 오프셋 기반 보간 방식 ★
+-	// 각도 보간 시 RInterpTo를 사용하여 현재 컨트롤러 회전에서 목표 회전으로 최단 거리(Shortest Path) 부드럽게 보간합니다.
+-	
+-	// 1. 경로 정면(TargetRot.Yaw)을 기준으로 플랫폼 스와이프 오프셋(TargetLookYawOffset)을 더한 목표 회전값 세팅
++	// 컨트롤러의 회전은 기본적으로 경로 정면(PathYaw)을 기준으로 유지하되, 
++	// 실제 눈에 보이는 캐릭터의 부드러운 회전은 Mover에게 온전히 위임합니다.
++	FRotator CurrentControlRot = Controller->GetControlRotation();
+ 	FRotator TargetControlRot = CurrentControlRot;
++	
+ 	TargetControlRot.Yaw = TargetRot.Yaw + TargetLookYawOffset;
+ 
+-	// 2. 보간 속도를 환경에 맞춰 조정 (곡선에서는 더 빠르게 반응하도록 보정 가능)
+-	float DynamicInterpSpeed = (GameModeDataSet) ? GameModeDataSet->LookInterpSpeed : 8.0f;
++	// (주의) Mover가 알아서 보간하므로 Tick 단위의 조잡한 RInterpTo 등은 호출하지 않습니다.
++	// 단, 카메라 등 컨트롤러 회전에 의존하는 요소가 튀는 것을 방지하기 위해 컨트롤러의 타겟 방향만 
++	// 스냅(Snap) 또는 Mover가 회전한 만큼만 따라가게 두셔도 무방합니다. 
++	// 여기서는 카메라 등이 타겟을 부드럽게 비출 수 있게만 최소한의 보간을 남겨둡니다 (캐릭터 모델 덜덜거림과는 무관함).
+ 	
+-	// 현재 Yaw와 목표 Yaw의 차이가 크면(급커브) 보간 속도를 일시적으로 높여 반응성을 확보합니다.
+-	float YawDelta = FMath::Abs(FMath::FindDeltaAngleDegrees(CurrentControlRot.Yaw, TargetControlRot.Yaw));
+-	if (YawDelta > 15.0f)
+-	{
+-		DynamicInterpSpeed *= 1.5f;
+-	}
++	float DynamicInterpSpeed = (GameModeDataSet) ? GameModeDataSet->LookInterpSpeed : 8.0f;
++	FRotator NewControlRot = FMath::RInterpTo(CurrentControlRot, TargetControlRot, DeltaTime, DynamicInterpSpeed);
++	Controller->SetControlRotation(NewControlRot);
+ 
+-	NewControlRot = FMath::RInterpTo(CurrentControlRot, TargetControlRot, DeltaTime, DynamicInterpSpeed);
++	// [수정] 수동 위치 보정(AddActorWorldOffset) 로직은 ProduceInput의 CorrectionInput으로 이전되어 Mover 시뮬레이션에 통합되었습니다.
++	// 이를 통해 조향과 이동이 충돌하지 않고 자연스럽게 하나의 시뮬레이션으로 동작합니다.
+ 
+-	// UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] PathYaw: %.1f | TargetLookYawOffset: %.1f | FinalTargetYaw: %.1f | CurrentYaw: %.1f → NewYaw: %.1f"),
+-	//	TargetRot.Yaw, TargetLookYawOffset, TargetControlRot.Yaw, CurrentControlRot.Yaw, NewControlRot.Yaw);
++	// ★ 디버그 드로잉 (시각적 회전 디버깅)
++	// 기존 잡다한 로그/선을 지우고, 기준 방향과 목표 방향을 명확히 화살표로 그림
+ 
+-	// Pitch와 Roll은 기존 컨트롤러 회전값으로 덮어써서 Yaw 연산의 영향만 남김
+-	NewControlRot.Pitch = CurrentControlRot.Pitch;
+-	NewControlRot.Roll  = CurrentControlRot.Roll;
++	FVector DrawStart = TargetPawn->GetActorLocation() + FVector(0, 0, 100.0f); // 머리 위쪽에서 시작
+ 
+-	Controller->SetControlRotation(NewControlRot);
++	// 1. 기준이 되는 방향 (Path 정면 방향, 파란색)
++	FVector BaseDirection = TargetRot.Vector();
++	DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + BaseDirection * 200.0f, 20.0f, FColor::Blue, false, -1.f, 0, 3.0f);
+ 
+-	// [수정] 수동 위치 보정(AddActorWorldOffset) 로직은 ProduceInput의 CorrectionInput으로 이전되어 Mover 시뮬레이션에 통합되었습니다.
+-	// 이를 통해 조향과 이동이 충돌하지 않고 자연스럽게 하나의 시뮬레이션으로 동작합니다.
++	// 2. 목적 방향 (TargetControlRot, 즉 Path 정면 + Joystick Offset, 빨간색)
++	FVector TargetDirection = TargetControlRot.Vector();
++	DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + TargetDirection * 200.0f, 20.0f, FColor::Red, false, -1.f, 0, 5.0f);
+ 
+-	// ★ 디버그 드로잉 (실제 위치와 경로 위치 간의 차이 가시화)
+-	DrawDebugCoordinateSystem(GetWorld(), TargetPawn->GetActorLocation(), TargetPawn->GetActorRotation(), 100.f, false, -1.f, 0, 2.f);
+-	DrawDebugCoordinateSystem(GetWorld(), PathPos, PathDirection, 100.f, false, -1.f, 0, 2.f);
+-	DrawDebugLine(GetWorld(), TargetPawn->GetActorLocation(), PathPos, FColor::Yellow, false, -1.f, 0, 2.f);
++	// 3. 현재 컨트롤러의 실제 보간 중인 방향 (CurrentControlRot, 녹색)
++	FVector CurrentDirection = CurrentControlRot.Vector();
++	DrawDebugDirectionalArrow(GetWorld(), DrawStart, DrawStart + CurrentDirection * 200.0f, 20.0f, FColor::Green, false, -1.f, 0, 3.0f);
+ 
+-	// 화면 출력 디버깅
++	// 참고용 텍스트 (화면에 간단히 목표 Yaw만 띄움)
+ 	if (GEngine)
+ 	{
+-		FString DebugMsg = FString::Printf(TEXT("Dist: %.0f | Err: %.0f | PathYaw: %.1f | PlayerYaw: %.1f"), 
+-			PlayerPathDist, FVector::Dist(TargetPawn->GetActorLocation(), PathPos), PathDirection.Yaw, TargetPawn->GetActorRotation().Yaw);
+-		GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Cyan, DebugMsg);
+-
+-		FString SteeringMsg = FString::Printf(TEXT("Offset: %.1f | FinalYaw: %.1f"), 
+-			LateralOffset, TargetRot.Yaw);
+-		GEngine->AddOnScreenDebugMessage(2, 0.f, FColor::Orange, SteeringMsg);
++		FString DebugMsg = FString::Printf(TEXT("BaseYaw: %.1f | TargetYaw: %.1f | CurrentYaw: %.1f"), TargetRot.Yaw, TargetControlRot.Yaw, CurrentControlRot.Yaw);
++		GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Yellow, DebugMsg);
+ 	}
+ }
+
+commit 2cf5527cdd15aadae5f101db4a3dd960c209785e
+Author: july1981 <july1981@naver.com>
+Date:   Wed Mar 18 12:09:00 2026 +0900
+
+    Fix: 모바일/패키징 빌드 환경 자동 전진 이동 불가 현상 수정
+    
+    - 에디터 외 환경(Standalone/Mobile)에서 컨트롤러 회전 기반 자동 전진 이동이 안 되는 버그 수정. ExRunnerMovementComponent에서 전진 방향(ForwardDir)을 PathManager의 경로 진행 방향 데이터로 직접 참조하게 개선함. 기타 조향 오작동(RInterpTo 도입) 및 스와이프 로직 정밀도 향상 수정안 포함.
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index ad65986..70c064c 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -112,30 +112,25 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ {
+ 	FCharacterDefaultInputs& Inputs = InputCmdResult.InputCollection.FindOrAddMutableDataByType<FCharacterDefaultInputs>();
+ 	
++	// [개선] 컨트롤러 회전 지연 문제를 해결하기 위해, 경로 매니저로부터 직접 현재 정면(Forward) 벡터를 가져옵니다.
++	// 이는 DrawDebugCoordinateSystem의 Red 축 방향과 일치하며, 물리적으로 가장 정확한 'W' 키 입력을 재현합니다.
+ 	FVector ForwardDir = FVector::ForwardVector;
+-	FString DebugCtrlStatus = TEXT("NoController");
+-		
+-	if (TargetPawn)
++	AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
++	if (GS && GS->PathManager)
+ 	{
+-		if (AController* PawnController = TargetPawn->GetController())
+-		{
+-			const FRotator Rotation = PawnController->GetControlRotation();
+-			const FRotator YawRotation(0, Rotation.Yaw, 0);
+-			ForwardDir = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+-			DebugCtrlStatus = FString::Printf(TEXT("CtrlYaw:%.1f"), Rotation.Yaw);
+-		}
++		float PlayerPathDist = GS->RealPlayerPathDistance;
++		FRotator PathRot = GS->PathManager->GetDirectionAtDistance(PlayerPathDist);
++		ForwardDir = PathRot.Vector(); // 이것이 바로 캐릭터가 나아가야 할 'Red 축' 방향입니다.
+ 	}
+ 
+-	// [개선] 기존에 설정된 MoveInput을 가져와서 현재의 전진 의도와 병합합니다.
+-	FVector ExistingInput = Inputs.GetMoveInput();
+-	FVector MergedInput = ExistingInput + ForwardDir;
+-
+-	if (MergedInput.SizeSquared() > 1.0f)
++	// [입력 주입] IA_Move를 Vector2D(정규화된 방향)로 주입하여 데이터 유실을 방지합니다.
++	if (UExRunnerInputComponent* InputComp = TargetPawn ? TargetPawn->FindComponentByClass<UExRunnerInputComponent>() : nullptr)
+ 	{
+-		MergedInput.Normalize();
++		// [수정] float -> FVector2D 변환에 맞춰 전진 방향(Y=1.0)을 주입합니다.
++		InputComp->RequestMoveAction(FVector2D(0.0f, 1.0f)); 
+ 	}
+ 
+-	// [진단] 현재 Mover에 등록된 모든 입력 프로듀서를 주기적으로 확인합니다.
++	// [진단] 현재 Mover 상태 및 이동 모드 설정 주기적 확인
+ 	static double LastProducerLogTime = 0.0;
+ 	double CurrentTimeForProducer = FPlatformTime::Seconds();
+ 	if (CurrentTimeForProducer - LastProducerLogTime > 5.0)
+@@ -156,8 +151,17 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ 				FHitResult FloorHit;
+ 				bool bHasFloor = MoverComp->TryGetFloorCheckHitResult(FloorHit);
+ 
+-				UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoverStat] Mode: %s | Loc: %s | Vel: %s | Base: %s | Floor: %s"), 
++				// 무브먼트 모드 데이터 추출 (속도 제한 설정 확인용)
++				// 일반적으로 Walking 모드 등에서 MaxSpeed 등을 가져올 수 있음
++				float CurrentMaxSpeed = 0.0f;
++				if (const UCharacterMovementComponent* CMC = TargetPawn->FindComponentByClass<UCharacterMovementComponent>())
++				{
++					CurrentMaxSpeed = CMC->MaxWalkSpeed;
++				}
++
++				UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoverStat] Mode: %s | MaxSpeed: %.1f | Loc: %s | Vel: %s | Base: %s | Floor: %s"), 
+ 					*MoverComp->GetMovementModeName().ToString(),
++					CurrentMaxSpeed,
+ 					*TargetPawn->GetActorLocation().ToString(),
+ 					*TargetPawn->GetVelocity().ToString(),
+ 					MovementBase ? *MovementBase->GetName() : TEXT("None"),
+@@ -166,35 +170,36 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ 		}
+ 		LastProducerLogTime = CurrentTimeForProducer;
+ 	}
++	// [입력 병합] 수동 입력(Inputs.GetMoveInput()) + 경로 기반 물리 정면 벡터(ForwardDir)
++	// Inputs.GetMoveInput()에는 위에서 주입한 IA_Move(0, 1) 성분 등이 Mover 내부 시스템을 통해 녹아들어 있습니다.
++	FVector MergedInput = Inputs.GetMoveInput() + ForwardDir;
+ 
+-	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, MergedInput);
+-	
+-	// OrientationIntent도 전진 방향으로 동기화하되, 기존 방향이 있다면 보존할 수 있도록 IsNearlyZero 체크를 수행합니다.
+-	if (Inputs.OrientationIntent.IsNearlyZero())
++	if (MergedInput.SizeSquared() > 1.0f)
+ 	{
+-		Inputs.OrientationIntent = ForwardDir;
++		MergedInput.Normalize();
+ 	}
+ 
+-	if (!Inputs.OrientationIntent.IsNearlyZero())
++	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, MergedInput);
++
++	// 시각적 지향 방향(OrientationIntent)도 경로 정면(Red 축)으로 일치시킵니다.
++	if (!ForwardDir.IsNearlyZero())
+ 	{
+-		Inputs.OrientationIntent.Normalize();
++		Inputs.OrientationIntent = ForwardDir.GetSafeNormal();
+ 	}
+-	// GEngine->AddOnScreenDebugMessage는 게임 스레드에서만 안전하므로, 이를 여기서 직접 호출하면 모바일/패키징 빌드에서 치명적인 크래시가 발생할 수 있습니다.
+-	
++
+ 	// 모바일 환경 원인 파악용 로그 (스레드 안전)
+ 	static double LastLogTime = 0.0;
+ 	double CurrentTime = FPlatformTime::Seconds();
+ 	
+ 	if (CurrentTime - LastLogTime > 1.0) // 1초에 한 번만 출력하여 스팸 방지
+ 	{
+-		UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoveInput] ProduceInput Called! ForwardDir: (%.2f, %.2f) | %s"), ForwardDir.X, ForwardDir.Y, *DebugCtrlStatus);
++		UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoveInput] ProduceInput Called! ForwardDir: %s"), *ForwardDir.ToString());
+ 		
+ 		if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
+ 		{
+ 			TMap<FString, FSentryVariant> Context;
+ 			Context.Add(TEXT("ForwardX"), static_cast<float>(ForwardDir.X));
+ 			Context.Add(TEXT("ForwardY"), static_cast<float>(ForwardDir.Y));
+-			Context.Add(TEXT("CtrlStatus"), DebugCtrlStatus);
+ 			SentrySubsystem->AddBreadcrumbWithParams(TEXT("ProduceInput Tick"), TEXT("ExRunnerMovement"), TEXT("input"), Context);
+ 		}
+ 		
+@@ -253,12 +258,14 @@ void UExRunnerMovementComponent::BindLookInput(UExRunnerInputComponent* InputCom
+ 	InputComp->OnLookRequested.AddDynamic(this, &UExRunnerMovementComponent::OnLookRequestedCallback);
+ }
+ 
+-void UExRunnerMovementComponent::OnLookRequestedCallback(float NormX)
++void UExRunnerMovementComponent::OnLookRequestedCallback(float AxisValue)
+ {
+-	const float MaxYaw = (GameModeDataSet) ? GameModeDataSet->MaxRunnerYawAngle : 45.0f;
+-	TargetLookYawOffset = NormX * MaxYaw;
+-
+-	UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] NormX: %.3f → TargetLookYawOffset: %.1f°"), NormX, TargetLookYawOffset);
++	if (GameModeDataSet)
++	{
++		// 입력값(AxisValue)을 누적하여 TargetLookYawOffset을 갱신합니다.
++		TargetLookYawOffset += AxisValue * GameModeDataSet->RunnerLookSensitivity;
++	}
++	UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] AxisValue: %.3f → TargetLookYawOffset: %.1f°"), AxisValue, TargetLookYawOffset);
+ }
+ 
+ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
+@@ -352,16 +359,23 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
+ 	FRotator NewControlRot = CurrentControlRot;
+ 
+ 	// ★ [핵심 수정] 절대 Yaw 오프셋 기반 보간 방식 ★
+-	// 각도 보간 시 FInterpTo는 -180 ~ 180도 경계에서 오작동하여 캐릭터가 빙글 도는 현상이 발생합니다.
+-	// 따라서 항상 최단 방향을 찾아주는 RInterpTo(Rotator 구조체 단위)를 사용해야 합니다.
++	// 각도 보간 시 RInterpTo를 사용하여 현재 컨트롤러 회전에서 목표 회전으로 최단 거리(Shortest Path) 부드럽게 보간합니다.
+ 	
+ 	// 1. 경로 정면(TargetRot.Yaw)을 기준으로 플랫폼 스와이프 오프셋(TargetLookYawOffset)을 더한 목표 회전값 세팅
+ 	FRotator TargetControlRot = CurrentControlRot;
+ 	TargetControlRot.Yaw = TargetRot.Yaw + TargetLookYawOffset;
+ 
+-	// 2. RInterpTo를 사용하여 현재 컨트롤러 회전에서 목표 회전으로 최단 거리(Shortest Path) 부드럽게 보간
+-	const float InterpSpeed = (GameModeDataSet) ? GameModeDataSet->LookInterpSpeed : 8.0f;
+-	NewControlRot = FMath::RInterpTo(CurrentControlRot, TargetControlRot, DeltaTime, InterpSpeed);
++	// 2. 보간 속도를 환경에 맞춰 조정 (곡선에서는 더 빠르게 반응하도록 보정 가능)
++	float DynamicInterpSpeed = (GameModeDataSet) ? GameModeDataSet->LookInterpSpeed : 8.0f;
++	
++	// 현재 Yaw와 목표 Yaw의 차이가 크면(급커브) 보간 속도를 일시적으로 높여 반응성을 확보합니다.
++	float YawDelta = FMath::Abs(FMath::FindDeltaAngleDegrees(CurrentControlRot.Yaw, TargetControlRot.Yaw));
++	if (YawDelta > 15.0f)
++	{
++		DynamicInterpSpeed *= 1.5f;
++	}
++
++	NewControlRot = FMath::RInterpTo(CurrentControlRot, TargetControlRot, DeltaTime, DynamicInterpSpeed);
+ 
+ 	// UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] PathYaw: %.1f | TargetLookYawOffset: %.1f | FinalTargetYaw: %.1f | CurrentYaw: %.1f → NewYaw: %.1f"),
+ 	//	TargetRot.Yaw, TargetLookYawOffset, TargetControlRot.Yaw, CurrentControlRot.Yaw, NewControlRot.Yaw);
+@@ -372,13 +386,8 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
+ 
+ 	Controller->SetControlRotation(NewControlRot);
+ 
+-	// 물리적 횡이동(Drift) 원심력 보정
+-	if (FMath::Abs(LateralError) > 1.0f)
+-	{
+-		const float DriftCorrectionSpeed = 15.0f; // 밀려나는 것을 잡아주는 인력 강도
+-		FVector CorrectionDelta = -PathRight * (LateralError * DriftCorrectionSpeed * DeltaTime);
+-		TargetPawn->AddActorWorldOffset(CorrectionDelta, true);
+-	}
++	// [수정] 수동 위치 보정(AddActorWorldOffset) 로직은 ProduceInput의 CorrectionInput으로 이전되어 Mover 시뮬레이션에 통합되었습니다.
++	// 이를 통해 조향과 이동이 충돌하지 않고 자연스럽게 하나의 시뮬레이션으로 동작합니다.
+ 
+ 	// ★ 디버그 드로잉 (실제 위치와 경로 위치 간의 차이 가시화)
+ 	DrawDebugCoordinateSystem(GetWorld(), TargetPawn->GetActorLocation(), TargetPawn->GetActorRotation(), 100.f, false, -1.f, 0, 2.f);
+
+commit 77862e1549adcb223d4613ec79d901e4022bb6a4
+Author: july1981 <july1981@naver.com>
+Date:   Tue Mar 17 18:41:34 2026 +0900
+
+    Fix: 컴파일 에러 수정 및 진단 로깅 강화 (바닥 감지 및 입력 수신 확인)
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 34a02f0..ad65986 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -127,16 +127,46 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ 	}
+ 
+ 	// [개선] 기존에 설정된 MoveInput을 가져와서 현재의 전진 의도와 병합합니다.
+-	// 만약 다른 InputProducer가 (0,0,0)을 줬더라도 우리가 전진 값을 더해주기 때문에 입력을 유지할 수 있습니다.
+ 	FVector ExistingInput = Inputs.GetMoveInput();
+ 	FVector MergedInput = ExistingInput + ForwardDir;
+ 
+-	// 방향성 입력(DirectionalIntent)의 스펙에 맞게 크기를 1.0 이내로 제한합니다.
+ 	if (MergedInput.SizeSquared() > 1.0f)
+ 	{
+ 		MergedInput.Normalize();
+ 	}
+ 
++	// [진단] 현재 Mover에 등록된 모든 입력 프로듀서를 주기적으로 확인합니다.
++	static double LastProducerLogTime = 0.0;
++	double CurrentTimeForProducer = FPlatformTime::Seconds();
++	if (CurrentTimeForProducer - LastProducerLogTime > 5.0)
++	{
++		if (TargetPawn)
++		{
++			if (UMoverComponent* MoverComp = TargetPawn->FindComponentByClass<UMoverComponent>())
++			{
++				for (UObject* Producer : MoverComp->InputProducers)
++				{
++					if (Producer)
++					{
++						UE_LOG(LogExRunnerMovement, Log, TEXT("[MoverStat] Active Producer: %s"), *Producer->GetName());
++					}
++				}
++				
++				UPrimitiveComponent* MovementBase = MoverComp->GetMovementBase();
++				FHitResult FloorHit;
++				bool bHasFloor = MoverComp->TryGetFloorCheckHitResult(FloorHit);
++
++				UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoverStat] Mode: %s | Loc: %s | Vel: %s | Base: %s | Floor: %s"), 
++					*MoverComp->GetMovementModeName().ToString(),
++					*TargetPawn->GetActorLocation().ToString(),
++					*TargetPawn->GetVelocity().ToString(),
++					MovementBase ? *MovementBase->GetName() : TEXT("None"),
++					bHasFloor ? (FloorHit.GetActor() ? *FloorHit.GetActor()->GetName() : TEXT("NoActor")) : TEXT("NoHit"));
++			}
++		}
++		LastProducerLogTime = CurrentTimeForProducer;
++	}
++
+ 	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, MergedInput);
+ 	
+ 	// OrientationIntent도 전진 방향으로 동기화하되, 기존 방향이 있다면 보존할 수 있도록 IsNearlyZero 체크를 수행합니다.
+
+commit fdd959922d6525933a7171a7882dee70186930c5
+Author: july1981 <july1981@naver.com>
+Date:   Tue Mar 17 18:20:58 2026 +0900
+
+    Fix: Mover 입력 병합 로직 적용 및 프로듀서 진단 로그 추가 (덮어쓰기 방지)
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 4e5eb26..34a02f0 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -70,22 +70,16 @@ void UExRunnerMovementComponent::TryInitializeMover()
+ 			// InputProducers 배열에 자신을 추가하여 Mover가 매 틱마다 ProduceInput을 호출하도록 합니다.
+ 			MoverComp->InputProducers.AddUnique(this);
+ 			
+-			// [추가] Mover 시뮬레이션이 특정 모드에 고착되거나 대기 상태일 수 있으므로 Walking 모드 강제 진입을 요청합니다.
++			// Mover 시뮬레이션이 특정 모드에 고착되거나 대기 상태일 수 있으므로 Walking 모드 강제 진입을 요청합니다.
+ 			MoverComp->QueueNextMode(DefaultModeNames::Walking);
+-			
+-			if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
++
++			// [진단] 현재 Mover에 등록된 모든 입력 프로듀서를 확인하여 충돌 대상을 식별합니다.
++			for (UObject* Producer : MoverComp->InputProducers)
+ 			{
+-				TMap<FString, FSentryVariant> Context;
+-				Context.Add(TEXT("PawnName"), ParentPawn->GetName());
+-				Context.Add(TEXT("RequestedMode"), DefaultModeNames::Walking.ToString());
+-				
+-				if (MoverComp->MovementModes.Num() > 0)
++				if (Producer)
+ 				{
+-					Context.Add(TEXT("ModesCount"), FString::FromInt(MoverComp->MovementModes.Num()));
+-					Context.Add(TEXT("ActiveMode"), MoverComp->GetMovementModeName().ToString());
++					UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: Registered Input Producer: %s"), *Producer->GetName());
+ 				}
+-
+-				SentrySubsystem->AddBreadcrumbWithParams(TEXT("Mover Initialized"), TEXT("ExRunnerMovement"), TEXT("init"), Context);
+ 			}
+ 
+ 			UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 등록 완료 및 Walking 모드(%s) 강제 요청"), *ParentPawn->GetName(), *DefaultModeNames::Walking.ToString());
+@@ -132,10 +126,25 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ 		}
+ 	}
+ 
+-	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, ForwardDir);
+-	Inputs.OrientationIntent = ForwardDir;
++	// [개선] 기존에 설정된 MoveInput을 가져와서 현재의 전진 의도와 병합합니다.
++	// 만약 다른 InputProducer가 (0,0,0)을 줬더라도 우리가 전진 값을 더해주기 때문에 입력을 유지할 수 있습니다.
++	FVector ExistingInput = Inputs.GetMoveInput();
++	FVector MergedInput = ExistingInput + ForwardDir;
++
++	// 방향성 입력(DirectionalIntent)의 스펙에 맞게 크기를 1.0 이내로 제한합니다.
++	if (MergedInput.SizeSquared() > 1.0f)
++	{
++		MergedInput.Normalize();
++	}
++
++	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, MergedInput);
++	
++	// OrientationIntent도 전진 방향으로 동기화하되, 기존 방향이 있다면 보존할 수 있도록 IsNearlyZero 체크를 수행합니다.
++	if (Inputs.OrientationIntent.IsNearlyZero())
++	{
++		Inputs.OrientationIntent = ForwardDir;
++	}
+ 
+-	// [수정] OrientationIntent도 Bit Packing 오차 범위를 줄이기 위해 정규화된 벡터를 유지합니다.
+ 	if (!Inputs.OrientationIntent.IsNearlyZero())
+ 	{
+ 		Inputs.OrientationIntent.Normalize();
+
+commit 631f59e8d33ad4fb3889d2f260a818556040c895
+Author: july1981 <july1981@naver.com>
+Date:   Tue Mar 17 17:50:41 2026 +0900
+
+    Fix: Mover 입력 데이터 직렬화 손실 방지 및 초기화 모드 강제 전환 로직 추가
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 7d54068..4e5eb26 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -70,27 +70,25 @@ void UExRunnerMovementComponent::TryInitializeMover()
+ 			// InputProducers 배열에 자신을 추가하여 Mover가 매 틱마다 ProduceInput을 호출하도록 합니다.
+ 			MoverComp->InputProducers.AddUnique(this);
+ 			
++			// [추가] Mover 시뮬레이션이 특정 모드에 고착되거나 대기 상태일 수 있으므로 Walking 모드 강제 진입을 요청합니다.
++			MoverComp->QueueNextMode(DefaultModeNames::Walking);
++			
+ 			if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
+ 			{
+ 				TMap<FString, FSentryVariant> Context;
+ 				Context.Add(TEXT("PawnName"), ParentPawn->GetName());
++				Context.Add(TEXT("RequestedMode"), DefaultModeNames::Walking.ToString());
+ 				
+-				// 추가 방어 로직: Mover 시스템 준비 상태 체크
+ 				if (MoverComp->MovementModes.Num() > 0)
+ 				{
+-					Context.Add(TEXT("MovementModesCount"), FString::FromInt(MoverComp->MovementModes.Num()));
+-					Context.Add(TEXT("CurrentMode"), MoverComp->GetMovementModeName().ToString());
+-				}
+-				else
+-				{
+-					Context.Add(TEXT("MoverStatus"), TEXT("NO_MODES_FOUND"));
+-					UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: MoverComponent에 등록된 이동 모드가 없습니다. (에셋 로딩 실패 의심)"));
++					Context.Add(TEXT("ModesCount"), FString::FromInt(MoverComp->MovementModes.Num()));
++					Context.Add(TEXT("ActiveMode"), MoverComp->GetMovementModeName().ToString());
+ 				}
+ 
+ 				SentrySubsystem->AddBreadcrumbWithParams(TEXT("Mover Initialized"), TEXT("ExRunnerMovement"), TEXT("init"), Context);
+ 			}
+ 
+-			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 InputProducer로 등록 완료"), *ParentPawn->GetName());
++			UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 등록 완료 및 Walking 모드(%s) 강제 요청"), *ParentPawn->GetName(), *DefaultModeNames::Walking.ToString());
+ 
+ 			if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
+ 			{
+@@ -134,10 +132,14 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ 		}
+ 	}
+ 
+-	Inputs.SetMoveInput(EMoveInputType::DirectionalIntent, ForwardDir);
++	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, ForwardDir);
+ 	Inputs.OrientationIntent = ForwardDir;
+ 
+-	// [수정] Mover 컴포넌트의 ProduceInput은 워커 스레드(네트워크 시뮬레이션 등)에서 호출될 수 있습니다.
++	// [수정] OrientationIntent도 Bit Packing 오차 범위를 줄이기 위해 정규화된 벡터를 유지합니다.
++	if (!Inputs.OrientationIntent.IsNearlyZero())
++	{
++		Inputs.OrientationIntent.Normalize();
++	}
+ 	// GEngine->AddOnScreenDebugMessage는 게임 스레드에서만 안전하므로, 이를 여기서 직접 호출하면 모바일/패키징 빌드에서 치명적인 크래시가 발생할 수 있습니다.
+ 	
+ 	// 모바일 환경 원인 파악용 로그 (스레드 안전)
+
+commit 941e7a8558f6b24c5a5eb1aac63af97d4ecc2782
+Author: july1981 <july1981@naver.com>
+Date:   Tue Mar 17 17:05:00 2026 +0900
+
+    fix: MoverComponent 멤버 접근 오류 수정 및 에셋 유효성 검사 로직 보완
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 8128e96..7d54068 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -75,15 +75,16 @@ void UExRunnerMovementComponent::TryInitializeMover()
+ 				TMap<FString, FSentryVariant> Context;
+ 				Context.Add(TEXT("PawnName"), ParentPawn->GetName());
+ 				
+-				// 추가 방어 로직: Mover가 의존하는 데이터 에셋 로딩 상태 체크
+-				if (MoverComp->PersistentSyncData.IsValid())
++				// 추가 방어 로직: Mover 시스템 준비 상태 체크
++				if (MoverComp->MovementModes.Num() > 0)
+ 				{
+-					Context.Add(TEXT("MoverDataAsset"), TEXT("Valid"));
++					Context.Add(TEXT("MovementModesCount"), FString::FromInt(MoverComp->MovementModes.Num()));
++					Context.Add(TEXT("CurrentMode"), MoverComp->GetMovementModeName().ToString());
+ 				}
+ 				else
+ 				{
+-					Context.Add(TEXT("MoverDataAsset"), TEXT("MISSING"));
+-					UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: MoverComponent의 데이터 에셋이 아직 유효하지 않습니다. (로딩 지연 의심)"));
++					Context.Add(TEXT("MoverStatus"), TEXT("NO_MODES_FOUND"));
++					UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: MoverComponent에 등록된 이동 모드가 없습니다. (에셋 로딩 실패 의심)"));
+ 				}
+ 
+ 				SentrySubsystem->AddBreadcrumbWithParams(TEXT("Mover Initialized"), TEXT("ExRunnerMovement"), TEXT("init"), Context);
+
+commit 044385a1bca3393b6a94d240f5511d2963f505c9
+Author: july1981 <july1981@naver.com>
+Date:   Tue Mar 17 16:55:51 2026 +0900
+
+    fix: 무브먼트 컴포넌트 초기화 시 에셋 유효성 검사 및 Sentry 로그 보완
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 5555abf..8128e96 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -74,6 +74,18 @@ void UExRunnerMovementComponent::TryInitializeMover()
+ 			{
+ 				TMap<FString, FSentryVariant> Context;
+ 				Context.Add(TEXT("PawnName"), ParentPawn->GetName());
++				
++				// 추가 방어 로직: Mover가 의존하는 데이터 에셋 로딩 상태 체크
++				if (MoverComp->PersistentSyncData.IsValid())
++				{
++					Context.Add(TEXT("MoverDataAsset"), TEXT("Valid"));
++				}
++				else
++				{
++					Context.Add(TEXT("MoverDataAsset"), TEXT("MISSING"));
++					UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: MoverComponent의 데이터 에셋이 아직 유효하지 않습니다. (로딩 지연 의심)"));
++				}
++
+ 				SentrySubsystem->AddBreadcrumbWithParams(TEXT("Mover Initialized"), TEXT("ExRunnerMovement"), TEXT("init"), Context);
+ 			}
+ 
+
+commit acd18022e3e52061e1c1f8e89e39c4a541fc5f87
+Author: july1981 <july1981@naver.com>
+Date:   Tue Mar 17 16:12:20 2026 +0900
+
+    feat: Sentry 진단 리포트 강제 발송 로직 추가 (CaptureMessage)
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 4aa2916..5555abf 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -79,6 +79,12 @@ void UExRunnerMovementComponent::TryInitializeMover()
+ 
+ 			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 InputProducer로 등록 완료"), *ParentPawn->GetName());
+ 
++			if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
++			{
++				// 초기화 완료 시점에 지금까지의 Breadcrumbs를 포함한 진단 리포트 강제 발송
++				SentrySubsystem->CaptureMessage(TEXT("Movement Component Diagnostic Report"), ESentryLevel::Info);
++			}
++
+ 			// ExRunnerInputComponent를 동일한 Pawn에서 탐색하여 Look 델리게이트를 자동 바인딩합니다.
+ 			// 블루프린트에서 BindLookInput을 수동 호출할 필요가 없습니다.
+ 			if (UExRunnerInputComponent* InputComp = ParentPawn->FindComponentByClass<UExRunnerInputComponent>())
+
+commit 321e74553880170092a8144e3d5097920c44204d
+Author: july1981 <july1981@naver.com>
+Date:   Tue Mar 17 15:16:11 2026 +0900
+
+    feat: Sentry SDK 통합 및 이동 컴포넌트 모바일 디버깅 로직 추가
+    
+    - Sentry 플러그인 도입 및 자동 초기화 설정 (DefaultEngine.ini)
+    - ExFrameWork 및 ExRunnerPlayRuntime 모듈에 Sentry 의존성 추가
+    - UExRunnerMovementComponent에 Sentry Breadcrumb 및 진단 로그 추가
+      - BeginPlay, Mover 초기화 시점 기록
+      - ProduceInput 루프에서 1초마다 실시간 입력 데이터 전송 (float 캐스팅 적용)
+    - 컴파일 및 링크 에러 수정 완료
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 50882f2..4aa2916 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -14,6 +14,9 @@
+ #include "DrawDebugHelpers.h"
+ #include "Util/Actor/ExActorUtil.h"
+ #include "ExRunnerInputComponent.h"
++#include "Data/Modes/ExGameModeDataSet.h"
++#include "SentrySubsystem.h"
++#include "SentryLibrary.h"
+ 
+ // 디버깅용 로그 카테고리 정의
+ DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
+@@ -32,6 +35,11 @@ void UExRunnerMovementComponent::BeginPlay()
+ 	Super::BeginPlay();
+ 
+ 	// 1차 시도 (즉시 성공할 수도 있음)
++	if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
++	{
++		SentrySubsystem->AddBreadcrumbWithParams(TEXT("BeginPlay Started"), TEXT("ExRunnerMovement"), TEXT("lifecycle"), {});
++	}
++	
+ 	TryInitializeMover();
+ 
+ 	// 만약 초기화에 실패했다면(부착이 안 끝났다면), 가벼운 타이머(0.1초마다)로 재시도합니다.
+@@ -61,7 +69,27 @@ void UExRunnerMovementComponent::TryInitializeMover()
+ 			
+ 			// InputProducers 배열에 자신을 추가하여 Mover가 매 틱마다 ProduceInput을 호출하도록 합니다.
+ 			MoverComp->InputProducers.AddUnique(this);
++			
++			if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
++			{
++				TMap<FString, FSentryVariant> Context;
++				Context.Add(TEXT("PawnName"), ParentPawn->GetName());
++				SentrySubsystem->AddBreadcrumbWithParams(TEXT("Mover Initialized"), TEXT("ExRunnerMovement"), TEXT("init"), Context);
++			}
++
+ 			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 InputProducer로 등록 완료"), *ParentPawn->GetName());
++
++			// ExRunnerInputComponent를 동일한 Pawn에서 탐색하여 Look 델리게이트를 자동 바인딩합니다.
++			// 블루프린트에서 BindLookInput을 수동 호출할 필요가 없습니다.
++			if (UExRunnerInputComponent* InputComp = ParentPawn->FindComponentByClass<UExRunnerInputComponent>())
++			{
++				BindLookInput(InputComp);
++				UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: ExRunnerInputComponent 탐색 성공, OnLookRequested 자동 바인딩 완료"));
++			}
++			else
++			{
++				UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: ExRunnerInputComponent를 찾지 못했습니다. Look 바인딩 생략."));
++			}
+ 			
+ 			// 성공 시 타이머 안전 종료
+ 			GetWorld()->GetTimerManager().ClearTimer(InitTimerHandle);
+@@ -100,6 +128,16 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ 	if (CurrentTime - LastLogTime > 1.0) // 1초에 한 번만 출력하여 스팸 방지
+ 	{
+ 		UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoveInput] ProduceInput Called! ForwardDir: (%.2f, %.2f) | %s"), ForwardDir.X, ForwardDir.Y, *DebugCtrlStatus);
++		
++		if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
++		{
++			TMap<FString, FSentryVariant> Context;
++			Context.Add(TEXT("ForwardX"), static_cast<float>(ForwardDir.X));
++			Context.Add(TEXT("ForwardY"), static_cast<float>(ForwardDir.Y));
++			Context.Add(TEXT("CtrlStatus"), DebugCtrlStatus);
++			SentrySubsystem->AddBreadcrumbWithParams(TEXT("ProduceInput Tick"), TEXT("ExRunnerMovement"), TEXT("input"), Context);
++		}
++		
+ 		LastLogTime = CurrentTime;
+ 	}
+ }
+@@ -137,16 +175,32 @@ void UExRunnerMovementComponent::MoveRight()
+ 
+ void UExRunnerMovementComponent::SetTargetRunningSpeed(float NewSpeed)
+ {
+-	// 1. 여기서 실제 Mover의 이동 속도(MaxSpeed 등)를 변경하는 로직 추가 가능 (기획에 맞춰 구현)
+-	// UMoverComponent 인터페이스를 통해 속도 수정 로직 삽입 필요 (현재는 UI 테스트를 위한 스니펫)
+-
+-	// 2. 중앙 집중 데이터 스토어(UI 갱신용)에 통보하여 이벤트를 울리게 합니다 (Zero-Tick)
+ 	if (CachedStatComponent.IsValid())
+ 	{
+ 		CachedStatComponent->SetCurrentRunningSpeed(NewSpeed);
+ 	}
+ }
+ 
++void UExRunnerMovementComponent::BindLookInput(UExRunnerInputComponent* InputComp)
++{
++	if (!InputComp) return;
++
++	// 기존 바인딩이 있다면 해제 (중복 바인딩 방지)
++	InputComp->OnLookRequested.RemoveDynamic(this, &UExRunnerMovementComponent::OnLookRequestedCallback);
++
++	// OnLookRequested 델리게이트 바인딩:
++	// NormX(-1~1)를 수신하여 TargetLookYawOffset(°)으로 변환하여 저장합니다.
++	InputComp->OnLookRequested.AddDynamic(this, &UExRunnerMovementComponent::OnLookRequestedCallback);
++}
++
++void UExRunnerMovementComponent::OnLookRequestedCallback(float NormX)
++{
++	const float MaxYaw = (GameModeDataSet) ? GameModeDataSet->MaxRunnerYawAngle : 45.0f;
++	TargetLookYawOffset = NormX * MaxYaw;
++
++	UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] NormX: %.3f → TargetLookYawOffset: %.1f°"), NormX, TargetLookYawOffset);
++}
++
+ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
+ {
+ 	if (!TargetPawn) return;
+@@ -237,9 +291,24 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
+ 	FRotator CurrentControlRot = Controller->GetControlRotation();
+ 	FRotator NewControlRot = CurrentControlRot;
+ 
+-	// 곡선의 기본 타겟 각도(TargetRot)는 Pitch와 Roll에만 참고용으로 반영합니다 (필요시)
++	// ★ [핵심 수정] 절대 Yaw 오프셋 기반 보간 방식 ★
++	// 각도 보간 시 FInterpTo는 -180 ~ 180도 경계에서 오작동하여 캐릭터가 빙글 도는 현상이 발생합니다.
++	// 따라서 항상 최단 방향을 찾아주는 RInterpTo(Rotator 구조체 단위)를 사용해야 합니다.
++	
++	// 1. 경로 정면(TargetRot.Yaw)을 기준으로 플랫폼 스와이프 오프셋(TargetLookYawOffset)을 더한 목표 회전값 세팅
++	FRotator TargetControlRot = CurrentControlRot;
++	TargetControlRot.Yaw = TargetRot.Yaw + TargetLookYawOffset;
++
++	// 2. RInterpTo를 사용하여 현재 컨트롤러 회전에서 목표 회전으로 최단 거리(Shortest Path) 부드럽게 보간
++	const float InterpSpeed = (GameModeDataSet) ? GameModeDataSet->LookInterpSpeed : 8.0f;
++	NewControlRot = FMath::RInterpTo(CurrentControlRot, TargetControlRot, DeltaTime, InterpSpeed);
++
++	// UE_LOG(LogExRunnerMovement, Warning, TEXT("[LookInput] PathYaw: %.1f | TargetLookYawOffset: %.1f | FinalTargetYaw: %.1f | CurrentYaw: %.1f → NewYaw: %.1f"),
++	//	TargetRot.Yaw, TargetLookYawOffset, TargetControlRot.Yaw, CurrentControlRot.Yaw, NewControlRot.Yaw);
++
++	// Pitch와 Roll은 기존 컨트롤러 회전값으로 덮어써서 Yaw 연산의 영향만 남김
+ 	NewControlRot.Pitch = CurrentControlRot.Pitch;
+-	NewControlRot.Roll = CurrentControlRot.Roll;
++	NewControlRot.Roll  = CurrentControlRot.Roll;
+ 
+ 	Controller->SetControlRotation(NewControlRot);
+ 
+
+commit 583b538c8c9cf69b781972e7acdfa3ce4da7c98e
+Author: july1981 <july1981@naver.com>
+Date:   Mon Mar 16 19:19:21 2026 +0900
+
+    fix(ExRunner): 모바일 빌드 기동 크래시 해결 (Mover 멀티스레드)
+    
+    - 원인: Mover 시스템의 ProduceInput_Implementation은 네트워크 시뮬레이션 등 백그라운드 워커 스레드에서 호출될 수 있음. 여기서 게임 스레드 전용인 GEngine->AddOnScreenDebugMessage를 호출하여 렌더 리소스에 접근하려다 크래시 발생
+    - 해결방안:
+      - AddOnScreenDebugMessage를 제거하고 스레드 안전한 UE_LOG로 교체
+      - UWorld 접근을 피하기 위해 FPlatformTime::Seconds() 타이머 사용
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 5483a58..50882f2 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -90,11 +90,17 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ 	Inputs.SetMoveInput(EMoveInputType::DirectionalIntent, ForwardDir);
+ 	Inputs.OrientationIntent = ForwardDir;
+ 
+-	// 모바일 화면에서 확인할 수 있도록 매우 눈에 띄게 출력
+-	if (GEngine)
++	// [수정] Mover 컴포넌트의 ProduceInput은 워커 스레드(네트워크 시뮬레이션 등)에서 호출될 수 있습니다.
++	// GEngine->AddOnScreenDebugMessage는 게임 스레드에서만 안전하므로, 이를 여기서 직접 호출하면 모바일/패키징 빌드에서 치명적인 크래시가 발생할 수 있습니다.
++	
++	// 모바일 환경 원인 파악용 로그 (스레드 안전)
++	static double LastLogTime = 0.0;
++	double CurrentTime = FPlatformTime::Seconds();
++	
++	if (CurrentTime - LastLogTime > 1.0) // 1초에 한 번만 출력하여 스팸 방지
+ 	{
+-		FString DebugMsg = FString::Printf(TEXT("[MoveInput] ForwardDir: (%.2f, %.2f) | %s"), ForwardDir.X, ForwardDir.Y, *DebugCtrlStatus);
+-		GEngine->AddOnScreenDebugMessage(10, 0.f, FColor::Red, DebugMsg);
++		UE_LOG(LogExRunnerMovement, Warning, TEXT("[MoveInput] ProduceInput Called! ForwardDir: (%.2f, %.2f) | %s"), ForwardDir.X, ForwardDir.Y, *DebugCtrlStatus);
++		LastLogTime = CurrentTime;
+ 	}
+ }
+ 
+
+commit e6c09bb8f19d255d8d25741ed33eb191d0bab677
+Author: july1981 <july1981@naver.com>
+Date:   Mon Mar 16 18:42:06 2026 +0900
+
+    debug: 모바일 환경 자동 이동 불가 원인 파악용 화면 로그 추가
+    
+    - UExRunnerMovementComponent::ProduceInput_Implementation 내부
+    - ForwardDir 계산값 및 PlayerController의 현재 Yaw 방향 화면상 출력 (모바일 빌드 확인용)
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 06e0897..5483a58 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -71,30 +71,31 @@ void UExRunnerMovementComponent::TryInitializeMover()
+ 
+ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult)
+ {
+-	// Mover 시스템에 전달할 입력 데이터를 찾거나 생성합니다.
+-	// [Fix] 모바일이나 패키징 빌드 환경에서 Mover 시스템의 디폴트 입력 프로듀서가 먼저 이 컴포넌트를 돌리지 않을 수도 있으므로, 
+-	// 기존 데이터를 찾지 못하고 무시당하는 현상을 막기 위해 FindOrAddMutableDataByType를 호출하여 강제 생성 및 바인딩합니다.
+ 	FCharacterDefaultInputs& Inputs = InputCmdResult.InputCollection.FindOrAddMutableDataByType<FCharacterDefaultInputs>();
+ 	
+-	// 1. 순수 전진 입력 (PlayerController의 전방 축 기준)
+-		// 곡선 구간이나 카메라 회전 시에도 조작 시점에 '앞(X)'으로 간주되는 방향으로 전진
+-		FVector ForwardDir = FVector::ForwardVector;
++	FVector ForwardDir = FVector::ForwardVector;
++	FString DebugCtrlStatus = TEXT("NoController");
+ 		
+-		if (TargetPawn)
++	if (TargetPawn)
++	{
++		if (AController* PawnController = TargetPawn->GetController())
+ 		{
+-			if (AController* PawnController = TargetPawn->GetController())
+-			{
+-				const FRotator Rotation = PawnController->GetControlRotation();
+-				const FRotator YawRotation(0, Rotation.Yaw, 0);
+-				ForwardDir = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+-			}
++			const FRotator Rotation = PawnController->GetControlRotation();
++			const FRotator YawRotation(0, Rotation.Yaw, 0);
++			ForwardDir = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
++			DebugCtrlStatus = FString::Printf(TEXT("CtrlYaw:%.1f"), Rotation.Yaw);
+ 		}
++	}
+ 
+-		// DirectionalIntent로 이동 입력 설정 (크기 1.0)
+-		Inputs.SetMoveInput(EMoveInputType::DirectionalIntent, ForwardDir);
++	Inputs.SetMoveInput(EMoveInputType::DirectionalIntent, ForwardDir);
++	Inputs.OrientationIntent = ForwardDir;
+ 
+-		// [Fix] Mover 시스템이 캐릭터의 모델(Mesh) 방향도 컨트롤러가 바라보는 방향(경로 접선)으로 맞춰 회전시킬 수 있도록 OrientationIntent를 주입합니다.
+-		Inputs.OrientationIntent = ForwardDir;
++	// 모바일 화면에서 확인할 수 있도록 매우 눈에 띄게 출력
++	if (GEngine)
++	{
++		FString DebugMsg = FString::Printf(TEXT("[MoveInput] ForwardDir: (%.2f, %.2f) | %s"), ForwardDir.X, ForwardDir.Y, *DebugCtrlStatus);
++		GEngine->AddOnScreenDebugMessage(10, 0.f, FColor::Red, DebugMsg);
++	}
+ }
+ 
+ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+
+commit 37d5f742d680c80e3269ba2c66c4a951b2237975
+Author: july1981 <july1981@naver.com>
+Date:   Mon Mar 16 17:55:25 2026 +0900
+
+    feat(ExRunner): 모바일 터치패드 스와이프 입력 시스템 구현
+    
+    ## 주요 구현 내용
+    
+    ### 1. ExBaseTouchPadWidget - 터치 입력 정규화
+    - NativeOnTouchMoved()에서 3가지 파라미터 계산 및 BP 이벤트 전달
+      - FrameDelta: 픽셀 단위 프레임 이동량
+      - LocalPosition: 위젯 내 터치 픽셀 좌표
+      - NormalizedOffset: 패드 중앙 기준 -1.0 ~ 1.0 정규화값 (핵심)
+    
+    ### 2. ExRunnerInputViewModel - 스와이프 로직 재구현
+    - RelativeY 방식 도입: 터치 시작점(SwipeStartNormY) 기준 상대 이동량으로 임계값 판정
+      - 절대값 누적 방식의 방향 오진입 버그 해결
+      - 터치 시작 위치와 무관하게 실제 드래그한 만큼만 발동
+    - X축: NormalizedOffset.X -> RequestLookAction() -> Yaw 회전
+    - Y축 Jump: Hold 방식 (임계값 유지 시 true, 이탈/Release시 false)
+    - Y축 Slide: Active/Restore 2-상태 방식 (진입 시 true, 이탈/Release시 false)
+    
+    ### 3. ExRunnerInputComponent - 상태 동기화 개선
+    - IsSlideInputActive() 추가: InjectedInputStates.Contains(SlideAction) 직접 조회
+      - bIsSlideActive 로컬 변수 제거 -> sync drift 방지
+    - RequestJumpAction(false) / RequestSlideAction(false) 에서 직접 Broadcast
+      - Enhanced Input Completed 콜백이 true를 반환하는 스펙 문제 우회
+      - Jump/Slide 양쪽 동일 방식 통일
+    - 바인딩: Triggered + Started (false는 Request 함수에서 직접 처리)
+    
+    ### 4. ExGameModeDataSet - 스와이프 임계값 통합
+    - SwipeActivationPercentage 속성 추가 (GameMode|Runner 카테고리)
+    - GetSwipeActivationPercentage()로 DataSet 값 우선 조회, 미할당 시 0.3f 기본값
+    - DA_ExGameModeDataSet 에셋에 반영
+    
+    ### 5. 문서화
+    - ExRunner_MobileJoystick_Setup_Guide.md: 신규 아키텍처 기반 전면 갱신
+    - MobileJoystick_Work_Handover.md: 구현 완료 내용 및 고도화 과제 정리
+    - Bug 디렉토리: 관련 버그 해결 기록 추가
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 6f88004..06e0897 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -13,6 +13,7 @@
+ #include "GameFramework/Character.h"
+ #include "DrawDebugHelpers.h"
+ #include "Util/Actor/ExActorUtil.h"
++#include "ExRunnerInputComponent.h"
+ 
+ // 디버깅용 로그 카테고리 정의
+ DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
+@@ -212,6 +213,9 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
+ 	FRotator PathDirection = GS->PathManager->GetDirectionAtDistance(PlayerPathDist);
+ 	FRotator TargetRot = GS->PathManager->GetDirectionAtDistance(LookAheadDist);
+ 
++	// ★ InputComponent에서 관리하는 조이스틱 좌우 오프셋 각도를 경로 타겟 방향에 누적 합산합니다 ★
++	// (이제 누적 방식이 폐기되었으므로 곡선의 방향을 단독으로 따릅니다)
++
+ 	// Lateral Error(횡방향 오차) 계산
+ 	FVector PathPos = GS->PathManager->GetPositionAtDistance(PlayerPathDist);
+ 	FVector PathRight = FRotationMatrix(PathDirection).GetScaledAxis(EAxis::Y);
+@@ -221,15 +225,12 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
+ 	float DesiredLateralOffset = CurrentLaneYOffset;
+ 	float LateralError = LateralOffset - DesiredLateralOffset;
+ 
+-	// 부드러운 보간 (RInterpTo)
++	// ★ [수정] 강제 회전 방지 및 수동 조작 우선 처리 ★
++	// 컨트롤러의 Yaw 회전은 플레이어의 수동 조각(BP AddControllerYawInput)이 전적으로 담당해야 합니다.
+ 	FRotator CurrentControlRot = Controller->GetControlRotation();
+-	FRotator NewControlRot = FMath::RInterpTo(
+-		CurrentControlRot,
+-		TargetRot,
+-		DeltaTime,
+-		GS->PathManager->CurveConfig->CharacterRotationInterpSpeed * 1.5f // 반응성 향상
+-	);
++	FRotator NewControlRot = CurrentControlRot;
+ 
++	// 곡선의 기본 타겟 각도(TargetRot)는 Pitch와 Roll에만 참고용으로 반영합니다 (필요시)
+ 	NewControlRot.Pitch = CurrentControlRot.Pitch;
+ 	NewControlRot.Roll = CurrentControlRot.Roll;
+ 
+
+commit db656c3d7dacfb0cec5fb2199bd2f4d484b17215
+Author: july1981 <july1981@naver.com>
+Date:   Wed Mar 11 18:13:31 2026 +0900
+
+    Fix: 모바일 런타임 Mover 캐릭터 전진 불가 이슈 해결 및 UI 입력 유지용 TMap 버퍼 도입
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index b9bd855..6f88004 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -71,10 +71,11 @@ void UExRunnerMovementComponent::TryInitializeMover()
+ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult)
+ {
+ 	// Mover 시스템에 전달할 입력 데이터를 찾거나 생성합니다.
+-	FCharacterDefaultInputs* Inputs = InputCmdResult.InputCollection.FindMutableDataByType<FCharacterDefaultInputs>();
+-	if (Inputs)
+-	{
+-		// 1. 순수 전진 입력 (PlayerController의 전방 축 기준)
++	// [Fix] 모바일이나 패키징 빌드 환경에서 Mover 시스템의 디폴트 입력 프로듀서가 먼저 이 컴포넌트를 돌리지 않을 수도 있으므로, 
++	// 기존 데이터를 찾지 못하고 무시당하는 현상을 막기 위해 FindOrAddMutableDataByType를 호출하여 강제 생성 및 바인딩합니다.
++	FCharacterDefaultInputs& Inputs = InputCmdResult.InputCollection.FindOrAddMutableDataByType<FCharacterDefaultInputs>();
++	
++	// 1. 순수 전진 입력 (PlayerController의 전방 축 기준)
+ 		// 곡선 구간이나 카메라 회전 시에도 조작 시점에 '앞(X)'으로 간주되는 방향으로 전진
+ 		FVector ForwardDir = FVector::ForwardVector;
+ 		
+@@ -89,11 +90,10 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ 		}
+ 
+ 		// DirectionalIntent로 이동 입력 설정 (크기 1.0)
+-		Inputs->SetMoveInput(EMoveInputType::DirectionalIntent, ForwardDir);
++		Inputs.SetMoveInput(EMoveInputType::DirectionalIntent, ForwardDir);
+ 
+ 		// [Fix] Mover 시스템이 캐릭터의 모델(Mesh) 방향도 컨트롤러가 바라보는 방향(경로 접선)으로 맞춰 회전시킬 수 있도록 OrientationIntent를 주입합니다.
+-		Inputs->OrientationIntent = ForwardDir;
+-	}
++		Inputs.OrientationIntent = ForwardDir;
+ }
+ 
+ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+
+commit 9462a382e849f92366aab86808bf8c364158aa6d
+Author: july1981 <july1981@naver.com>
+Date:   Sun Mar 8 00:08:02 2026 +0900
+
+    feat: MVVM ViewModel 리팩토링 및 러너 속도 UI 연동 완성
+    
+    [ExCore] MVVM ViewModel FieldNotify 기반으로 전환
+    - ExPlayerStatsViewModel: CurrentScore, MatchTimeRemaining
+      -> UPROPERTY(FieldNotify, Setter, Getter)로 변경
+      -> UE_MVVM_SET_PROPERTY_VALUE 매크로로 Setter 구현
+    
+    [ExCore] ExActorUtil 유틸 함수 신규 추가 (Util/Actor/)
+    - FindOwnerPawn(UActorComponent*): 컴포넌트에서 상위 Pawn 탐색
+    - FindOwnerPawn(AActor*): Actor에서 상위 Pawn 탐색
+      -> 탐색 순서: Self -> Owner -> GetAttachParentActor()
+      -> ExRunnerMovementComponent, ExRunnerStatComponent에 적용
+    
+    [ExRunnerPlay] ExRunnerStatsViewModel 리팩토링
+    - CurrentSpeed: UPROPERTY(FieldNotify, Setter, Getter)로 변경
+    - GetCurrentSpeedText(): UFUNCTION(BlueprintPure, FieldNotify) 추가 (FText 반환)
+    - AutoInitialize(APlayerController*) 추가:
+      -> Controller -> Pawn -> AttachedActors 순으로 ExRunnerStatComponent 자동 탐색
+      -> Core BP에서 Runner 클래스 역참조 없이 단일 노드로 초기화 지원
+    
+    [ExRunnerPlay] ExRunnerStatComponent 타이머 기반 폴링 구조로 전환
+    - PrimaryComponentTick 비활성화, StatPollInterval(0.1초) 타이머 도입
+    - BeginPlay: ExActorUtil::FindOwnerPawn으로 상위 Pawn 탐색
+                 UMoverComponent 캐싱 (APawn::GetVelocity()는 Mover에서 0 반환)
+    - UpdateStats: UMoverComponent::GetVelocity().Size()로 속도 수집
+                   -> SetCurrentRunningSpeed() -> OnRunnerSpeedChanged.Broadcast()
+    
+    [ExRunnerPlay] ExRunnerMovementComponent Tick 정리
+    - StatComponent 속도 업데이트 코드 제거 (ExRunnerStatComponent 자체 폴링으로 이관)
+    - ExActorUtil::FindOwnerPawn 적용
+    
+    [Bug] 20260305_RunnerSpeedBar_NotVisible.md 업데이트
+    - 전체 해결 과정 문서화 (원인 분석 6가지, 최종 구조, 핵심 교훈)
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index ba25d8d..b9bd855 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -12,6 +12,7 @@
+ #include "../Data/ExCurveConfig.h"
+ #include "GameFramework/Character.h"
+ #include "DrawDebugHelpers.h"
++#include "Util/Actor/ExActorUtil.h"
+ 
+ // 디버깅용 로그 카테고리 정의
+ DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
+@@ -43,12 +44,8 @@ void UExRunnerMovementComponent::TryInitializeMover()
+ {
+ 	if (TargetPawn) return; // 이미 초기화 완료
+ 
+-	// 상위 Pawn 찾기 (1순위: Owner, 2순위: AttachParent)
+-	APawn* ParentPawn = Cast<APawn>(GetOwner());
+-	if (!ParentPawn && GetOwner())
+-	{
+-		ParentPawn = Cast<APawn>(GetOwner()->GetAttachParentActor());
+-	}
++	// ExActorUtil을 사용하여 Owner → AttachParent 순으로 Pawn 탐색
++	APawn* ParentPawn = UExActorUtil::FindOwnerPawn(this);
+ 
+ 	// 상위 Pawn의 MoverComponent를 찾아 InputProducer로 등록
+ 	if (ParentPawn)
+@@ -106,6 +103,8 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
+ 	// 아직 부모 폰에 안 붙었다면 위치 업데이트 로직 등은 스킵
+ 	if (!TargetPawn) return;
+ 
++	// 속도 수집은 ExRunnerStatComponent의 자체 타이머(StatPollInterval)가 담당합니다.
++
+ 	// 1. 캐릭터 조향 업데이트 (경로 추적)
+ 	UpdateCharacterRotation(DeltaTime);
+ 
+
+commit a7386a1d4f79b5cedde5162740b032ce036b3b65
+Author: july1981 <july1981@naver.com>
+Date:   Thu Mar 5 15:09:33 2026 +0900
+
+    Refactor: Runner 모드 차량 조향 로직(Steering) 분리 및 GameState 이관
+    
+    1. PathManager 및 거리 관리 체계를 GameState로 이관
+    
+    2. 조향 로직의 이동 컴포넌트 이관
+    
+    3. 불필요한 의존성 및 컴파일 에러 정리
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index c5eeb9e..ba25d8d 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -7,6 +7,11 @@
+ #include "MoverDataModelTypes.h"
+ #include "MoverComponent.h"
+ #include "ExRunnerStatComponent.h"
++#include "../GameStates/ExRunnerGameState.h"
++#include "../Components/ExPathManager.h"
++#include "../Data/ExCurveConfig.h"
++#include "GameFramework/Character.h"
++#include "DrawDebugHelpers.h"
+ 
+ // 디버깅용 로그 카테고리 정의
+ DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
+@@ -101,7 +106,10 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
+ 	// 아직 부모 폰에 안 붙었다면 위치 업데이트 로직 등은 스킵
+ 	if (!TargetPawn) return;
+ 
+-	// 4. 레인 변경 처리 (보간)
++	// 1. 캐릭터 조향 업데이트 (경로 추적)
++	UpdateCharacterRotation(DeltaTime);
++
++	// 2. 레인 변경 처리 (보간)
+ 	UpdateLanePosition(DeltaTime);
+ }
+ void UExRunnerMovementComponent::MoveLeft()
+@@ -161,3 +169,95 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
+ 		}
+ 	}
+ }
++
++void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
++{
++	if (!TargetPawn) return;
++
++	AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
++	if (!GS || !GS->PathManager || !GS->PathManager->CurveConfig) return;
++
++	AController* Controller = TargetPawn->GetController();
++	if (!Controller) return;
++
++	// IsLocallyControlled 거나 HasAuthority일 때만 컨트롤러 회전을 조작합니다.
++	if (!TargetPawn->IsLocallyControlled() && !TargetPawn->HasAuthority()) return;
++
++	// [Fix] 캐릭터가 Controller 회전을 따르도록 설정 강제
++	TargetPawn->bUseControllerRotationYaw = true;
++	TargetPawn->bUseControllerRotationPitch = false;
++	TargetPawn->bUseControllerRotationRoll = false;
++
++	// ACharacter인 경우, Movement 컴포넌트 설정도 확인
++	if (ACharacter* Character = Cast<ACharacter>(TargetPawn))
++	{
++		if (UCharacterMovementComponent* CMC = Character->GetCharacterMovement())
++		{
++			CMC->bOrientRotationToMovement = false;
++		}
++	}
++
++	// 플레이어 위치 기반 현재 경로 거리
++	float PlayerPathDist = GS->RealPlayerPathDistance; 
++	
++	// 개선: 트레드밀 속도 대신 실제 캐릭터의 Velocity 사용
++	float PlayerSpeed = TargetPawn->GetVelocity().Size();
++	if (PlayerSpeed < 10.f)
++	{
++		PlayerSpeed = 600.f;
++	}
++	
++	const float LookAheadAmount = PlayerSpeed * 0.3f; // 0.3초 앞
++	const float LookAheadDist = PlayerPathDist + LookAheadAmount;
++
++	FRotator PathDirection = GS->PathManager->GetDirectionAtDistance(PlayerPathDist);
++	FRotator TargetRot = GS->PathManager->GetDirectionAtDistance(LookAheadDist);
++
++	// Lateral Error(횡방향 오차) 계산
++	FVector PathPos = GS->PathManager->GetPositionAtDistance(PlayerPathDist);
++	FVector PathRight = FRotationMatrix(PathDirection).GetScaledAxis(EAxis::Y);
++	FVector ErrorVec = TargetPawn->GetActorLocation() - PathPos;
++	float LateralOffset = FVector::DotProduct(ErrorVec, PathRight);
++
++	float DesiredLateralOffset = CurrentLaneYOffset;
++	float LateralError = LateralOffset - DesiredLateralOffset;
++
++	// 부드러운 보간 (RInterpTo)
++	FRotator CurrentControlRot = Controller->GetControlRotation();
++	FRotator NewControlRot = FMath::RInterpTo(
++		CurrentControlRot,
++		TargetRot,
++		DeltaTime,
++		GS->PathManager->CurveConfig->CharacterRotationInterpSpeed * 1.5f // 반응성 향상
++	);
++
++	NewControlRot.Pitch = CurrentControlRot.Pitch;
++	NewControlRot.Roll = CurrentControlRot.Roll;
++
++	Controller->SetControlRotation(NewControlRot);
++
++	// 물리적 횡이동(Drift) 원심력 보정
++	if (FMath::Abs(LateralError) > 1.0f)
++	{
++		const float DriftCorrectionSpeed = 15.0f; // 밀려나는 것을 잡아주는 인력 강도
++		FVector CorrectionDelta = -PathRight * (LateralError * DriftCorrectionSpeed * DeltaTime);
++		TargetPawn->AddActorWorldOffset(CorrectionDelta, true);
++	}
++
++	// ★ 디버그 드로잉 (실제 위치와 경로 위치 간의 차이 가시화)
++	DrawDebugCoordinateSystem(GetWorld(), TargetPawn->GetActorLocation(), TargetPawn->GetActorRotation(), 100.f, false, -1.f, 0, 2.f);
++	DrawDebugCoordinateSystem(GetWorld(), PathPos, PathDirection, 100.f, false, -1.f, 0, 2.f);
++	DrawDebugLine(GetWorld(), TargetPawn->GetActorLocation(), PathPos, FColor::Yellow, false, -1.f, 0, 2.f);
++
++	// 화면 출력 디버깅
++	if (GEngine)
++	{
++		FString DebugMsg = FString::Printf(TEXT("Dist: %.0f | Err: %.0f | PathYaw: %.1f | PlayerYaw: %.1f"), 
++			PlayerPathDist, FVector::Dist(TargetPawn->GetActorLocation(), PathPos), PathDirection.Yaw, TargetPawn->GetActorRotation().Yaw);
++		GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Cyan, DebugMsg);
++
++		FString SteeringMsg = FString::Printf(TEXT("Offset: %.1f | FinalYaw: %.1f"), 
++			LateralOffset, TargetRot.Yaw);
++		GEngine->AddOnScreenDebugMessage(2, 0.f, FColor::Orange, SteeringMsg);
++	}
++}
+
+commit 1c883f3a1cbd59c6095a8f454bead488524a4799
+Author: july1981 <july1981@naver.com>
+Date:   Thu Mar 5 13:18:17 2026 +0900
+
+    feat: UIManager 확장을 통한 Event-Driven UI 아키텍처 지원 구현 및 RunnerV3 분기
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index bc83434..c5eeb9e 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -6,6 +6,7 @@
+ #include "MotionWarpingComponent.h" 
+ #include "MoverDataModelTypes.h"
+ #include "MoverComponent.h"
++#include "ExRunnerStatComponent.h"
+ 
+ // 디버깅용 로그 카테고리 정의
+ DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
+@@ -51,6 +52,10 @@ void UExRunnerMovementComponent::TryInitializeMover()
+ 		if (MoverComp)
+ 		{
+ 			TargetPawn = ParentPawn; // 캐싱 완료
++			
++			// UI 갱신을 위해 스탯 컴포넌트도 함께 캐싱 (부모 폰에 부착되어 있다고 가정)
++			CachedStatComponent = ParentPawn->FindComponentByClass<UExRunnerStatComponent>();
++			
+ 			// InputProducers 배열에 자신을 추가하여 Mover가 매 틱마다 ProduceInput을 호출하도록 합니다.
+ 			MoverComp->InputProducers.AddUnique(this);
+ 			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 InputProducer로 등록 완료"), *ParentPawn->GetName());
+@@ -115,6 +120,18 @@ void UExRunnerMovementComponent::MoveRight()
+ 	}
+ }
+ 
++void UExRunnerMovementComponent::SetTargetRunningSpeed(float NewSpeed)
++{
++	// 1. 여기서 실제 Mover의 이동 속도(MaxSpeed 등)를 변경하는 로직 추가 가능 (기획에 맞춰 구현)
++	// UMoverComponent 인터페이스를 통해 속도 수정 로직 삽입 필요 (현재는 UI 테스트를 위한 스니펫)
++
++	// 2. 중앙 집중 데이터 스토어(UI 갱신용)에 통보하여 이벤트를 울리게 합니다 (Zero-Tick)
++	if (CachedStatComponent.IsValid())
++	{
++		CachedStatComponent->SetCurrentRunningSpeed(NewSpeed);
++	}
++}
++
+ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
+ {
+ 	if (!TargetPawn) return;
+
+commit fcbcd33224d8f68bbd1e13a4bc4e88ed6da9024c
+Author: july1981 <july1981@naver.com>
+Date:   Fri Feb 27 15:43:32 2026 +0900
+
+    Refactor: ExRunnerMovementComponent Lazy Init 타이머 기반 자립형 구조로 개선
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index a26aabf..bc83434 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -12,17 +12,34 @@ DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
+ 
+ UExRunnerMovementComponent::UExRunnerMovementComponent()
+ {
++	// 더 이상 매 프레임 TickComponent를 오버라이드하여 돌리지 않고 내부 함수 바인딩 등에만 사용. 
++	// (Tick에서 처리하던 레인 변경 로직은 별도 틱을 켜두거나, 타이머/기타 방식으로 처리해야 하지만 
++	// 레인 변경 보간 로직(UpdateLanePosition) 자체는 프레임레이트 의존적이므로 기본 틱은 켜둡니다.)
+ 	PrimaryComponentTick.bCanEverTick = true;
+ }
+ 
+-// BeginPlay에서 상위 Pawn의 MoverComponent에 자신을 InputProducer로 등록합니다.
++// BeginPlay에서 상위 Pawn의 MoverComponent에 파트너 등록을 시도합니다.
+ void UExRunnerMovementComponent::BeginPlay()
+ {
+ 	Super::BeginPlay();
+ 
++	// 1차 시도 (즉시 성공할 수도 있음)
++	TryInitializeMover();
++
++	// 만약 초기화에 실패했다면(부착이 안 끝났다면), 가벼운 타이머(0.1초마다)로 재시도합니다.
++	if (!TargetPawn)
++	{
++		GetWorld()->GetTimerManager().SetTimer(InitTimerHandle, this, &UExRunnerMovementComponent::TryInitializeMover, 0.1f, true);
++	}
++}
++
++void UExRunnerMovementComponent::TryInitializeMover()
++{
++	if (TargetPawn) return; // 이미 초기화 완료
++
+ 	// 상위 Pawn 찾기 (1순위: Owner, 2순위: AttachParent)
+ 	APawn* ParentPawn = Cast<APawn>(GetOwner());
+-	if (!ParentPawn)
++	if (!ParentPawn && GetOwner())
+ 	{
+ 		ParentPawn = Cast<APawn>(GetOwner()->GetAttachParentActor());
+ 	}
+@@ -33,18 +50,14 @@ void UExRunnerMovementComponent::BeginPlay()
+ 		UMoverComponent* MoverComp = ParentPawn->FindComponentByClass<UMoverComponent>();
+ 		if (MoverComp)
+ 		{
++			TargetPawn = ParentPawn; // 캐싱 완료
+ 			// InputProducers 배열에 자신을 추가하여 Mover가 매 틱마다 ProduceInput을 호출하도록 합니다.
+ 			MoverComp->InputProducers.AddUnique(this);
+ 			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 InputProducer로 등록 완료"), *ParentPawn->GetName());
++			
++			// 성공 시 타이머 안전 종료
++			GetWorld()->GetTimerManager().ClearTimer(InitTimerHandle);
+ 		}
+-		else
+-		{
+-			UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 상위 Pawn '%s'에서 MoverComponent를 찾을 수 없습니다."), *ParentPawn->GetName());
+-		}
+-	}
+-	else
+-	{
+-		UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 상위 Pawn을 찾을 수 없습니다. ProduceInput이 호출되지 않습니다."));
+ 	}
+ }
+ 
+@@ -80,68 +93,11 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
+ {
+ 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+ 
+-	// TargetPawn이 없으면 찾기 시도 (Lazy Init)
+-	// Visual Actor가 스폰된 직후에는 아직 Mover에 Attach되지 않았을 수 있기 때문
+-	if (!TargetPawn)
+-	{
+-		AActor* Owner = GetOwner();
+-		if (Owner)
+-		{
+-			// 1. Attach Parent 확인 (Pawn 캐스팅)
+-			TargetPawn = Cast<APawn>(Owner->GetAttachParentActor());
+-			
+-			// 2. Owner 자체 확인
+-			if (!TargetPawn)
+-			{
+-				TargetPawn = Cast<APawn>(Owner);
+-			}
+-
+-			if (TargetPawn)
+-			{
+-				UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovementComponent: Found Target Pawn: %s"), *TargetPawn->GetName());
+-			}
+-		}
+-
+-		// 여전히 없으면 이번 틱은 스킵
+-		if (!TargetPawn)
+-		{
+-			// 너무 빈번한 로그 방지 (2초마다)
+-			static float LogTimer = 0.0f;
+-			LogTimer += DeltaTime;
+-			if (LogTimer > 2.0f)
+-			{
+-				LogTimer = 0.0f;
+-				UE_LOG(LogExRunnerMovement, Warning, TEXT("[RunnerDebug] Waiting for TargetPawn... Owner: %s (AttachParent is NULL?)"), 
+-					GetOwner() ? *GetOwner()->GetName() : TEXT("None"));
+-			}
+-			return;  // TargetPawn 없으면 스킵
+-		}
+-	}
+-
+-	// [NOTE] 캐릭터 MaxWalkSpeed는 ABP 또는 상태 시스템에서 자체 관리됨
+-	// 트레드밀 속도와 분리되어 별도 설정 불필요
+-
+-	// 3. 강제 전진 (Forward Vector)
+-	// [Treadmill Mode] 플레이어는 X축 고정, 월드(Floor)가 뒤로 이동함.
+-	// 따라서 전진 이동 로직은 비활성화합니다.
+-	
+-	/*
+-	if (bHasCMC)
+-	{
+-		TargetPawn->AddMovementInput(TargetPawn->GetActorForwardVector());
+-	}
+-	else
+-	{
+-		// 직접 이동 처리 (Sweep=true로 충돌 감지)
+-		FVector DeltaMove = TargetPawn->GetActorForwardVector() * RunnerSpeed * DeltaTime;
+-		TargetPawn->AddActorWorldOffset(DeltaMove, true);
+-	}
+-	*/
++	// 아직 부모 폰에 안 붙었다면 위치 업데이트 로직 등은 스킵
++	if (!TargetPawn) return;
+ 
+-	// 4. 레인 변경 처리
++	// 4. 레인 변경 처리 (보간)
+ 	UpdateLanePosition(DeltaTime);
+-
+-	// [Debug] 상태 모니터링 코드 제거(불필요)
+ }
+ void UExRunnerMovementComponent::MoveLeft()
+ {
+
+commit a1121d6f8a6f574548dce167f36254e1223c1ab8
+Author: july <july1981@com2us.com>
+Date:   Thu Feb 26 22:36:26 2026 +0900
+
+    Fix: TickComponent 헤더 누락 수정 및 Mover 회전 충돌 버그 수정 (OrientationIntent 추가)
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index d7aceb7..a26aabf 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -54,21 +54,25 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
+ 	FCharacterDefaultInputs* Inputs = InputCmdResult.InputCollection.FindMutableDataByType<FCharacterDefaultInputs>();
+ 	if (Inputs)
+ 	{
+-		// 1. 전진 입력 (Runner Game 특성상 항상 전진)
+-		// Owner(혹은 TargetPawn)의 Forward Vector를 사용
++		// 1. 순수 전진 입력 (PlayerController의 전방 축 기준)
++		// 곡선 구간이나 카메라 회전 시에도 조작 시점에 '앞(X)'으로 간주되는 방향으로 전진
+ 		FVector ForwardDir = FVector::ForwardVector;
+ 		
+ 		if (TargetPawn)
+ 		{
+-			ForwardDir = TargetPawn->GetActorForwardVector();
+-		}
+-		else if (AActor* Owner = GetOwner())
+-		{
+-			ForwardDir = Owner->GetActorForwardVector();
++			if (AController* PawnController = TargetPawn->GetController())
++			{
++				const FRotator Rotation = PawnController->GetControlRotation();
++				const FRotator YawRotation(0, Rotation.Yaw, 0);
++				ForwardDir = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
++			}
+ 		}
+ 
+ 		// DirectionalIntent로 이동 입력 설정 (크기 1.0)
+ 		Inputs->SetMoveInput(EMoveInputType::DirectionalIntent, ForwardDir);
++
++		// [Fix] Mover 시스템이 캐릭터의 모델(Mesh) 방향도 컨트롤러가 바라보는 방향(경로 접선)으로 맞춰 회전시킬 수 있도록 OrientationIntent를 주입합니다.
++		Inputs->OrientationIntent = ForwardDir;
+ 	}
+ }
+ 
+
+commit c8092d52ae5bce55d98fb991b4cfa98c81d8d7e8
+Author: july <july1981@com2us.com>
+Date:   Tue Feb 24 18:42:23 2026 +0900
+
+    Fix: 곡선 구간 트레드밀 캐릭터 순항(Rotation/Drift) 완벽 개선 및 등반(Climb) 장애물 오작동 수정 (Spline Scale/Depth)
+    
+    1. 곡선 주행 안정성 개선 (ExRunnerGameMode.cpp / ExRunnerMovementComponent)
+    - (수정) 억지로 몸을 비틀어 레인 중앙을 유지하던 조향 오프셋(SteeringYaw) 로직 수동 제거
+    - (수정) Blueprint Input 없이 C++에서 ControlRotation을 직접 제어하여, 캐릭터가 언제나 스플라인 정면(탄젠트)만 바라보도록 고정
+    - (추가) 방향 고정에 따른 곡선의 원심력 표류(Drift) 현상을 AddActorWorldOffset으로 당기도록 물리적 보정 추가
+    
+    2. 등반(Climb) 스플라인 대상 추적 오프셋 버그 수정 (ExObstacleStrategy_Climb.cpp)
+    - (원인) 곡선 구간에서 장애물 X축 스케일을 비균등하게 변경 시, SplineComponent의 캐시가 깨지는 현상 확인
+    - (수정) 런타임 스케일 조절 직후 수동으로 Spline->UpdateSpline()을 호출하여 캐시 붕괴 방지
+    
+    3. 얇은 장애물 조우 시 Traversal 'None' 버그 수정 (ExObstacleStrategy_Climb.cpp)
+    - (원인) 장애물 깊이(Depth)가 얇을 시 Vault나 Mantle 파쿠르 액션을 찾지 못하는 사각지대 존재
+    - (수정) 장애물 높이에 따라 Vault용(30cm), Mantle용(80cm) 필수 두께를 동적으로 보장하는 캡 안전장치 도입
+    
+    4. 오브젝트 풀링 Snowballing 차단
+    - (추가) 스케일 누적 현상 임시 차단을 위해 bUsePooling 기능 추가(기본 False)
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index f814845..d7aceb7 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -139,7 +139,6 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
+ 
+ 	// [Debug] 상태 모니터링 코드 제거(불필요)
+ }
+-
+ void UExRunnerMovementComponent::MoveLeft()
+ {
+ 	if (CurrentLaneIndex > -1)
+@@ -160,10 +159,7 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
+ {
+ 	if (!TargetPawn) return;
+ 	
+-	// [DEBUG] 이동 전 위치 저장
+-	FVector PrevLocation = TargetPawn->GetActorLocation();
+-	
+-	// 목표 오프셋 계산
++	// 목표 레인 오프셋 계산 (가운데: 0, 왼쪽: -LaneWidth, 오른쪽: +LaneWidth)
+ 	float TargetY = CurrentLaneIndex * LaneWidth;
+ 	
+ 	// 현재 오프셋 보간
+@@ -172,64 +168,19 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
+ 	
+ 	float DeltaY = CurrentLaneYOffset - OldY;
+ 	
+-	// [DEBUG] 매 프레임 위치 변화 감지
+-	FVector CurrentLocation = TargetPawn->GetActorLocation();
+-	static FVector LastFrameLocation = CurrentLocation;
+-	FVector FrameDelta = CurrentLocation - LastFrameLocation;
+-	
+-	// 큰 이동이 감지되면 무조건 로그 (순간이동 의심)
+-	if (FrameDelta.Size() > 100.f || FMath::Abs(FrameDelta.X) > 50.f)
+-	{
+-		UE_LOG(LogExRunnerMovement, Error, 
+-			TEXT("[TELEPORT] PrevFrame: %s | Current: %s | FrameDelta: %s | LaneIdx: %d | DeltaY: %.4f"),
+-			*LastFrameLocation.ToString(),
+-			*CurrentLocation.ToString(),
+-			*FrameDelta.ToString(),
+-			CurrentLaneIndex,
+-			DeltaY);
+-	}
+-	LastFrameLocation = CurrentLocation;
+-
+ 	if (!FMath::IsNearlyZero(DeltaY))
+ 	{
+-		// 횡이동: RightVector * DeltaY 만큼 이동
++		// 횡이동: 캐릭터의 로컬 우측 벡터 기준 DeltaY 만큼 이동
+ 		FVector RightDir = TargetPawn->GetActorRightVector();
+ 		FVector DeltaMove = RightDir * DeltaY;
+ 		
+-		// [DEBUG] Sweep 히트 정보 캡처
+ 		FHitResult SweepHit;
+ 		TargetPawn->AddActorWorldOffset(DeltaMove, true, &SweepHit);
+ 		
+-		// [DEBUG] 이동 후 위치
+-		FVector NewLocation = TargetPawn->GetActorLocation();
+-		FVector ActualDelta = NewLocation - PrevLocation;
+-		
+-		// [DEBUG] 로그 출력
+ 		if (SweepHit.bBlockingHit)
+ 		{
+-			UE_LOG(LogExRunnerMovement, Warning, 
+-				TEXT("[LaneMove] SWEEP HIT! Actor: %s | Intended: %s | Actual: %s | HitActor: %s | HitComp: %s | ImpactNormal: %s"),
+-				*TargetPawn->GetName(),
+-				*DeltaMove.ToString(),
+-				*ActualDelta.ToString(),
+-				SweepHit.GetActor() ? *SweepHit.GetActor()->GetName() : TEXT("None"),
+-				SweepHit.GetComponent() ? *SweepHit.GetComponent()->GetName() : TEXT("None"),
+-				*SweepHit.ImpactNormal.ToString());
+-		}
+-		
+-		// [DEBUG] 큰 위치 변화 감지 (순간이동 의심)
+-		if (ActualDelta.Size() > 100.f || FMath::Abs(ActualDelta.X) > 50.f)
+-		{
+-			UE_LOG(LogExRunnerMovement, Error, 
+-				TEXT("[LaneMove] TELEPORT DETECTED! PrevLoc: %s | NewLoc: %s | Delta: %s | LaneIdx: %d | Offset: %.2f | TargetY: %.2f"),
+-				*PrevLocation.ToString(),
+-				*NewLocation.ToString(),
+-				*ActualDelta.ToString(),
+-				CurrentLaneIndex,
+-				CurrentLaneYOffset,
+-				TargetY);
++			// 레인 이동 중 충돌 시 로그 (옵션)
++			// UE_LOG(LogExRunnerMovement, Warning, TEXT("[LaneMove] Blocked by %s"), *SweepHit.GetActor()->GetName());
+ 		}
+ 	}
+ }
+-
+-
+
+commit 260fa848c70c05190c0974009063365647192aff
+Author: july <july1981@com2us.com>
+Date:   Mon Feb 23 16:55:19 2026 +0900
+
+    Fix & Cleanup: ExObstacleSpawnStrategy, MovementComponent 이슈 수정 및 기타 리소스/버그 리포트 업데이트
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index b9a2338..f814845 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -232,79 +232,4 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
+ 	}
+ }
+ 
+-void UExRunnerMovementComponent::SetInteractionTarget(USceneComponent* TargetComponent, FName WarpTargetName)
+-{
+-	if (!TargetComponent) return;
+-
+-	CurrentInteractionTarget = TargetComponent;
+-	CurrentWarpTargetName = WarpTargetName;
+-	
+-	UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: Interaction Target Set to %s (Warp: %s)"), 
+-		*TargetComponent->GetName(), 
+-		*WarpTargetName.ToString());
+-
+-	// Motion Warping Target 등록 (bFollowComponent=true로 설정하여 움직이는 장애물 추적)
+-	if (!MotionWarpingComp.IsValid())
+-	{
+-		if (TargetPawn)
+-		{
+-			MotionWarpingComp = TargetPawn->FindComponentByClass<UMotionWarpingComponent>();
+-		}
+-		else if (AActor* Owner = GetOwner())
+-		{
+-			// 혹시 TargetPawn이 아직 세팅 안됐을 경우 Owner 검색
+-			MotionWarpingComp = Owner->FindComponentByClass<UMotionWarpingComponent>();
+-		}
+-	}
+-
+-	if (MotionWarpingComp.IsValid())
+-	{
+-		// 중요: bFollowComponent = true
+-		// 이렇게 하면 MotionWarpingComponent가 Tick마다 이 컴포넌트의 위치를 추적하여 Warp Target을 자동 갱신함.
+-		// Treadmill System으로 장애물이 뒤로 밀려나도, Warp 위치는 Obstacle 기준이므로 정확히 동기화됨.
+-		MotionWarpingComp->AddOrUpdateWarpTargetFromComponent(
+-			WarpTargetName, 
+-			TargetComponent, 
+-			NAME_None, 
+-			true,
+-			EWarpTargetLocationOffsetDirection::TargetsForwardVector,
+-			FVector::ZeroVector,
+-			FRotator::ZeroRotator
+-		);
+-	}
+-	else
+-	{
+-		UE_LOG(LogExRunnerMovement, Warning, TEXT("[ExRunnerMovement] Failed to find MotionWarpingComponent on Owner!"));
+-	}
+-
+-	// [DEPRECATED] GameplayTag 이벤트로 트레드밀 제어가 이관됨
+-	// AC_TraversalLogic에서 TAG_Ex_Action_Climb_Start 이벤트 발행 → ExRunnerGameMode에서 처리
+-	// if (UWorld* World = GetWorld())
+-	// {
+-	// 	if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(World->GetAuthGameMode()))
+-	// 	{
+-	// 		GM->SetTreadmillPaused(true);
+-	// 	}
+-	// }
+-}
+ 
+-void UExRunnerMovementComponent::ClearInteractionTarget()
+-{
+-	if (MotionWarpingComp.IsValid() && !CurrentWarpTargetName.IsNone())
+-	{
+-		MotionWarpingComp->RemoveWarpTarget(CurrentWarpTargetName);
+-	}
+-
+-	CurrentInteractionTarget = nullptr;
+-	CurrentWarpTargetName = NAME_None;
+-
+-	// [DEPRECATED] GameplayTag 이벤트로 트레드밀 제어가 이관됨
+-	// AC_TraversalLogic에서 TAG_Ex_Action_Climb_End 이벤트 발행 → ExRunnerGameMode에서 처리
+-	// if (UWorld* World = GetWorld())
+-	// {
+-	// 	if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(World->GetAuthGameMode()))
+-	// 	{
+-	// 		GM->SetTreadmillPaused(false);
+-	// 	}
+-	// }
+-}
+
+commit 4c86f3d8a41331cb8db767d5ae82cf014d07679c
+Author: july <july1981@com2us.com>
+Date:   Tue Feb 10 15:59:47 2026 +0900
+
+    refactor: ExRunnerMovementComponent Mover InputProducer 수동 등록 방식으로 전환
+    
+    [변경 사항]
+    
+    1. GameplayTag 이벤트 시스템 제거
+       - ExGameplayTags.h/cpp: TAG_Ex_Input_Produce 태그 선언 및 정의 삭제
+       - ExRunnerMovementComponent.h: GameplayTagContainer.h include,
+         FExGameplayEventPayload forward decl, HandleGameplayEvent 함수 선언 제거
+       - ExRunnerMovementComponent.cpp: ExGameplayTags.h/ExPawn.h include 제거,
+         HandleGameplayEvent 함수 본문 삭제, BeginPlay 이벤트 바인딩 로직 삭제
+    
+    2. Mover InputProducer 수동 등록 추가
+       - ExRunnerMovementComponent.cpp: BeginPlay에서 상위 Pawn의
+         UMoverComponent를 FindComponentByClass로 탐색
+       - MoverComp->InputProducers.AddUnique(this)로 직접 등록하여
+         매 틱 ProduceInput_Implementation 호출 보장
+       - Child Actor에 부착된 컴포넌트는 bGatherInputFromAllInputProducerComponents
+         자동 수집 대상이 아니므로 수동 등록 필수
+    
+    3. 신규 파일
+       - ExPawn.h/cpp: GameplayTag 이벤트 시스템을 갖춘 기본 Pawn 클래스
+         (향후 다른 용도 활용 가능)
+       - BP_ExRunnerMovementComponent 블루프린트 에셋 추가
+    
+    4. 블루프린트 에셋 업데이트
+       - ExSandboxCharacter_Mover, BP_ExRunnerGameMode,
+         BP_Echo1, BP_Shinbi 에셋 갱신
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 4747860..b9a2338 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -5,6 +5,7 @@
+ #include "GameFramework/CharacterMovementComponent.h"
+ #include "MotionWarpingComponent.h" 
+ #include "MoverDataModelTypes.h"
++#include "MoverComponent.h"
+ 
+ // 디버깅용 로그 카테고리 정의
+ DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
+@@ -14,10 +15,37 @@ UExRunnerMovementComponent::UExRunnerMovementComponent()
+ 	PrimaryComponentTick.bCanEverTick = true;
+ }
+ 
+-// BeginPlay에서는 아무것도 하지 않고 Tick에서 지연 초기화 수행
++// BeginPlay에서 상위 Pawn의 MoverComponent에 자신을 InputProducer로 등록합니다.
+ void UExRunnerMovementComponent::BeginPlay()
+ {
+ 	Super::BeginPlay();
++
++	// 상위 Pawn 찾기 (1순위: Owner, 2순위: AttachParent)
++	APawn* ParentPawn = Cast<APawn>(GetOwner());
++	if (!ParentPawn)
++	{
++		ParentPawn = Cast<APawn>(GetOwner()->GetAttachParentActor());
++	}
++
++	// 상위 Pawn의 MoverComponent를 찾아 InputProducer로 등록
++	if (ParentPawn)
++	{
++		UMoverComponent* MoverComp = ParentPawn->FindComponentByClass<UMoverComponent>();
++		if (MoverComp)
++		{
++			// InputProducers 배열에 자신을 추가하여 Mover가 매 틱마다 ProduceInput을 호출하도록 합니다.
++			MoverComp->InputProducers.AddUnique(this);
++			UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: 상위 Pawn '%s'의 MoverComponent에 InputProducer로 등록 완료"), *ParentPawn->GetName());
++		}
++		else
++		{
++			UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 상위 Pawn '%s'에서 MoverComponent를 찾을 수 없습니다."), *ParentPawn->GetName());
++		}
++	}
++	else
++	{
++		UE_LOG(LogExRunnerMovement, Warning, TEXT("ExRunnerMovement: 상위 Pawn을 찾을 수 없습니다. ProduceInput이 호출되지 않습니다."));
++	}
+ }
+ 
+ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult)
+
+commit 3a7ed856170479ee7dd4ee222ca92817abaddce4
+Author: july <july1981@com2us.com>
+Date:   Mon Feb 9 18:28:29 2026 +0900
+
+    refactor: 트레드밀 속도와 캐릭터 속도 분리 - BaseGameSpeed, SpeedAcceleration 변수명 변경 및 BaseCharacterSpeed 제거
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 5535e66..4747860 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -66,7 +66,7 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
+ 
+ 			if (TargetPawn)
+ 			{
+-				UE_LOG(LogTemp, Log, TEXT("ExRunnerMovementComponent: Found Target Pawn: %s"), *TargetPawn->GetName());
++				UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovementComponent: Found Target Pawn: %s"), *TargetPawn->GetName());
+ 			}
+ 		}
+ 
+@@ -79,54 +79,15 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
+ 			if (LogTimer > 2.0f)
+ 			{
+ 				LogTimer = 0.0f;
+-				UE_LOG(LogTemp, Warning, TEXT("[RunnerDebug] Waiting for TargetPawn... Owner: %s (AttachParent is NULL?)"), 
++				UE_LOG(LogExRunnerMovement, Warning, TEXT("[RunnerDebug] Waiting for TargetPawn... Owner: %s (AttachParent is NULL?)"), 
+ 					GetOwner() ? *GetOwner()->GetName() : TEXT("None"));
+ 			}
+-			return;
++			return;  // TargetPawn 없으면 스킵
+ 		}
+ 	}
+ 
+-	// 1. 게임 모드에서 속도 가져오기
+-	float RunnerSpeed = 600.f;
+-	AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(UGameplayStatics::GetGameMode(this));
+-	if (GM)
+-	{
+-		RunnerSpeed = GM->GetCurrentGameSpeed();
+-	}
+-
+-	// 2. 캐릭터 MaxWalkSpeed 동기화 (CMC가 있는 경우)
+-	bool bHasCMC = false;
+-	if (TargetPawn)
+-	{
+-		// 1차 시도: 표준 인터페이스
+-		UPawnMovementComponent* MovementComp = TargetPawn->GetMovementComponent();
+-		
+-		// 1. CharacterMovementComponent 확인
+-		UCharacterMovementComponent* CMC = Cast<UCharacterMovementComponent>(MovementComp);
+-		
+-		// 2차 시도: 컴포넌트 직접 검색
+-		if (!CMC) CMC = TargetPawn->FindComponentByClass<UCharacterMovementComponent>();
+-
+-		if (CMC)
+-		{
+-			CMC->MaxWalkSpeed = RunnerSpeed;
+-			bHasCMC = true;
+-		}
+-		else
+-		{
+-			// CMC를 못 찾으면 가끔 경고
+-			static float CMCCheckTimer = 0.0f;
+-			CMCCheckTimer += DeltaTime;
+-			if (CMCCheckTimer > 3.0f)
+-			{
+-				CMCCheckTimer = 0.0f;
+-				
+-				FString PawnClassName = TargetPawn->GetClass()->GetName();
+-				// 보유 컴포넌트 리스트 덤프 (다시 확인용)
+-				UE_LOG(LogTemp, Warning, TEXT("[RunnerDebug] Failed to find CMC on %s! Class: %s"), *TargetPawn->GetName(), *PawnClassName);
+-			}
+-		}
+-	}
++	// [NOTE] 캐릭터 MaxWalkSpeed는 ABP 또는 상태 시스템에서 자체 관리됨
++	// 트레드밀 속도와 분리되어 별도 설정 불필요
+ 
+ 	// 3. 강제 전진 (Forward Vector)
+ 	// [Treadmill Mode] 플레이어는 X축 고정, 월드(Floor)가 뒤로 이동함.
+@@ -250,7 +211,7 @@ void UExRunnerMovementComponent::SetInteractionTarget(USceneComponent* TargetCom
+ 	CurrentInteractionTarget = TargetComponent;
+ 	CurrentWarpTargetName = WarpTargetName;
+ 	
+-	UE_LOG(LogTemp, Log, TEXT("ExRunnerMovement: Interaction Target Set to %s (Warp: %s)"), 
++	UE_LOG(LogExRunnerMovement, Log, TEXT("ExRunnerMovement: Interaction Target Set to %s (Warp: %s)"), 
+ 		*TargetComponent->GetName(), 
+ 		*WarpTargetName.ToString());
+ 
+@@ -285,18 +246,18 @@ void UExRunnerMovementComponent::SetInteractionTarget(USceneComponent* TargetCom
+ 	}
+ 	else
+ 	{
+-		UE_LOG(LogTemp, Warning, TEXT("[ExRunnerMovement] Failed to find MotionWarpingComponent on Owner!"));
++		UE_LOG(LogExRunnerMovement, Warning, TEXT("[ExRunnerMovement] Failed to find MotionWarpingComponent on Owner!"));
+ 	}
+ 
+-	// [Fix: Treadmill Pause Strategy]
+-	// 등반 중에는 트레드밀을 멈춰서 동기화 문제와 조기 종료(Premature Overlap End) 문제를 원천 차단함.
+-	if (UWorld* World = GetWorld())
+-	{
+-		if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(World->GetAuthGameMode()))
+-		{
+-			GM->SetTreadmillPaused(true);
+-		}
+-	}
++	// [DEPRECATED] GameplayTag 이벤트로 트레드밀 제어가 이관됨
++	// AC_TraversalLogic에서 TAG_Ex_Action_Climb_Start 이벤트 발행 → ExRunnerGameMode에서 처리
++	// if (UWorld* World = GetWorld())
++	// {
++	// 	if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(World->GetAuthGameMode()))
++	// 	{
++	// 		GM->SetTreadmillPaused(true);
++	// 	}
++	// }
+ }
+ 
+ void UExRunnerMovementComponent::ClearInteractionTarget()
+@@ -309,13 +270,13 @@ void UExRunnerMovementComponent::ClearInteractionTarget()
+ 	CurrentInteractionTarget = nullptr;
+ 	CurrentWarpTargetName = NAME_None;
+ 
+-	// [Fix: Treadmill Pause Strategy]
+-	// 등반 종료 시 트레드밀 재개
+-	if (UWorld* World = GetWorld())
+-	{
+-		if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(World->GetAuthGameMode()))
+-		{
+-			GM->SetTreadmillPaused(false);
+-		}
+-	}
++	// [DEPRECATED] GameplayTag 이벤트로 트레드밀 제어가 이관됨
++	// AC_TraversalLogic에서 TAG_Ex_Action_Climb_End 이벤트 발행 → ExRunnerGameMode에서 처리
++	// if (UWorld* World = GetWorld())
++	// {
++	// 	if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(World->GetAuthGameMode()))
++	// 	{
++	// 		GM->SetTreadmillPaused(false);
++	// 	}
++	// }
+ }
+
+commit ff62a937702153267f14bb77221215d0adf49f2f
+Author: dxerr <july1981@naver.com>
+Date:   Sun Feb 8 23:57:46 2026 +0900
+
+    fix: ChunkPool 즉시 재사용 버그 수정 - OnChunkReachedKillZ에서 SpawnNextChunk 호출 후 ReturnChunkToPool 호출하도록 순서 변경 - ChunkPool을 FIFO 방식으로 변경 (Insert(0) + Pop()) - 디버깅 로그 추가 (LogExRunnerMovement)
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+index 6b42e90..5535e66 100644
+--- a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -6,6 +6,9 @@
+ #include "MotionWarpingComponent.h" 
+ #include "MoverDataModelTypes.h"
+ 
++// 디버깅용 로그 카테고리 정의
++DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
++
+ UExRunnerMovementComponent::UExRunnerMovementComponent()
+ {
+ 	PrimaryComponentTick.bCanEverTick = true;
+@@ -168,6 +171,9 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
+ {
+ 	if (!TargetPawn) return;
+ 	
++	// [DEBUG] 이동 전 위치 저장
++	FVector PrevLocation = TargetPawn->GetActorLocation();
++	
+ 	// 목표 오프셋 계산
+ 	float TargetY = CurrentLaneIndex * LaneWidth;
+ 	
+@@ -177,12 +183,63 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
+ 	
+ 	float DeltaY = CurrentLaneYOffset - OldY;
+ 	
++	// [DEBUG] 매 프레임 위치 변화 감지
++	FVector CurrentLocation = TargetPawn->GetActorLocation();
++	static FVector LastFrameLocation = CurrentLocation;
++	FVector FrameDelta = CurrentLocation - LastFrameLocation;
++	
++	// 큰 이동이 감지되면 무조건 로그 (순간이동 의심)
++	if (FrameDelta.Size() > 100.f || FMath::Abs(FrameDelta.X) > 50.f)
++	{
++		UE_LOG(LogExRunnerMovement, Error, 
++			TEXT("[TELEPORT] PrevFrame: %s | Current: %s | FrameDelta: %s | LaneIdx: %d | DeltaY: %.4f"),
++			*LastFrameLocation.ToString(),
++			*CurrentLocation.ToString(),
++			*FrameDelta.ToString(),
++			CurrentLaneIndex,
++			DeltaY);
++	}
++	LastFrameLocation = CurrentLocation;
++
+ 	if (!FMath::IsNearlyZero(DeltaY))
+ 	{
+ 		// 횡이동: RightVector * DeltaY 만큼 이동
+-		// Mover를 직접 이동시킴 (Sweep=true 충돌 체크)
+ 		FVector RightDir = TargetPawn->GetActorRightVector();
+-		TargetPawn->AddActorWorldOffset(RightDir * DeltaY, true);
++		FVector DeltaMove = RightDir * DeltaY;
++		
++		// [DEBUG] Sweep 히트 정보 캡처
++		FHitResult SweepHit;
++		TargetPawn->AddActorWorldOffset(DeltaMove, true, &SweepHit);
++		
++		// [DEBUG] 이동 후 위치
++		FVector NewLocation = TargetPawn->GetActorLocation();
++		FVector ActualDelta = NewLocation - PrevLocation;
++		
++		// [DEBUG] 로그 출력
++		if (SweepHit.bBlockingHit)
++		{
++			UE_LOG(LogExRunnerMovement, Warning, 
++				TEXT("[LaneMove] SWEEP HIT! Actor: %s | Intended: %s | Actual: %s | HitActor: %s | HitComp: %s | ImpactNormal: %s"),
++				*TargetPawn->GetName(),
++				*DeltaMove.ToString(),
++				*ActualDelta.ToString(),
++				SweepHit.GetActor() ? *SweepHit.GetActor()->GetName() : TEXT("None"),
++				SweepHit.GetComponent() ? *SweepHit.GetComponent()->GetName() : TEXT("None"),
++				*SweepHit.ImpactNormal.ToString());
++		}
++		
++		// [DEBUG] 큰 위치 변화 감지 (순간이동 의심)
++		if (ActualDelta.Size() > 100.f || FMath::Abs(ActualDelta.X) > 50.f)
++		{
++			UE_LOG(LogExRunnerMovement, Error, 
++				TEXT("[LaneMove] TELEPORT DETECTED! PrevLoc: %s | NewLoc: %s | Delta: %s | LaneIdx: %d | Offset: %.2f | TargetY: %.2f"),
++				*PrevLocation.ToString(),
++				*NewLocation.ToString(),
++				*ActualDelta.ToString(),
++				CurrentLaneIndex,
++				CurrentLaneYOffset,
++				TargetY);
++		}
+ 	}
+ }
+ 
+
+commit 2c568456ebc1eabc33b6024937d4f8198035f06f
+Author: july <july1981@com2us.com>
+Date:   Thu Feb 5 15:58:56 2026 +0900
+
+    [Refactor] Separate ExRunnerPlay from ExCore
+    
+    - Migrated Runner logic to ExRunnerPlay plugin
+    
+    - Cleaned up ExCore plugin
+    
+    - Updates DefaultEngine.ini with CoreRedirects
+    
+    - Updated Guidelines
+
+diff --git a/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+new file mode 100644
+index 0000000..6b42e90
+--- /dev/null
++++ b/Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.cpp
+@@ -0,0 +1,264 @@
++#include "ExRunnerMovementComponent.h"
++#include "GameFramework/PawnMovementComponent.h"
++#include "Kismet/GameplayStatics.h"
++#include "../GameModes/ExRunnerGameMode.h"
++#include "GameFramework/CharacterMovementComponent.h"
++#include "MotionWarpingComponent.h" 
++#include "MoverDataModelTypes.h"
++
++UExRunnerMovementComponent::UExRunnerMovementComponent()
++{
++	PrimaryComponentTick.bCanEverTick = true;
++}
++
++// BeginPlay에서는 아무것도 하지 않고 Tick에서 지연 초기화 수행
++void UExRunnerMovementComponent::BeginPlay()
++{
++	Super::BeginPlay();
++}
++
++void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult)
++{
++	// Mover 시스템에 전달할 입력 데이터를 찾거나 생성합니다.
++	FCharacterDefaultInputs* Inputs = InputCmdResult.InputCollection.FindMutableDataByType<FCharacterDefaultInputs>();
++	if (Inputs)
++	{
++		// 1. 전진 입력 (Runner Game 특성상 항상 전진)
++		// Owner(혹은 TargetPawn)의 Forward Vector를 사용
++		FVector ForwardDir = FVector::ForwardVector;
++		
++		if (TargetPawn)
++		{
++			ForwardDir = TargetPawn->GetActorForwardVector();
++		}
++		else if (AActor* Owner = GetOwner())
++		{
++			ForwardDir = Owner->GetActorForwardVector();
++		}
++
++		// DirectionalIntent로 이동 입력 설정 (크기 1.0)
++		Inputs->SetMoveInput(EMoveInputType::DirectionalIntent, ForwardDir);
++	}
++}
++
++void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
++{
++	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
++
++	// TargetPawn이 없으면 찾기 시도 (Lazy Init)
++	// Visual Actor가 스폰된 직후에는 아직 Mover에 Attach되지 않았을 수 있기 때문
++	if (!TargetPawn)
++	{
++		AActor* Owner = GetOwner();
++		if (Owner)
++		{
++			// 1. Attach Parent 확인 (Pawn 캐스팅)
++			TargetPawn = Cast<APawn>(Owner->GetAttachParentActor());
++			
++			// 2. Owner 자체 확인
++			if (!TargetPawn)
++			{
++				TargetPawn = Cast<APawn>(Owner);
++			}
++
++			if (TargetPawn)
++			{
++				UE_LOG(LogTemp, Log, TEXT("ExRunnerMovementComponent: Found Target Pawn: %s"), *TargetPawn->GetName());
++			}
++		}
++
++		// 여전히 없으면 이번 틱은 스킵
++		if (!TargetPawn)
++		{
++			// 너무 빈번한 로그 방지 (2초마다)
++			static float LogTimer = 0.0f;
++			LogTimer += DeltaTime;
++			if (LogTimer > 2.0f)
++			{
++				LogTimer = 0.0f;
++				UE_LOG(LogTemp, Warning, TEXT("[RunnerDebug] Waiting for TargetPawn... Owner: %s (AttachParent is NULL?)"), 
++					GetOwner() ? *GetOwner()->GetName() : TEXT("None"));
++			}
++			return;
++		}
++	}
++
++	// 1. 게임 모드에서 속도 가져오기
++	float RunnerSpeed = 600.f;
++	AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(UGameplayStatics::GetGameMode(this));
++	if (GM)
++	{
++		RunnerSpeed = GM->GetCurrentGameSpeed();
++	}
++
++	// 2. 캐릭터 MaxWalkSpeed 동기화 (CMC가 있는 경우)
++	bool bHasCMC = false;
++	if (TargetPawn)
++	{
++		// 1차 시도: 표준 인터페이스
++		UPawnMovementComponent* MovementComp = TargetPawn->GetMovementComponent();
++		
++		// 1. CharacterMovementComponent 확인
++		UCharacterMovementComponent* CMC = Cast<UCharacterMovementComponent>(MovementComp);
++		
++		// 2차 시도: 컴포넌트 직접 검색
++		if (!CMC) CMC = TargetPawn->FindComponentByClass<UCharacterMovementComponent>();
++
++		if (CMC)
++		{
++			CMC->MaxWalkSpeed = RunnerSpeed;
++			bHasCMC = true;
++		}
++		else
++		{
++			// CMC를 못 찾으면 가끔 경고
++			static float CMCCheckTimer = 0.0f;
++			CMCCheckTimer += DeltaTime;
++			if (CMCCheckTimer > 3.0f)
++			{
++				CMCCheckTimer = 0.0f;
++				
++				FString PawnClassName = TargetPawn->GetClass()->GetName();
++				// 보유 컴포넌트 리스트 덤프 (다시 확인용)
++				UE_LOG(LogTemp, Warning, TEXT("[RunnerDebug] Failed to find CMC on %s! Class: %s"), *TargetPawn->GetName(), *PawnClassName);
++			}
++		}
++	}
++
++	// 3. 강제 전진 (Forward Vector)
++	// [Treadmill Mode] 플레이어는 X축 고정, 월드(Floor)가 뒤로 이동함.
++	// 따라서 전진 이동 로직은 비활성화합니다.
++	
++	/*
++	if (bHasCMC)
++	{
++		TargetPawn->AddMovementInput(TargetPawn->GetActorForwardVector());
++	}
++	else
++	{
++		// 직접 이동 처리 (Sweep=true로 충돌 감지)
++		FVector DeltaMove = TargetPawn->GetActorForwardVector() * RunnerSpeed * DeltaTime;
++		TargetPawn->AddActorWorldOffset(DeltaMove, true);
++	}
++	*/
++
++	// 4. 레인 변경 처리
++	UpdateLanePosition(DeltaTime);
++
++	// [Debug] 상태 모니터링 코드 제거(불필요)
++}
++
++void UExRunnerMovementComponent::MoveLeft()
++{
++	if (CurrentLaneIndex > -1)
++	{
++		CurrentLaneIndex--;
++	}
++}
++
++void UExRunnerMovementComponent::MoveRight()
++{
++	if (CurrentLaneIndex < 1)
++	{
++		CurrentLaneIndex++;
++	}
++}
++
++void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
++{
++	if (!TargetPawn) return;
++	
++	// 목표 오프셋 계산
++	float TargetY = CurrentLaneIndex * LaneWidth;
++	
++	// 현재 오프셋 보간
++	float OldY = CurrentLaneYOffset;
++	CurrentLaneYOffset = FMath::FInterpTo(CurrentLaneYOffset, TargetY, DeltaTime, LaneChangeSpeed);
++	
++	float DeltaY = CurrentLaneYOffset - OldY;
++	
++	if (!FMath::IsNearlyZero(DeltaY))
++	{
++		// 횡이동: RightVector * DeltaY 만큼 이동
++		// Mover를 직접 이동시킴 (Sweep=true 충돌 체크)
++		FVector RightDir = TargetPawn->GetActorRightVector();
++		TargetPawn->AddActorWorldOffset(RightDir * DeltaY, true);
++	}
++}
++
++void UExRunnerMovementComponent::SetInteractionTarget(USceneComponent* TargetComponent, FName WarpTargetName)
++{
++	if (!TargetComponent) return;
++
++	CurrentInteractionTarget = TargetComponent;
++	CurrentWarpTargetName = WarpTargetName;
++	
++	UE_LOG(LogTemp, Log, TEXT("ExRunnerMovement: Interaction Target Set to %s (Warp: %s)"), 
++		*TargetComponent->GetName(), 
++		*WarpTargetName.ToString());
++
++	// Motion Warping Target 등록 (bFollowComponent=true로 설정하여 움직이는 장애물 추적)
++	if (!MotionWarpingComp.IsValid())
++	{
++		if (TargetPawn)
++		{
++			MotionWarpingComp = TargetPawn->FindComponentByClass<UMotionWarpingComponent>();
++		}
++		else if (AActor* Owner = GetOwner())
++		{
++			// 혹시 TargetPawn이 아직 세팅 안됐을 경우 Owner 검색
++			MotionWarpingComp = Owner->FindComponentByClass<UMotionWarpingComponent>();
++		}
++	}
++
++	if (MotionWarpingComp.IsValid())
++	{
++		// 중요: bFollowComponent = true
++		// 이렇게 하면 MotionWarpingComponent가 Tick마다 이 컴포넌트의 위치를 추적하여 Warp Target을 자동 갱신함.
++		// Treadmill System으로 장애물이 뒤로 밀려나도, Warp 위치는 Obstacle 기준이므로 정확히 동기화됨.
++		MotionWarpingComp->AddOrUpdateWarpTargetFromComponent(
++			WarpTargetName, 
++			TargetComponent, 
++			NAME_None, 
++			true,
++			EWarpTargetLocationOffsetDirection::TargetsForwardVector,
++			FVector::ZeroVector,
++			FRotator::ZeroRotator
++		);
++	}
++	else
++	{
++		UE_LOG(LogTemp, Warning, TEXT("[ExRunnerMovement] Failed to find MotionWarpingComponent on Owner!"));
++	}
++
++	// [Fix: Treadmill Pause Strategy]
++	// 등반 중에는 트레드밀을 멈춰서 동기화 문제와 조기 종료(Premature Overlap End) 문제를 원천 차단함.
++	if (UWorld* World = GetWorld())
++	{
++		if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(World->GetAuthGameMode()))
++		{
++			GM->SetTreadmillPaused(true);
++		}
++	}
++}
++
++void UExRunnerMovementComponent::ClearInteractionTarget()
++{
++	if (MotionWarpingComp.IsValid() && !CurrentWarpTargetName.IsNone())
++	{
++		MotionWarpingComp->RemoveWarpTarget(CurrentWarpTargetName);
++	}
++
++	CurrentInteractionTarget = nullptr;
++	CurrentWarpTargetName = NAME_None;
++
++	// [Fix: Treadmill Pause Strategy]
++	// 등반 종료 시 트레드밀 재개
++	if (UWorld* World = GetWorld())
++	{
++		if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(World->GetAuthGameMode()))
++		{
++			GM->SetTreadmillPaused(false);
++		}
++	}
++}

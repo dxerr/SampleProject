@@ -1,0 +1,67 @@
+﻿commit 413ece4ac8ab4375fbab971e4fc05feb69e76dbc
+Author: july1981 <july1981@naver.com>
+Date:   Mon Mar 23 19:37:59 2026 +0900
+
+    feat: Add continuous snake pattern coin spawning and item system refactor
+
+A	Bug/20260323_Item_Rotation_Math_Bug.md
+A	Bug/20260323_Snake_Pattern_Boundary_And_Continuity.md
+
+commit d70e230fd5c75150d92aa9dfade0fbc749f6e404
+Author: july <july1981@com2us.com>
+Date:   Fri Feb 27 12:42:30 2026 +0900
+
+    Refactor: GetVisualBoundsOf 정적 함수 중복 제거 및 공통화
+    
+    - UExObstacleSpawnStrategy::GetVisualBounds 정적 헬퍼 추가
+    - Gap, Slide, WallRun, Climb 전략에서 중복된 GetVisualBoundsOf 함수 제거 후 공통 함수로 대체
+    - AI 코드 분석 리포트 검증 및 개선 계획서 추가
+
+M	Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Data/ExObstacleStrategy_Gap.cpp
+
+commit 55abf2778e2763fe9f4e42ced6f7775dfba2f683
+Author: july <july1981@com2us.com>
+Date:   Fri Feb 27 12:08:59 2026 +0900
+
+    Update obstacle material to glass and fix gap static mesh scale
+
+M	Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Data/ExObstacleStrategy_Gap.cpp
+
+commit b114dab1b5afc046ad1bcec03cf321fb235d4f5a
+Author: july <july1981@com2us.com>
+Date:   Wed Feb 11 13:54:12 2026 +0900
+
+    feat: Gap 장애물 Strategy 구현 및 Slide Strategy 개선
+    
+    == Gap 장애물 (UExObstacleStrategy_Gap) ==
+    - AExFloorChunk에 ApplyGap/ClearGap 추가
+      - FloorMesh 숨기고 양쪽 바닥 조각을 동적 생성
+      - DeactivateChunk 시 자동 ClearGap 호출 (풀 복원)
+      - 이중 스케일링 버그 수정: 자식 컴포넌트의 RelativeScale/Location에서
+        부모(FloorMesh) 스케일 중복 적용 제거
+    - ExObstacleStrategy_Gap 구현
+      - CachedSpawnX로 CalculateSpawnPosition → ConfigureObstacle 간 데이터 전달
+      - ChunkFloor 너비 기반 Y축 스케일 계산 (Slide와 동일 패턴)
+      - Y 피봇 보정 적용 (Base/Slide Strategy와 동일)
+    
+    == Slide 장애물 (UExObstacleStrategy_Slide) ==
+    - MaxPassHeight 정적 프로퍼티 제거 → 런타임 CrouchHalfHeight 기반
+    - ClearanceMargin UPROPERTY 추가 (기본 15cm, 에디터 조정 가능)
+    - GetCrouchPassHeight: MoverComponent → StanceSettings 참조, Fallback 120cm
+    
+    == ExObstacleDefinition ==
+    - Slide 전용 MaxPassHeight 프로퍼티 제거
+    
+    == 문서 ==
+    - Md/Guides/ExRunnerPlay/ObstacleSystem_Guide.md 통합 문서 작성
+    - Md/ObstacleManager_StrategyPattern.md 삭제 (통합)
+    
+    == BP/Data ==
+    - ExObstacleGap, ExObstacleSlide, ExObstacleClim DataAsset 추가
+    - ExLevelBlockGap 장애물 BP 추가
+    - BP_ExRunnerGameMode 업데이트
+
+M	Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Data/ExObstacleStrategy_Gap.cpp
+M	Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Data/ExObstacleStrategy_Gap.h
+M	Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Data/ExObstacleStrategy_Slide.cpp
+M	Plugins/GameFeatures/ExRunnerPlay/Source/ExRunnerPlayRuntime/Data/ExObstacleStrategy_Slide.h
