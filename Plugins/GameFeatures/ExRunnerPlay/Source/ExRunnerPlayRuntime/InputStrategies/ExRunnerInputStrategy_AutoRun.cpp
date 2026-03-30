@@ -23,8 +23,17 @@ void UExRunnerInputStrategy_AutoRun::HandleHorizontalInput(const FVector2D& Axis
 {
 	if (!OwnerInput) return;
 
-	// 좌우 스냅 판정 임계치 (0.5 이상이면 입력으로 인식)
-	const float LaneThreshold = 0.5f;
+	// [개선] ExGameModeDataSet의 SwipeActivationPercentage를 공통 임계치로 사용
+	const float LaneThreshold = OwnerInput->GetSwipeActivationPercentage();
+
+	// 수직(점프/슬라이드) 스와이프 도중 미세한 가로 흔들림으로 인한 레인 이동 방지
+	// X축보다 Y축 이동량이 더 크면 가로 입력으로 취급하지 않음 (대각선 오입력 방지)
+	if (FMath::Abs(AxisValue.Y) > FMath::Abs(AxisValue.X))
+	{
+		return;
+	}
+
+	const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
 
 	// 디버그
 	if (GEngine)
@@ -37,10 +46,16 @@ void UExRunnerInputStrategy_AutoRun::HandleHorizontalInput(const FVector2D& Axis
 	{
 		if (!bLeftTriggered)
 		{
-			if (GEngine) GEngine->AddOnScreenDebugMessage(82, 2.0f, FColor::Yellow, TEXT("--> Broadcasting Lane Change (-1)"));
 			bLeftTriggered = true;
 			bRightTriggered = false; // 반대 방향 플래그 해제
-			OwnerInput->OnLaneChangeRequested.Broadcast(-1);
+
+			// 글로벌 쿨다운 락 통과 검사 (동시 액션 차단)
+			if (Now - LastActionTime >= ActionCooldown)
+			{
+				LastActionTime = Now; // 쿨다운 락 온
+				if (GEngine) GEngine->AddOnScreenDebugMessage(82, 2.0f, FColor::Yellow, TEXT("--> Broadcasting Lane Change (-1)"));
+				OwnerInput->OnLaneChangeRequested.Broadcast(-1);
+			}
 		}
 	}
 	// 우측 레인 이동 요청 (X > +임계치)
@@ -48,10 +63,16 @@ void UExRunnerInputStrategy_AutoRun::HandleHorizontalInput(const FVector2D& Axis
 	{
 		if (!bRightTriggered)
 		{
-			if (GEngine) GEngine->AddOnScreenDebugMessage(82, 2.0f, FColor::Yellow, TEXT("--> Broadcasting Lane Change (+1)"));
 			bRightTriggered = true;
 			bLeftTriggered = false; // 반대 방향 플래그 해제
-			OwnerInput->OnLaneChangeRequested.Broadcast(1);
+
+			// 글로벌 쿨다운 락 통과 검사 (동시 액션 차단)
+			if (Now - LastActionTime >= ActionCooldown)
+			{
+				LastActionTime = Now; // 쿨다운 락 온
+				if (GEngine) GEngine->AddOnScreenDebugMessage(82, 2.0f, FColor::Yellow, TEXT("--> Broadcasting Lane Change (+1)"));
+				OwnerInput->OnLaneChangeRequested.Broadcast(1);
+			}
 		}
 	}
 	else
@@ -67,11 +88,11 @@ bool UExRunnerInputStrategy_AutoRun::CanRequestJump(bool bIsTriggered)
 	if (!bIsTriggered) return true; // 해제 이벤트는 항상 통과
 
 	const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
-	if (Now - LastJumpTime < ActionCooldown)
+	if (Now - LastActionTime < ActionCooldown)
 	{
-		return false; // 쿨다운 중 차단
+		return false; // 글로벌 쿨다운 중 조작 차단
 	}
-	LastJumpTime = Now;
+	LastActionTime = Now;
 	return true;
 }
 
@@ -80,11 +101,11 @@ bool UExRunnerInputStrategy_AutoRun::CanRequestSlide(bool bIsTriggered)
 	if (!bIsTriggered) return true; // 해제 이벤트는 항상 통과
 
 	const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
-	if (Now - LastSlideTime < ActionCooldown)
+	if (Now - LastActionTime < ActionCooldown)
 	{
-		return false; // 쿨다운 중 차단
+		return false; // 글로벌 쿨다운 중 조작 차단
 	}
-	LastSlideTime = Now;
+	LastActionTime = Now;
 	return true;
 }
 

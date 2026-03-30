@@ -125,6 +125,26 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 			FVector TargetPos = PathPoint + (PathRight * CurrentLaneYOffset);
 			TargetPos.Z = TargetPawn->GetActorLocation().Z; // Z축 변형 차단
 
+			// [개선] 공중(점프/슬라이딩) 체공 시 Mover의 마찰력/조향력 상실로 인한 궤도 이탈(Drift) 방지
+			// 물리 틱 이전에 시작 위치 자체를 경로 방향으로 부드럽게 잡아당겨(Correction) Mover 밖으로 튕겨나가는 것을 막습니다.
+			FVector CurrentLoc = TargetPawn->GetActorLocation();
+			FVector ExactPathPoint = GS->PathManager->GetPositionAtDistance(GS->RealPlayerPathDistance);
+			FVector ExactPathRight = FRotationMatrix(GS->PathManager->GetDirectionAtDistance(GS->RealPlayerPathDistance)).GetScaledAxis(EAxis::Y);
+			
+			// 우리가 있어야 할 정확한 레인 위 좌표
+			FVector IdealLoc = ExactPathPoint + (ExactPathRight * CurrentLaneYOffset);
+			IdealLoc.Z = CurrentLoc.Z; // 점프 높이는 온전히 보존
+
+			// 이탈 오차가 발생했다면 매 틱(ProduceInput 단계) 보간하여 끌어당김
+			FVector LateralErrorVec = IdealLoc - CurrentLoc;
+			if (LateralErrorVec.SizeSquared2D() > 1.0f)
+			{
+				float DeltaSeconds = FMath::Max(SimTimeMs / 1000.0f, 0.001f);
+				// 순간이동이 아닌, 물리 충돌 없이 빠르게 보간하여 궤도 유지
+				FVector CorrectedLoc = FMath::VInterpTo(CurrentLoc, IdealLoc, DeltaSeconds, 15.0f);
+				TargetPawn->SetActorLocation(CorrectedLoc, false);
+			}
+
 			// ★ 디버깅: 곡선 및 레인 추적(Pure Pursuit) 타겟 시각화
 			UExDebugStateSubsystem* DS = GetWorld()->GetGameInstance()->GetSubsystem<UExDebugStateSubsystem>();
 			if (DS && DS->IsCheatEnabled(TAG_Ex_Debug_Movement))
@@ -359,23 +379,24 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 	float DesiredLateralOffset = CurrentLaneYOffset;
 	float LateralError = LateralOffset - DesiredLateralOffset;
 
-	// [최종 수정] Mover 플러그인이 ProduceInput의 OrientationIntent를 통해 
-	// 알아서 부드럽게 모델을 회전(보간)시키므로, Tick에서 강제로 컨트롤러를 RInterpTo로 비틀어버리는 로직을 완전히 삭제합니다.
-	// 이로써 조작 컨트롤러와 물리 Mover 간의 회전 경합(덜덜거림)이 완벽히 해결됩니다.
+	float DynamicInterpSpeed = (GameModeDataSet) ? GameModeDataSet->LookInterpSpeed : 8.0f;
 
-	// 컨트롤러의 회전은 기본적으로 경로 정면(PathYaw)을 기준으로 유지하되, 
-	// 실제 눈에 보이는 캐릭터의 부드러운 회전은 Mover에게 온전히 위임합니다.
+	// [개선] 점프/슬라이딩 공중 제어(Drift) 중 회전 보간 스킵 현상 해결
+	// Mover가 공중(Falling) 상태 등의 특수 모드에서 Orientation 보간을 무시하여 캐릭터가 직선으로 굳는 현상을 막기 위해, 
+	// AutoRun 모드에서는 아예 액터 본체의 회전을 곡선 레인의 방향(TargetRot)으로 직접 부드럽게 보간해서 강제로 돌립니다.
+	if (bIsAutoRunMode)
+	{
+		FRotator CurrentActorRot = TargetPawn->GetActorRotation();
+		FRotator NewActorRot = FMath::RInterpTo(CurrentActorRot, TargetRot, DeltaTime, DynamicInterpSpeed);
+		TargetPawn->SetActorRotation(NewActorRot);
+	}
+
+	// 컨트롤러(주로 카메라가 바라보는) 설정
 	FRotator CurrentControlRot = Controller->GetControlRotation();
 	FRotator TargetControlRot = CurrentControlRot;
 	
 	TargetControlRot.Yaw = TargetRot.Yaw + TargetLookYawOffset;
 
-	// (주의) Mover가 알아서 보간하므로 Tick 단위의 조잡한 RInterpTo 등은 호출하지 않습니다.
-	// 단, 카메라 등 컨트롤러 회전에 의존하는 요소가 튀는 것을 방지하기 위해 컨트롤러의 타겟 방향만 
-	// 스냅(Snap) 또는 Mover가 회전한 만큼만 따라가게 두셔도 무방합니다. 
-	// 여기서는 카메라 등이 타겟을 부드럽게 비출 수 있게만 최소한의 보간을 남겨둡니다 (캐릭터 모델 덜덜거림과는 무관함).
-	
-	float DynamicInterpSpeed = (GameModeDataSet) ? GameModeDataSet->LookInterpSpeed : 8.0f;
 	FRotator NewControlRot = FMath::RInterpTo(CurrentControlRot, TargetControlRot, DeltaTime, DynamicInterpSpeed);
 	Controller->SetControlRotation(NewControlRot);
 

@@ -34,9 +34,8 @@ private:
 	/** 점프/슬라이드 연속 발동 쿨다운 (초). DataSet의 AutoRunActionCooldown 또는 기본값 사용 */
 	float ActionCooldown = 0.3f;
 
-	/** 마지막 점프/슬라이드 요청 시각 (GetWorld()->GetTimeSeconds() 기준) */
-	float LastJumpTime = -999.f;
-	float LastSlideTime = -999.f;
+	/** 글로벌 마지막 액션(점프/슬라이드/좌우 차선변경) 발생 시각 (GetWorld()->GetTimeSeconds() 기준) */
+	float LastActionTime = -999.f;
 
 	/** 좌우 입력 1회 발송 플래그 — 키를 뗄 때까지 재발동 차단 */
 	bool bLeftTriggered = false;
