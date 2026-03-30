@@ -102,6 +102,24 @@ void UExRunnerInputComponent::NativeOnMoveAction(const FInputActionValue& Value)
 
 void UExRunnerInputComponent::RequestJumpAction(bool bIsTriggered)
 {
+	// Strategy 게이트: AutoRun 모드에서는 쿨다운 중 차단
+	if (ActiveStrategy && !ActiveStrategy->CanRequestJump(bIsTriggered))
+	{
+		return;
+	}
+
+	if (bIsTriggered)
+	{
+		// 점프 발동 직전, 곡선 궤적을 예측하여 방향을 미리 틀어줌 (관성 이탈 보정)
+		if (APawn* OwnerPawn = Cast<APawn>(GetOwner()))
+		{
+			if (UExRunnerMovementComponent* MovComp = OwnerPawn->FindComponentByClass<UExRunnerMovementComponent>())
+			{
+				MovComp->ApplyPreJumpRotation();
+			}
+		}
+	}
+
 	InjectInputBoolForAction(JumpAction, bIsTriggered);
 
 	// [false 직접 Broadcast]

@@ -56,5 +56,9 @@ public:
 	/** AutoRun 모드 점프/슬라이드 연속 발동 방지 쿨다운 (초). 기본 0.3초 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GameMode|Runner|AutoRun", meta = (ClampMin = "0.0", ClampMax = "5.0"))
 	float AutoRunActionCooldown = 0.3f;
+
+	/** 점프 시 곡선 구간을 예측하여 추가로 회전시킬 Yaw 각도 가중치 (예: 1.0 = 예측 커브 100% 반영) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GameMode|Runner|AutoRun")
+	float JumpYawPredictionWeight = 1.0f;
 };
 

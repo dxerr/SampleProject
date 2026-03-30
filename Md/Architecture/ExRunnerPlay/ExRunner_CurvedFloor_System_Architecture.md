@@ -1,7 +1,7 @@
 # 커브 Floor 청크 시스템 가이드
 
-> **최종 업데이트**: 2026-02-27  
-> **상태**: 코드 구현 완료, 에디터 설정 및 PIE 테스트 완료, 잔여 AI 리포트 최적화 반영 완료
+> **최종 업데이트**: 2026-03-30  
+> **상태**: 코드 구현 완료, 점프 궤도 보정(Predictive Rotation) 반영 완료
 
 이 문서는 러너 게임의 **커브 Floor 청크 시스템**의 설계, 구현 코드, 에디터 설정 방법,
 그리고 향후 개선 사항을 종합적으로 기술합니다.
@@ -211,12 +211,13 @@ NewRotation.Roll = CurrentRotation.Roll;
     - `SafeKillDistance` 여유값 증대 고려.
     - 디버그 로그를 통해 청크 소멸 시점과 캐릭터 위치 정밀 추적.
 
-### 10.3 점프 중 회전 반영 테스트
-- **고민 사항**: 캐릭터가 점프(Airborne) 상태일 때도 경로의 곡률에 맞춰 회전(Yaw)을 계속 보정해야 하는가?
-- **테스트 계획**:
-    - **Case A (현행)**: 점프 중에도 `UpdateCharacterRotation`이 동작하여 공중에서 경로 방향으로 회전. (착지 안정성 유리)
-    - **Case B**: 점프 시 회전 고정. (관성 보존 느낌, 하지만 착지 시 경로 이탈 위험)
-    - 두 케이스 비교 후 결정.
+### 10.3 점프 중 회전 반영 (Pre-Jump Predictive Rotation) - [완료]
+- **문제**: 점프(Falling) 상태에서는 Mover가 방향키 입력을 상실하여 코너에서 관성 직진(이탈) 현상 발생.
+- **해결**: **예측 회전(Predictive Rotation)** 시스템 도입.
+    - 점프 실행 직전(`RequestJumpAction`), 미래의 곡률(`DeltaYaw`)을 계산하여 캐릭터를 미리 회전시킨 채로 이륙.
+    - `ProduceInput_Implementation`에서 공중 체공 내내 목표 곡선 방향으로 `OrientationIntent`를 지속 주입.
+- **조정 파라미터**: `ExGameModeDataSet`의 `JumpYawPredictionWeight`를 통해 꺾임 강도 조절 가능.
+- **주의**: 물리적 선회를 위해서는 캐릭터의 Mover 설정에서 `AirControl` 값이 충분히 높아야 함. (1.0 권장)
 
 ### 10.4 Gap 타입 장애물 오브젝트 처리 확인
 - **검증 대상**: `ExObstacleStrategy_Gap`이 커브 구간에서도 바닥 메시에 구멍(Gap)을 올바르게 뚫는지 확인.

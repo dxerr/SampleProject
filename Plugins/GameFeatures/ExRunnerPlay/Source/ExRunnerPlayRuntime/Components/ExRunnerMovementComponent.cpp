@@ -136,7 +136,30 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 			}
 
 			// 캐릭터 위치에서 타겟 위치를 향하는 방향 벡터 도출
-			ForwardDir = (TargetPos - TargetPawn->GetActorLocation()).GetSafeNormal();
+			FVector BaseDir = (TargetPos - TargetPawn->GetActorLocation()).GetSafeNormal();
+
+			// [점프 공중 체공 중 곡선 방향 유지]
+			// 공중에 떠 있을 때(Falling)는 앞서 계산된 타겟 방향에 추가로 예측된 곡선 방향으로 
+			// 지속적으로 각도를 꺾어주어야 Mover가 방향키/바라보는 방향을 유지하며 날아갑니다.
+			bool bIsFalling = false;
+			if (UMoverComponent* MoverComp = TargetPawn->FindComponentByClass<UMoverComponent>())
+			{
+				bIsFalling = (MoverComp->GetMovementModeName() == FName("Falling"));
+			}
+
+			if (bIsFalling && GameModeDataSet)
+			{
+				float LookAheadLimit = GS->RealPlayerPathDistance + 600.0f;
+				FRotator CurrentRot = GS->PathManager->GetDirectionAtDistance(GS->RealPlayerPathDistance);
+				FRotator FutureRot = GS->PathManager->GetDirectionAtDistance(LookAheadLimit);
+				
+				float DeltaYaw = FRotator::NormalizeAxis(FutureRot.Yaw - CurrentRot.Yaw);
+				float Weight = GameModeDataSet->JumpYawPredictionWeight;
+				
+				BaseDir = BaseDir.RotateAngleAxis(DeltaYaw * Weight, FVector::UpVector);
+			}
+
+			ForwardDir = BaseDir;
 		}
 		else
 		{
@@ -363,9 +386,6 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 
 	float DynamicInterpSpeed = (GameModeDataSet) ? GameModeDataSet->LookInterpSpeed : 8.0f;
 
-	// [개선] 점프/슬라이딩 공중 제어(Drift) 중 회전 보간 스킵 현상 해결
-	// Mover가 공중(Falling) 상태 등의 특수 모드에서 Orientation 보간을 무시하여 캐릭터가 직선으로 굳는 현상을 막기 위해, 
-	// AutoRun 모드에서는 아예 액터 본체의 회전을 곡선 레인의 방향(TargetRot)으로 직접 부드럽게 보간해서 강제로 돌립니다.
 	// [개선] SetActorRotation 강제 오버라이드 삭제 완료.
 	// 이유: ProduceInput_Implementation에서 주입하는 Inputs.OrientationIntent가
 	// Mover의 내부 TurnGenerator를 통해 물리적으로 부드럽게 캐릭터를 회전시킵니다.
@@ -446,3 +466,42 @@ void UExRunnerMovementComponent::OnLaneChangeRequestedCallback(int32 LaneDirecti
 		MoveRight();
 	}
 }
+
+void UExRunnerMovementComponent::ApplyPreJumpRotation()
+{
+	if (!TargetPawn || !bIsAutoRunMode) return;
+
+	AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
+	if (!GS || !GS->PathManager || !GameModeDataSet) return;
+
+	float PlayerDist = GS->RealPlayerPathDistance;
+	
+	// 점프 예상 체공 거리 (예: 점프 속도 * 점프 시간) -> 대략 600 유닛 앞
+	float LookAheadDist = PlayerDist + 600.0f; 
+
+	FRotator CurrentPathRot = GS->PathManager->GetDirectionAtDistance(PlayerDist);
+	FRotator FuturePathRot = GS->PathManager->GetDirectionAtDistance(LookAheadDist);
+
+	// 현재 곡선과 미래 곡선 사이의 휨 정도(Delta Yaw)
+	float DeltaYaw = FRotator::NormalizeAxis(FuturePathRot.Yaw - CurrentPathRot.Yaw);
+
+	// 추가 회전 가중치 적용
+	float Weight = GameModeDataSet->JumpYawPredictionWeight;
+	float FinalYaw = CurrentPathRot.Yaw + (DeltaYaw * Weight);
+
+	// 액터 본체 회전 적용 (점프 개시 시 이 정면 각을 기준으로 날아감)
+	FRotator NewRot = TargetPawn->GetActorRotation();
+	NewRot.Yaw = FinalYaw;
+	TargetPawn->SetActorRotation(NewRot);
+
+	// 탑승된 컨트롤러(카메라) 화면 회전도 동기화 지연 방지
+	if (AController* PC = TargetPawn->GetController())
+	{
+		FRotator ControlRot = PC->GetControlRotation();
+		ControlRot.Yaw = FinalYaw;
+		PC->SetControlRotation(ControlRot);
+	}
+
+	// UE_LOG(LogTemp, Log, TEXT("[PreJump] DeltaYaw: %.1f -> Multiplied FinalYaw Offset: %.1f"), DeltaYaw, DeltaYaw * Weight);
+}
+

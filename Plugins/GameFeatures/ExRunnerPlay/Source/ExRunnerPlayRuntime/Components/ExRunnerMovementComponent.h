@@ -115,6 +115,9 @@ private:
 
 
 public:
+	// 점프 직전에 곡선 구간을 예측하여 향해야 할 Yaw 각도로 캐릭터를 회전시킵니다.
+	void ApplyPreJumpRotation();
+
 	// OnLookRequested 델리게이트 콜백 (Dynamic Multicast 바인딩용)
 	// Strategy 클래스에서 RemoveDynamic 참조를 위해 public 선언
 	UFUNCTION()
