@@ -98,6 +98,9 @@ public:
 	FOnRunnerLaneChangeRequested OnLaneChangeRequested;
 
 protected:
+	/** 터치/조이스틱 등에서 수신된 최근 X축(좌우) 입력값을 보존 */
+	FVector2D LastReceivedMoveInput = FVector2D::ZeroVector;
+
 	/** 현재 활성화된 입력 Strategy 인스턴스 */
 	UPROPERTY()
 	TObjectPtr<UExRunnerInputStrategy> ActiveStrategy;
@@ -125,6 +128,10 @@ public:
 	// 이동 요청 (축 입력)
 	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Actions")
 	virtual void RequestMoveAction(FVector2D AxisValue);
+
+	// 조향(X)은 유지하고 전진(Y)만 1.0으로 강제하는 AutoRun 전용 주입 함수
+	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Actions")
+	void InjectAutoForwardInput();
 
 	// 좌우 회전(Look) 요청 (모바일 델타 입력 등)
 	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Actions")

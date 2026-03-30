@@ -12,8 +12,8 @@
 #include "../Data/ExCurveConfig.h"
 #include "GameFramework/Character.h"
 #include "DrawDebugHelpers.h"
-#include "Util/Actor/ExActorUtil.h"
 #include "ExRunnerInputComponent.h"
+#include "Util/Actor/ExActorUtil.h"
 #include "../Actors/ExFloorChunk.h"
 #include "Data/Modes/ExGameModeDataSet.h"
 #include "ExDebugStateSubsystem.h"
@@ -70,7 +70,7 @@ void UExRunnerMovementComponent::TryInitializeMover()
 
 			// ★ 핵심: 컨테이너 폰에 상주하는 InputComponent가 나(Movement)를 대기 중일 수 있으므로
 			// 초기화(부착) 완료 시점에 찾아가서 자신을 등록하여 Strategy 바인딩을 즉시 촉발(IoC)합니다.
-			if (UExRunnerInputComponent* InputComp = UExActorUtil::FindComponentInHierarchy<UExRunnerInputComponent>(this))
+			if (UExRunnerInputComponent* InputComp = TargetPawn->FindComponentByClass<UExRunnerInputComponent>())
 			{
 				InputComp->RegisterMovementComponent(this);
 				bIsLookInputBound = true; // 플래그 갱신
@@ -105,15 +105,14 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 {
 	FCharacterDefaultInputs& Inputs = InputCmdResult.InputCollection.FindOrAddMutableDataByType<FCharacterDefaultInputs>();
 	
-	// 모바일/패키징 빌드 필수 주입 로직 제거 (2cf5527 커밋)
-	// 경고: 매 프레임 RequestMoveAction(0, 1)을 강제 주입하면 Enhanced Input이 기존의 키보드/터치 X축(조향) 입력값을 멱등으로 덮어써서 
-	// 지워버리는 치명적 구조 결함이 발생합니다. 어차피 Mover의 DirectionalIntent가 Pure Pursuit로 자체 구동되므로 전진 주입은 불필요합니다.
-	if (TargetPawn)
+	// 모바일/패키징 빌드 필수 주입 로직 (복원 및 안전화)
+	// AutoRun 모드일 때, X축(터치) 값을 보존하면서 Y=1.0 만 안전하게 합성하여 주입합니다.
+	if (TargetPawn && bIsAutoRunMode)
 	{
-		// if (UExRunnerInputComponent* InputComp = TargetPawn->FindComponentByClass<UExRunnerInputComponent>())
-		// {
-		//	InputComp->RequestMoveAction(FVector2D(0.0f, 1.0f)); 
-		// }
+		if (UExRunnerInputComponent* InputComp = TargetPawn->FindComponentByClass<UExRunnerInputComponent>())
+		{
+			InputComp->InjectAutoForwardInput(); 
+		}
 	}
 	
 	// [개선] 컨트롤러 회전 지연과 차선 보간 문제를 해결하기 위해 경로 매니저 활용

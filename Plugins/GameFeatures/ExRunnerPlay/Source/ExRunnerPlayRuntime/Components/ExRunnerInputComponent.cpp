@@ -82,6 +82,7 @@ void UExRunnerInputComponent::NativeOnSprintAction(const FInputActionValue& Valu
 void UExRunnerInputComponent::NativeOnMoveAction(const FInputActionValue& Value)
 {
 	FVector2D AxisValue = Value.Get<FVector2D>();
+	LastReceivedMoveInput = AxisValue; // 최신 조작값 캐싱
 
 	if (GEngine) GEngine->AddOnScreenDebugMessage(84, 0.0f, FColor::Purple, FString::Printf(TEXT("[InputComp] OnMoveAction Received: X=%.2f, Y=%.2f"), AxisValue.X, AxisValue.Y));
 
@@ -150,6 +151,18 @@ void UExRunnerInputComponent::RequestMoveAction(FVector2D AxisValue)
 		// UE_LOG(LogTemp, Warning, TEXT("[InputInjection] MoveAction: %s"), *AxisValue.ToString());
 	}
 	InjectInputVectorForAction(MoveAction, FVector(AxisValue, 0.0f));
+}
+
+void UExRunnerInputComponent::InjectAutoForwardInput()
+{
+	if (!MoveAction) return;
+
+	// 기존 X축(좌우 스와이프) 조작값은 그대로 유지하고, Y축 전진만 1.0으로 강제 합성
+	FVector2D BlendedInput;
+	BlendedInput.X = LastReceivedMoveInput.X;
+	BlendedInput.Y = 1.0f; // 전진 고정
+
+	InjectInputVectorForAction(MoveAction, FVector(BlendedInput, 0.0f));
 }
 
 
