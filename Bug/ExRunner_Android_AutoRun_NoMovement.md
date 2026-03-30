@@ -1,19 +1,23 @@
-# [버그 리포트] 안드로이드 빌드 시 Mover 전진 안 함 (Auto-Run)
+# [버그 리포트] 안드로이드 빌드용 Mover 자동 전진 및 좌우 스와이프 충돌 현상
 
 ## 이슈 요약
-에디터 환경에서는 정상적으로 캐릭터가 자동 전진(Auto-Run)을 수행하지만, 안드로이드(모바일) 환경 또는 Shipping 빌드에서는 캐릭터가 달리지 않고 제자리에 서있는 현상 발생.
+- **1차 증상**: `RequestMoveAction(0, 1)` 주입 코드를 제거하자 에디터에서는 전진을 잘 하지만 안드로이드 빌드에서는 전진하지 못하고 캐릭터가 멈춤.
+- **2차 증상**: 에디터와 안드로이드 모두 주입을 부활시키자 전진은 다시 동작하지만, 좌우 레인 스와이프(조향) 입력이 무시되는 멱등성 충돌 발생.
 
-## 원인 분석
-1. **의도적인 코드 제거의 여파**: 기존에 `ExRunnerMovementComponent::ProduceInput_Implementation` 안에서 `InputComp->RequestMoveAction(FVector2D(0.0f, 1.0f));`를 매 프레임 주입하던 로직을 제거함. (좌우 터치/조이스틱 등 Enhanced Input의 X축 값이 멱등성에 의해 `0.0`으로 덮어씌워져 조향이나 차선 변경이 씹히는 구조적 결함 때문)
-2. **모바일 Mover/Enhanced Input의 Sleep 특성**: 키보드 입력이 없고 가상 조이스틱 터치 이벤트가 발생하지 않는 모바일 빌드에서는 Enhanced Input의 `MoveAction`이 비활성화(Zero) 상태를 반환함. Mover는 기본 Input Producer 통신 단계에서 별개의 조작 인텐트(Intent)가 없거나 갱신된 입력 패킷이 없다고 판단하여 사실상 시뮬레이션 파이프라인에서 액션을 유동적으로 정지하거나 애니메이션 State(Idle) 전환에 묶임. 
-결과적으로 Pure Pursuit이 바라볼 올바른 경로(ForwardDir)를 계산하더라도, 시스템이 Awake 상태로 입력 커맨드를 실행하지 않음.
+## 원인 분석 (진짜 원인 발견)
+1. **스와이프 우선순위 박탈 (2차 증상의 원인)**: 언리얼 Enhanced Input 시스템에서 `InjectInputVectorForAction`을 사용해 인위적으로 입력값을 꽂아 넣으면, **해당 Action에 매핑된 실제 하드웨어 터치(스와이프/조이스틱) 입력은 시스템이 무시(Suppress)** 해 버립니다. 이 때문에 X축 값을 보존하려고 시도해도, Enhanced Input 단에서 조작 자체를 차단해버려 영원히 `X=0` 상태의 굴레에 빠졌습니다.
+2. **안드로이드에서만 전진하지 못했던 이유 (1차 증상의 원인)**: 
+   안드로이드 모바일 환경은 `MoveAction`에 '가상 조이스틱' 장치가 기본 할당되어 있습니다. 이 가상 조이스틱은 스와이프하지 않을 때 항상 `(0, 0)` 값을 뿜어냅니다.
+   Mover 컴포넌트의 초깃값으로 설정되어 있는 `기본 Input Producer(예: UCommonMoverInputProducer)`가 이 `(0, 0)` 값을 읽어들여 폰의 `DirectionalIntent`를 0으로 맞춥니다.
+   문제는 객체 생성/초기화 순서상 `UExRunnerMovementComponent`가 배열에 먼저 등록되고, 컨테이너 폰의 기본 Producer가 늦게 등록되면서 **기본 Producer가 우리 시스템의 `Pure Pursuit(경우점 추적 전진 명령)`을 최후에 덮어써버렸던 것**입니다! (PC 에디터에서는 가상 조이스틱이 없어 `0,0`이 강제발생하지 않아 멀쩡했습니다.)
 
-## 해결 방법
-**스와이프 보존 로직 + Y 강제전진 동시 합성 방식** 도입
-1. **X축 값 보존 캐싱**: `UExRunnerInputComponent::NativeOnMoveAction`에서 플레이어가 가상 조이스틱이나 화면을 스와이프했을 때 발생한 X축과 Y축 값을 `LastReceivedMoveInput`에 보존.
-2. **`InjectAutoForwardInput()` 신설**: 안전하게 Y축을 `1.0` (전진)으로 강제하되, X축은 보존된 `LastReceivedMoveInput.X`를 합성하여 주입하는 새로운 로직 개설.
-3. **Mover 호출부 변경**: `ProduceInput` 호출 타임에서 기존처럼 `(0, 1)` 직접 강제가 아닌 `InputComp->InjectAutoForwardInput()`을 쏘도록 교체. AutoRun 모드일 경우에만 작동하도록 안전 조건 추가.
+## 해결 방법 (최종 수정안)
+1. **문제의 주입 코드 영구 삭제 (`ExRunnerInputComponent.h/cpp` 원상복구)**:
+   가상 조작값과 실제 스와이프 조작값이 충돌하는 주입 구조 자체를 폐기했습니다. 이제 플레이어의 순수한 터치 입력만이 `MoveAction`을 구동하여 좌우 이동이 정상 작동합니다.
+2. **Mover 우선순위 강제 재정렬 (`ExRunnerMovementComponent::TickComponent`)**:
+   `InputProducers` 배열 끝에 `UExRunnerMovementComponent(this)`가 항상 마지막 인덱스로 존재하도록 `Remove` -> `Add` 로직을 Tick 단위로 배치했습니다.
+   이로 인해 Mover의 기본 Producer가 아무리 화면 터치가 없어서 `(0, 0)`을 내뿜어도, 우리가 구현한 `ProduceInput_Implementation`이 최종적으로 `ForwardDir(Pure Pursuit)`을 덧칠하게 되어 안드로이드에서도 전진이 보장됩니다.
 
 ## 결과
-- 안드로이드 환경에서도 Enhanced Input이 지속된 "액션 진행(Awake)"을 Mover에게 보고하게 되어 정상적으로 자동 전진 수행 가능.
-- 기존에 우려되었던 좌우 차선변경(X값 터치오차/씹힘 현상) 버그가 완벽하게 복구 및 보호됨.
+- 터치 입력이 씹히는 구조 결함 완벽 해소 (좌우 스와이프 가능).
+- 안드로이드 환경에서도 Mover의 가상 조이스틱 (0,0) 현상을 무시하고 자동 전진 동작 성공.

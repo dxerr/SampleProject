@@ -105,16 +105,6 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 {
 	FCharacterDefaultInputs& Inputs = InputCmdResult.InputCollection.FindOrAddMutableDataByType<FCharacterDefaultInputs>();
 	
-	// 모바일/패키징 빌드 필수 주입 로직 (복원 및 안전화)
-	// AutoRun 모드일 때, X축(터치) 값을 보존하면서 Y=1.0 만 안전하게 합성하여 주입합니다.
-	if (TargetPawn && bIsAutoRunMode)
-	{
-		if (UExRunnerInputComponent* InputComp = TargetPawn->FindComponentByClass<UExRunnerInputComponent>())
-		{
-			InputComp->InjectAutoForwardInput(); 
-		}
-	}
-	
 	// [개선] 컨트롤러 회전 지연과 차선 보간 문제를 해결하기 위해 경로 매니저 활용
 	FVector ForwardDir = FVector::ForwardVector;
 	AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
@@ -197,6 +187,14 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 
 	// 아직 부모 폰에 안 붙었다면 위치 업데이트 로직 등은 스킵
 	if (!TargetPawn) return;
+
+	// 순서 보장: 기본 Mover Input Producer가 빈 가상 조이스틱 값(0,0)을 덮어쓰지 못하도록 이 컴포넌트를 항상 마지막에 위치시킴
+	UMoverComponent* MoverComp = TargetPawn->FindComponentByClass<UMoverComponent>();
+	if (MoverComp && MoverComp->InputProducers.Num() > 0 && MoverComp->InputProducers.Last() != this)
+	{
+		MoverComp->InputProducers.RemoveSingle(this);
+		MoverComp->InputProducers.Add(this);
+	}
 
 	// 속도 수집은 ExRunnerStatComponent의 자체 타이머(StatPollInterval)가 담당합니다.
 
