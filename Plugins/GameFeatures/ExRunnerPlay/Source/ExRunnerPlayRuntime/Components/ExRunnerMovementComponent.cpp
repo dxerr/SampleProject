@@ -239,6 +239,14 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 	UpdateLanePosition(DeltaTime);
 }
 
+bool UExRunnerMovementComponent::IsLaneTransitionComplete() const
+{
+	// TargetY: 목표 레인 오프셋 (CurrentLaneIndex * LaneWidth)
+	const float TargetY = CurrentLaneIndex * LaneWidth;
+	// 오차 5cm 이내면 이동 완료로 판정
+	return FMath::IsNearlyEqual(CurrentLaneYOffset, TargetY, 5.0f);
+}
+
 void UExRunnerMovementComponent::MoveLeft()
 {
 	CurrentLaneIndex = FMath::Clamp(CurrentLaneIndex - 1, -1, 1);

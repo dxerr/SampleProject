@@ -55,6 +55,17 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Runner|Lane")
 	float GetCurrentLaneYOffset() const { return CurrentLaneYOffset; }
 
+	/** 현재 레인 인덱스 반환 (-1=좌, 0=중앙, 1=우) */
+	UFUNCTION(BlueprintPure, Category = "Runner|Lane")
+	int32 GetCurrentLaneIndex() const { return CurrentLaneIndex; }
+
+	/**
+	 * 레인 보간(이동)이 완료되었는지 여부 반환
+	 * CurrentLaneYOffset이 TargetY에 충분히 근접했으면 true
+	 */
+	UFUNCTION(BlueprintPure, Category = "Runner|Lane")
+	bool IsLaneTransitionComplete() const;
+
 	/** AutoRun 모드 활성화 여부 설정 (AutoRun Strategy에서 호출) */
 	UFUNCTION(BlueprintCallable, Category = "Runner|Mode")
 	void SetAutoRunMode(bool bEnabled);

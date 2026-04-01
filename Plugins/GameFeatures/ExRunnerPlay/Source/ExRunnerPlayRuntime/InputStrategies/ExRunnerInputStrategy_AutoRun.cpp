@@ -23,7 +23,7 @@ void UExRunnerInputStrategy_AutoRun::HandleHorizontalInput(const FVector2D& Axis
 {
 	if (!OwnerInput) return;
 
-	// [개선] ExGameModeDataSet의 SwipeActivationPercentage를 공통 임계치로 사용
+	// ExGameModeDataSet의 SwipeActivationPercentage를 공통 임계치로 사용
 	const float LaneThreshold = OwnerInput->GetSwipeActivationPercentage();
 
 	// 수직(점프/슬라이드) 스와이프 도중 미세한 가로 흔들림으로 인한 레인 이동 방지
@@ -33,53 +33,38 @@ void UExRunnerInputStrategy_AutoRun::HandleHorizontalInput(const FVector2D& Axis
 		return;
 	}
 
-	const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+	UExRunnerMovementComponent* MovComp = CachedMovementComp.Get();
+	if (!MovComp) return;
 
-	// 디버그
+	// 디버그 표시
 	if (GEngine)
 	{
-		GEngine->AddOnScreenDebugMessage(81, 0.0f, FColor::Cyan, FString::Printf(TEXT("[AutoRun Strategy] Axis.X: %.2f | bLeft: %d | bRight: %d"), AxisValue.X, bLeftTriggered, bRightTriggered));
+		GEngine->AddOnScreenDebugMessage(81, 0.0f, FColor::Cyan,
+			FString::Printf(TEXT("[AutoRun Strategy] Axis.X: %.2f | Threshold: %.2f | Lane: %d | Comp: %d"),
+				AxisValue.X, LaneThreshold, MovComp->GetCurrentLaneIndex(), MovComp->IsLaneTransitionComplete()));
 	}
 
-	// 좌측 레인 이동 요청 (X < -임계치)
-	if (AxisValue.X < -LaneThreshold)
+	// ─── 고정 임계값 기반 연속 이동 로직 (주인님 지시사항 반영) ───────────────────
+	
+	// 1. 우측 드래그 (X > +임계치)
+	if (AxisValue.X > LaneThreshold)
 	{
-		if (!bLeftTriggered)
+		// 보간이 완료되었고, 더 이상 우측으로 갈 수 있는 레인이 있다면 즉시 요청
+		if (MovComp->IsLaneTransitionComplete() && MovComp->GetCurrentLaneIndex() < 1)
 		{
-			bLeftTriggered = true;
-			bRightTriggered = false; // 반대 방향 플래그 해제
-
-			// 글로벌 쿨다운 락 통과 검사 (동시 액션 차단)
-			if (Now - LastActionTime >= ActionCooldown)
-			{
-				LastActionTime = Now; // 쿨다운 락 온
-				if (GEngine) GEngine->AddOnScreenDebugMessage(82, 2.0f, FColor::Yellow, TEXT("--> Broadcasting Lane Change (-1)"));
-				OwnerInput->OnLaneChangeRequested.Broadcast(-1);
-			}
+			if (GEngine) GEngine->AddOnScreenDebugMessage(82, 2.0f, FColor::Yellow, TEXT("--> Lane Change (+1) Requested"));
+			OwnerInput->OnLaneChangeRequested.Broadcast(1);
 		}
 	}
-	// 우측 레인 이동 요청 (X > +임계치)
-	else if (AxisValue.X > LaneThreshold)
+	// 2. 좌측 드래그 (X < -임계치)
+	else if (AxisValue.X < -LaneThreshold)
 	{
-		if (!bRightTriggered)
+		// 보간이 완료되었고, 더 이상 좌측으로 갈 수 있는 레인이 있다면 즉시 요청
+		if (MovComp->IsLaneTransitionComplete() && MovComp->GetCurrentLaneIndex() > -1)
 		{
-			bRightTriggered = true;
-			bLeftTriggered = false; // 반대 방향 플래그 해제
-
-			// 글로벌 쿨다운 락 통과 검사 (동시 액션 차단)
-			if (Now - LastActionTime >= ActionCooldown)
-			{
-				LastActionTime = Now; // 쿨다운 락 온
-				if (GEngine) GEngine->AddOnScreenDebugMessage(82, 2.0f, FColor::Yellow, TEXT("--> Broadcasting Lane Change (+1)"));
-				OwnerInput->OnLaneChangeRequested.Broadcast(1);
-			}
+			if (GEngine) GEngine->AddOnScreenDebugMessage(82, 2.0f, FColor::Yellow, TEXT("--> Lane Change (-1) Requested"));
+			OwnerInput->OnLaneChangeRequested.Broadcast(-1);
 		}
-	}
-	else
-	{
-		// 중립 복귀 시 플래그 초기화 → 다음 입력 허용
-		bLeftTriggered = false;
-		bRightTriggered = false;
 	}
 }
 
@@ -121,6 +106,9 @@ void UExRunnerInputStrategy_AutoRun::BindToMovement(UExRunnerMovementComponent* 
 
 	// 3. AutoRun 모드 플래그 활성화 → UpdateLanePosition 보간 연산 허용
 	MovementComp->SetAutoRunMode(true);
+
+	// 4. 보간 완료 여부 및 레인 인덱스 조회를 위해 포인터 캐싱
+	CachedMovementComp = MovementComp;
 }
 
 void UExRunnerInputStrategy_AutoRun::UnbindFromMovement(UExRunnerMovementComponent* MovementComp)
@@ -132,4 +120,7 @@ void UExRunnerInputStrategy_AutoRun::UnbindFromMovement(UExRunnerMovementCompone
 
 	// AutoRun 모드 해제
 	MovementComp->SetAutoRunMode(false);
+
+	// 캐싱 포인터 해제
+	CachedMovementComp = nullptr;
 }

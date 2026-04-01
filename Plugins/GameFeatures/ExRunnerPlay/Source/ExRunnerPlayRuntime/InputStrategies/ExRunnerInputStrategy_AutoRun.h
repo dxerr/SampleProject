@@ -37,7 +37,10 @@ private:
 	/** 글로벌 마지막 액션(점프/슬라이드/좌우 차선변경) 발생 시각 (GetWorld()->GetTimeSeconds() 기준) */
 	float LastActionTime = -999.f;
 
-	/** 좌우 입력 1회 발송 플래그 — 키를 뗄 때까지 재발동 차단 */
-	bool bLeftTriggered = false;
-	bool bRightTriggered = false;
+	/**
+	 * BindToMovement에서 캐싱한 MovementComponent 포인터
+	 * 레인 보간 완료 여부 및 현재 인덱스 조회에 사용
+	 */
+	UPROPERTY()
+	TWeakObjectPtr<UExRunnerMovementComponent> CachedMovementComp;
 };
