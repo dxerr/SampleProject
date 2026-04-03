@@ -10,6 +10,7 @@
 #include "InputStrategies/ExRunnerInputStrategy.h"
 #include "InputStrategies/ExRunnerInputStrategy_Manual.h"
 #include "InputStrategies/ExRunnerInputStrategy_AutoRun.h"
+#include "InputStrategies/ExRunnerInputStrategy_AutoButtonRun.h"
 #include "ExRunnerMovementComponent.h"
 
 void UExRunnerInputComponent::BeginPlay()
@@ -185,6 +186,14 @@ void UExRunnerInputComponent::RequestLookAction(float YawAxisValue)
 	}
 }
 
+void UExRunnerInputComponent::RequestLaneChange(int32 LaneDirection)
+{
+	if (ActiveStrategy)
+	{
+		ActiveStrategy->HandleLaneChangeRequest(LaneDirection);
+	}
+}
+
 float UExRunnerInputComponent::GetSwipeActivationPercentage() const
 {
 	// 필수 애셋 누락 시 에디터 크래시(check)를 발생시켜 개발자가 즉시 인지하고 수정하도록 강제합니다. (가이드라인 1.7 준수)
@@ -256,6 +265,9 @@ void UExRunnerInputComponent::ApplyInputMode(EExRunnerInputMode NewMode)
 		case EExRunnerInputMode::AutoRun:
 			StrategyClass = UExRunnerInputStrategy_AutoRun::StaticClass();
 			break;
+		case EExRunnerInputMode::AutoButtonRun:
+			StrategyClass = UExRunnerInputStrategy_AutoButtonRun::StaticClass();
+			break;
 		default:
 			break;
 	}
@@ -278,5 +290,6 @@ void UExRunnerInputComponent::ApplyInputMode(EExRunnerInputMode NewMode)
 	}
 
 	CurrentInputMode = NewMode;
+	OnInputModeChanged.Broadcast(NewMode);
 	UE_LOG(LogTemp, Log, TEXT("[ExRunnerInput] InputMode 전환 완료: %s"), *UEnum::GetValueAsString(NewMode));
 }

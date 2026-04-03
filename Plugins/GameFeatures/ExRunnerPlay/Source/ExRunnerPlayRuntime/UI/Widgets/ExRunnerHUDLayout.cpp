@@ -1,6 +1,10 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "ExRunnerHUDLayout.h"
+#include "Components/WidgetSwitcher.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/Pawn.h"
+#include "../Components/ExRunnerInputComponent.h"
 
 TOptional<FUIInputConfig> UExRunnerHUDLayout::GetDesiredInputConfig() const
 {
@@ -19,13 +23,68 @@ void UExRunnerHUDLayout::NativeOnActivated()
 {
 	Super::NativeOnActivated();
 	
-	// 러너 게임 HUD가 화면에 띄워졌을 때 C++에서 추가로 해야 할 초기화 작업이 있다면 여기에 작성합니다.
-	// 뷰모델(ExRunnerInputViewModel, ExRunnerStatsViewModel)들은 
-	// WBP 내부 각 하위 위젯들의 OnActivated나 AutoInitialize 시점에서 스스로 초기화하도록 위임하는 것이 좋습니다.
+	// 바인딩 플래그 초기화
+	bIsInputBound = false;
+}
+
+void UExRunnerHUDLayout::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// 폰(Pawn)이 스폰 & 빙의(Possess)되기 전에는 InputComponent가 없으므로 계속 확인
+	if (!bIsInputBound && InputPadSwitcher)
+	{
+		if (APlayerController* PC = GetOwningPlayer())
+		{
+			if (APawn* Pawn = PC->GetPawn())
+			{
+				if (UExRunnerInputComponent* InputComp = Pawn->FindComponentByClass<UExRunnerInputComponent>())
+				{
+					// 1. 현재 모드 단발성 즉시 동기화 적용
+					HandleInputModeChanged(InputComp->GetCurrentInputMode());
+					
+					// 2. 델리게이트 동적 바인딩 (중복 방지)
+					InputComp->OnInputModeChanged.AddUniqueDynamic(this, &UExRunnerHUDLayout::HandleInputModeChanged);
+					
+					bIsInputBound = true; // 바인딩 성공, 이후 틱에서는 조회 안 함
+				}
+			}
+		}
+	}
 }
 
 void UExRunnerHUDLayout::NativeOnDeactivated()
 {
-	// 러너 게임 HUD가 내려갈 때 정리 작업
 	Super::NativeOnDeactivated();
+
+	// 바인딩 해제 처리
+	if (bIsInputBound && InputPadSwitcher)
+	{
+		if (APlayerController* PC = GetOwningPlayer())
+		{
+			if (APawn* Pawn = PC->GetPawn())
+			{
+				if (UExRunnerInputComponent* InputComp = Pawn->FindComponentByClass<UExRunnerInputComponent>())
+				{
+					InputComp->OnInputModeChanged.RemoveDynamic(this, &UExRunnerHUDLayout::HandleInputModeChanged);
+					bIsInputBound = false;
+				}
+			}
+		}
+	}
+}
+
+void UExRunnerHUDLayout::HandleInputModeChanged(EExRunnerInputMode NewInputMode)
+{
+	if (InputPadSwitcher)
+	{
+		if (NewInputMode == EExRunnerInputMode::AutoButtonRun)
+		{
+			InputPadSwitcher->SetActiveWidgetIndex(ButtonPadWidgetIndex);
+		}
+		else
+		{
+			InputPadSwitcher->SetActiveWidgetIndex(TouchPadWidgetIndex);
+		}
+	}
 }

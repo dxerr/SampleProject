@@ -7,6 +7,11 @@ void UExRunnerInputStrategy::Initialize(UExRunnerInputComponent* InOwner)
 	OwnerInput = InOwner;
 }
 
+void UExRunnerInputStrategy::HandleLaneChangeRequest(int32 LaneDirection)
+{
+	// 기본 구현: 파생 클래스에서 필요 시 오버라이드 (AutoButtonRun 전용)
+}
+
 bool UExRunnerInputStrategy::CanRequestJump(bool bIsTriggered)
 {
 	// 기본 구현: 제한 없음

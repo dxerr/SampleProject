@@ -17,4 +17,5 @@ enum class EExRunnerInputMode : uint8
 	None     UMETA(DisplayName = "없음 (입력 비활성화)"),
 	Manual   UMETA(DisplayName = "수동 입력"),
 	AutoRun  UMETA(DisplayName = "자동 달리기 (3레인)"),
+	AutoButtonRun UMETA(DisplayName = "자동 달리기 (4방향 버튼)"),
 };

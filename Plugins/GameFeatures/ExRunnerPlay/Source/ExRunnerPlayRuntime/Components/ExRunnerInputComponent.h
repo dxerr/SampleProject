@@ -14,7 +14,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerMoveRequested, FVector2D, A
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerLookRequested, float, AxisValue);
 /** AutoRun 모드 전용: 레인 이동 방향 (+1=우, -1=좌) */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerLaneChangeRequested, int32, LaneDirection);
-
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerInputModeChanged, EExRunnerInputMode, NewMode);
 class UInputAction;
 class UExRunnerInputStrategy;
 class UExGameModeDataSet;
@@ -97,6 +97,10 @@ public:
 	UPROPERTY(BlueprintAssignable, Category="ExInput|Runner|Events")
 	FOnRunnerLaneChangeRequested OnLaneChangeRequested;
 
+	/** 입력 모드 전환 알림 델리게이트 (UI 동기화 목적) */
+	UPROPERTY(BlueprintAssignable, Category="ExInput|Runner|Events")
+	FOnRunnerInputModeChanged OnInputModeChanged;
+
 protected:
 	/** 현재 활성화된 입력 Strategy 인스턴스 */
 	UPROPERTY()
@@ -129,6 +133,10 @@ public:
 	// 좌우 회전(Look) 요청 (모바일 델타 입력 등)
 	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Actions")
 	virtual void RequestLookAction(float YawAxisValue);
+
+	// 이산(Discrete) 레인 변경 요청 (UI 방향 버튼 등에서 호출)
+	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Actions")
+	virtual void RequestLaneChange(int32 LaneDirection);
 
 	/** 입력 모드 전환 (Manual ↔ AutoRun 등). BP에서 상황에 따라 호출 */
 	UFUNCTION(BlueprintCallable, Category="ExInput|Runner|Mode")

@@ -34,6 +34,13 @@ public:
 	virtual void HandleHorizontalInput(const FVector2D& AxisValue) PURE_VIRTUAL(UExRunnerInputStrategy::HandleHorizontalInput, );
 
 	/**
+	 * 이산(Discrete) 레인 변경 요청 처리
+	 * AutoButtonRun: UI 버튼에서 직접 방향값(-1/+1) 전달
+	 * 기본 구현: 아무 동작 안함 (호환 유지)
+	 */
+	virtual void HandleLaneChangeRequest(int32 LaneDirection);
+
+	/**
 	 * 점프 요청 게이트
 	 * @return true: 요청 통과 / false: 차단 (쿨다운 등)
 	 * 기본 구현: 항상 허용

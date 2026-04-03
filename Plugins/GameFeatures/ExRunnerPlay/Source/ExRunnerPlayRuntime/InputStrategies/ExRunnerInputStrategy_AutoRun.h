@@ -30,7 +30,7 @@ public:
 	virtual void BindToMovement(UExRunnerMovementComponent* MovementComp) override;
 	virtual void UnbindFromMovement(UExRunnerMovementComponent* MovementComp) override;
 
-private:
+protected:
 	/** 점프/슬라이드 연속 발동 쿨다운 (초). DataSet의 AutoRunActionCooldown 또는 기본값 사용 */
 	float ActionCooldown = 0.3f;
 

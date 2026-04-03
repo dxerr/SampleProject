@@ -40,6 +40,22 @@ void UExRunnerInputViewModel::OnSlideButtonReleased()
 	}
 }
 
+void UExRunnerInputViewModel::OnLeftLaneButtonClicked()
+{
+	if (UExRunnerInputComponent* InputComp = GetRunnerInputComponent())
+	{
+		InputComp->RequestLaneChange(-1);
+	}
+}
+
+void UExRunnerInputViewModel::OnRightLaneButtonClicked()
+{
+	if (UExRunnerInputComponent* InputComp = GetRunnerInputComponent())
+	{
+		InputComp->RequestLaneChange(1);
+	}
+}
+
 void UExRunnerInputViewModel::OnSprintCheckStateChanged(bool bIsChecked)
 {
 	if (UExRunnerInputComponent* InputComp = GetRunnerInputComponent())

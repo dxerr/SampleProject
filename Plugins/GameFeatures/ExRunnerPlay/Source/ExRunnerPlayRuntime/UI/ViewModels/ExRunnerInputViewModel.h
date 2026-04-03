@@ -32,6 +32,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category="ExUI|RunnerInput")
 	void OnSlideButtonReleased();
 
+	// UI 좌측 레인 이동 버튼 클릭 시 (ViewBinding 이벤트)
+	UFUNCTION(BlueprintCallable, Category="ExUI|RunnerInput")
+	void OnLeftLaneButtonClicked();
+
+	// UI 우측 레인 이동 버튼 클릭 시 (ViewBinding 이벤트)
+	UFUNCTION(BlueprintCallable, Category="ExUI|RunnerInput")
+	void OnRightLaneButtonClicked();
+
 	// UI 스프린트 체크박스 상태 변경 시 (ViewBinding 이벤트)
 	UFUNCTION(BlueprintCallable, Category="ExUI|RunnerInput")
 	void OnSprintCheckStateChanged(bool bIsChecked);
