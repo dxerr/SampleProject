@@ -25,7 +25,20 @@ void UExRunnerInputStrategy_AutoButtonRun::HandleLaneChangeRequest(int32 LaneDir
 	if (LaneDirection > 0 && MovComp->GetCurrentLaneIndex() >= 1) return;
 	if (LaneDirection < 0 && MovComp->GetCurrentLaneIndex() <= -1) return;
 
-	// 쿨다운 체크를 제거하여 버튼 연타(단일 탭) 시 즉각적인 반응성 보장
+	// 쿨다운 체크를 제거하여 버튼 연타(단일 프레임 즉각적인 반응) 보장
 
 	OwnerInput->OnLaneChangeRequested.Broadcast(LaneDirection);
+}
+
+void UExRunnerInputStrategy_AutoButtonRun::BindToMovement(class UExRunnerMovementComponent* MovementComp)
+{
+	// 부모(AutoRun)의 공통 로직 호출 (AutoRun=true 등)
+	Super::BindToMovement(MovementComp);
+
+	if (MovementComp)
+	{
+		// [개선] AutoButtonRun 모드 진입 시 물리력이 개입하는 스티어링을 차단하고 
+		// 즉각적이고 안정적인 SetActorLocation 보정을 사용하도록 설정
+		MovementComp->SetUseDirectLateralMovement(true);
+	}
 }

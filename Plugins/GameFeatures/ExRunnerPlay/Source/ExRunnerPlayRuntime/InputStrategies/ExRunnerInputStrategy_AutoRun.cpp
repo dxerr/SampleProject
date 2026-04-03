@@ -104,8 +104,9 @@ void UExRunnerInputStrategy_AutoRun::BindToMovement(UExRunnerMovementComponent* 
 	// 2. 레인 변경 요청 콜백 연결
 	OwnerInput->OnLaneChangeRequested.AddDynamic(MovementComp, &UExRunnerMovementComponent::OnLaneChangeRequestedCallback);
 
-	// 3. AutoRun 모드 플래그 활성화 → UpdateLanePosition 보간 연산 허용
+	// 3. AutoRun 모드 플래그 활성화하여 UpdateLanePosition 보간 연산 허용
 	MovementComp->SetAutoRunMode(true);
+	MovementComp->SetUseDirectLateralMovement(false); // AutoRun은 물리 스티어링 사용
 
 	// 4. 보간 완료 여부 및 레인 인덱스 조회를 위해 포인터 캐싱
 	CachedMovementComp = MovementComp;
@@ -120,6 +121,7 @@ void UExRunnerInputStrategy_AutoRun::UnbindFromMovement(UExRunnerMovementCompone
 
 	// AutoRun 모드 해제
 	MovementComp->SetAutoRunMode(false);
+	MovementComp->SetUseDirectLateralMovement(false);
 
 	// 캐싱 포인터 해제
 	CachedMovementComp = nullptr;

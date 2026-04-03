@@ -26,4 +26,7 @@ public:
 
 	/** 버튼 기반 이산 레인 변경 (보간 완료 + 레인 범위 체크 후 Broadcast) - 쿨다운 없음 */
 	virtual void HandleLaneChangeRequest(int32 LaneDirection) override;
+
+	/** MovementComponent 바인딩 시 물리 횡이동을 끄고 강제 보간 모드 활성화 */
+	virtual void BindToMovement(class UExRunnerMovementComponent* MovementComp) override;
 };

@@ -317,15 +317,39 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
 
 	// 목표 레인 오프셋 계산 (가운데: 0, 왼쪽: -LaneWidth, 오른쪽: +LaneWidth)
 	float TargetY = CurrentLaneIndex * LaneWidth;
+
+	// 보간 속도: "기존처럼 자연스러운 전환"을 원하시므로 초고속(50.0f) 대신 기존 LaneChangeSpeed를 그대로 사용합니다.
+	// bUseDirectLateralMovement 는 속도의 차이가 아니라, "물리 마찰력 상실 시 궤도 이탈 방지(강제 스냅)" 여부만을 결정합니다.
+	float SpeedToUse = LaneChangeSpeed;
+	CurrentLaneYOffset = FMath::FInterpTo(CurrentLaneYOffset, TargetY, DeltaTime, SpeedToUse);
 	
-	// 현재 오프셋 보간 (DeltaTime과 LaneChangeSpeed를 이용해 부드럽게 TargetY를 향해 값 축적)
-	CurrentLaneYOffset = FMath::FInterpTo(CurrentLaneYOffset, TargetY, DeltaTime, LaneChangeSpeed);
-	
-	// [수정] AddActorWorldOffset 위치 강제 갱신 로직 삭제
-	// 이유: Mover 시스템이 해당 프레임 마지막에 물리/속도 연산 후 위치를 강제로 덮어씌워버리기 때문에 
-	// 틱에서 WorldOffset을 더하는 것은 무시되거나 물리 충돌 버그를 야기함.
-	// 대신 위에서 보간된 CurrentLaneYOffset을 ProduceInput_Implementation에서 참조하여 
-	// Mover DirectionalInput 방향 벡터(목표 방향성)를 통해 매끄럽게 레인에 스티어링(Steering) 되도록 통합함.
+	// [개선] 점프 체공 상태나 마찰력 없는 슬라이딩 상태 파훼용 SetActorLocation 보정 처리 (bUseDirectLateralMovement 플래그 전용)
+	if (bUseDirectLateralMovement && TargetPawn)
+	{
+		AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
+		if (GS && GS->PathManager)
+		{
+			float PlayerPathDist = GS->RealPlayerPathDistance;
+			FVector PathPoint = GS->PathManager->GetPositionAtDistance(PlayerPathDist);
+			FVector PathRight = FRotationMatrix(GS->PathManager->GetDirectionAtDistance(PlayerPathDist)).GetScaledAxis(EAxis::Y);
+			
+			FVector CurrentLoc = TargetPawn->GetActorLocation();
+			
+			// [크리티컬 버그 수정] 앞으로 전진하지 못하는 문제 해결.
+			// PathPos 로 전체 X,Y를 덮어씌우면 플레이어의 현재 진행도(Mover에 의한 전진)가 무시되고 제자리에 갇힙니다.
+			// 따라서 오직 "레인 횡방향(PathRight)"에 대한 오차만 구해서 해당 축으로만 교정합니다!
+			
+			float CurrentLateralOffset = FVector::DotProduct(CurrentLoc - PathPoint, PathRight);
+			float LateralError = CurrentLaneYOffset - CurrentLateralOffset;
+			
+			if (FMath::Abs(LateralError) > 0.1f)
+			{
+				// 현재 위치에서 오차만큼 횡방향으로 이동 (전진 축과 Z 고도에는 아무 영향을 주지 않음)
+				FVector CorrectedLoc = CurrentLoc + (PathRight * LateralError);
+				TargetPawn->SetActorLocation(CorrectedLoc, false);
+			}
+		}
+	}
 }
 
 void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
@@ -457,6 +481,12 @@ void UExRunnerMovementComponent::SetAutoRunMode(bool bEnabled)
 	}
 
 	UE_LOG(LogExRunnerMovement, Log, TEXT("[MovementComp] AutoRunMode = %s"), bEnabled ? TEXT("ON") : TEXT("OFF"));
+}
+
+void UExRunnerMovementComponent::SetUseDirectLateralMovement(bool bEnable)
+{
+	bUseDirectLateralMovement = bEnable;
+	UE_LOG(LogExRunnerMovement, Log, TEXT("[MovementComp] UseDirectLateralMovement = %s"), bEnable ? TEXT("ON") : TEXT("OFF"));
 }
 
 void UExRunnerMovementComponent::OnLaneChangeRequestedCallback(int32 LaneDirection)

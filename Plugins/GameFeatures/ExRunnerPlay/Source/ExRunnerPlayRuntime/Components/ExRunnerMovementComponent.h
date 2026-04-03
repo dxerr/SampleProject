@@ -70,6 +70,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Runner|Mode")
 	void SetAutoRunMode(bool bEnabled);
 
+	/** [추가] 물리 의존 없이 SetActorLocation으로 횡이동(Drift 억제) 할지 여부 설정 */
+	UFUNCTION(BlueprintCallable, Category = "Runner|Mode")
+	void SetUseDirectLateralMovement(bool bEnable);
+
 	/** AutoRun 전용 레인 변경 콜백 — OnLaneChangeRequested 델리게이트에 바인딩 */
 	UFUNCTION()
 	void OnLaneChangeRequestedCallback(int32 LaneDirection);
@@ -116,6 +120,9 @@ private:
 
 	/** AutoRun 모드 플래그 — UpdateLanePosition 보간 연산 활성화 여부 제어 */
 	bool bIsAutoRunMode = false;
+
+	/** [추가] 물리 이동 대신 위치 강제 보정(SetActorLocation)을 통해 레인 이동을 수행할지 여부 */
+	bool bUseDirectLateralMovement = false;
 
 	// 조이스틱 좌우 입력으로 설정된 목표 Yaw 오프셋 (°) — 경로 기준 정면으로부터의 편차
 	// NormX(-1~1) × MaxRunnerYawAngle 로 계산되며, Release 시 0.0으로 초기화
