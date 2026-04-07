@@ -6,8 +6,10 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
+#include "UI/Subsystems/ExUIManagerSubsystem.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExCoreCheats, Log, All);
 
@@ -113,4 +115,43 @@ void UExCoreCheatExtension::ExSetDebugValue(FString Category, float Value)
 	DS->SetCheatValue(Tag, Value);
 	DS->SetCheatEnabled(Tag, true); // 수치 설정 시 자동 활성화
 	UE_LOG(LogExCoreCheats, Log, TEXT("ExSetDebugValue: [%s] = %.2f"), *Category, Value);
+}
+
+// ========== UI 시스템 (Popup / Toast) 테스트 ==========
+
+void UExCoreCheatExtension::ExUITestInfo(FString Title, FString Body)
+{
+	APlayerController* PC = GetPlayerController();
+	if (!PC || !PC->GetLocalPlayer()) return;
+
+	if (UExUIManagerSubsystem* UIMgr = PC->GetLocalPlayer()->GetSubsystem<UExUIManagerSubsystem>())
+	{
+		UIMgr->ShowInfo(FText::FromString(Title), FText::FromString(Body), 3.0f);
+	}
+}
+
+void UExCoreCheatExtension::ExUITestConfirm(FString Title, FString Body)
+{
+	APlayerController* PC = GetPlayerController();
+	if (!PC || !PC->GetLocalPlayer()) return;
+
+	if (UExUIManagerSubsystem* UIMgr = PC->GetLocalPlayer()->GetSubsystem<UExUIManagerSubsystem>())
+	{
+		UIMgr->ShowConfirm(FText::FromString(Title), FText::FromString(Body), FOnExPopupResultNative::CreateWeakLambda(this, [](EExModalResult Result, const FText& InputText)
+		{
+			// 게임 로그에 결과 출력 (개발용)
+			UE_LOG(LogExCoreCheats, Log, TEXT("ExUITestConfirm 결과: %d"), (int32)Result);
+		}));
+	}
+}
+
+void UExCoreCheatExtension::ExUITestToast(FString Message)
+{
+	APlayerController* PC = GetPlayerController();
+	if (!PC || !PC->GetLocalPlayer()) return;
+
+	if (UExUIManagerSubsystem* UIMgr = PC->GetLocalPlayer()->GetSubsystem<UExUIManagerSubsystem>())
+	{
+		UIMgr->ShowToast(FText::FromString(Message), 3.0f);
+	}
 }

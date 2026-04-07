@@ -40,7 +40,7 @@ public:
 	 * 모달 기능을 닫으면서 결과를 송출합니다. BP상의 뒤로가기 버튼 등에 연결해 사용합니다.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "ExUI|Modal")
-	void CloseModalWithResult(EExModalResult Result);
+	virtual void CloseModalWithResult(EExModalResult Result);
 
 protected:
 	virtual void NativeOnActivated() override;

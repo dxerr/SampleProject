@@ -231,3 +231,271 @@ void UExUIManagerSubsystem::PopUIByTag(FGameplayTag UITag)
 		ActivatedWidgetsByTag.Remove(UITag);
 	}
 }
+
+// --- Popup API Implementation ---
+
+void UExUIManagerSubsystem::ShowInfo(const FText& Title, const FText& Body, float AutoCloseSeconds)
+{
+	FExPopupDescriptor Desc;
+	Desc.PopupType = EExPopupType::Info;
+	Desc.Title = Title;
+	Desc.Body = Body;
+	Desc.AutoCloseSeconds = AutoCloseSeconds;
+	ShowPopup(Desc, nullptr);
+}
+
+void UExUIManagerSubsystem::ShowAcknowledge(const FText& Title, const FText& Body, FOnExPopupResultNative OnResult)
+{
+	FExPopupDescriptor Desc;
+	Desc.PopupType = EExPopupType::Acknowledge;
+	Desc.Title = Title;
+	Desc.Body = Body;
+	
+	FExPopupButtonDesc Btn;
+	Btn.Label = FText::FromString(TEXT("확인")); // In real case, use LOCTEXT
+	Btn.ResultValue = EExModalResult::Confirm;
+	Desc.Buttons.Add(Btn);
+
+	ShowPopup(Desc, OnResult);
+}
+
+void UExUIManagerSubsystem::ShowConfirm(const FText& Title, const FText& Body, FOnExPopupResultNative OnResult)
+{
+	FExPopupDescriptor Desc;
+	Desc.PopupType = EExPopupType::Confirm;
+	Desc.Title = Title;
+	Desc.Body = Body;
+
+	FExPopupButtonDesc BtnYes;
+	BtnYes.Label = FText::FromString(TEXT("확인"));
+	BtnYes.ResultValue = EExModalResult::Confirm;
+	Desc.Buttons.Add(BtnYes);
+
+	FExPopupButtonDesc BtnNo;
+	BtnNo.Label = FText::FromString(TEXT("취소"));
+	BtnNo.ResultValue = EExModalResult::Cancel;
+	Desc.Buttons.Add(BtnNo);
+
+	ShowPopup(Desc, OnResult);
+}
+
+void UExUIManagerSubsystem::ShowInputPrompt(const FText& Title, const FText& Body, const FExPopupInputDesc& InputConfig, FOnExPopupResultNative OnResult)
+{
+	FExPopupDescriptor Desc;
+	Desc.PopupType = EExPopupType::InputPrompt;
+	Desc.Title = Title;
+	Desc.Body = Body;
+	Desc.InputConfig = InputConfig;
+
+	FExPopupButtonDesc BtnOk;
+	BtnOk.Label = FText::FromString(TEXT("확인"));
+	BtnOk.ResultValue = EExModalResult::Confirm;
+	Desc.Buttons.Add(BtnOk);
+
+	FExPopupButtonDesc BtnCancel;
+	BtnCancel.Label = FText::FromString(TEXT("취소"));
+	BtnCancel.ResultValue = EExModalResult::Cancel;
+	Desc.Buttons.Add(BtnCancel);
+
+	ShowPopup(Desc, OnResult);
+}
+
+void UExUIManagerSubsystem::ShowPopup(const FExPopupDescriptor& Descriptor, FOnExPopupResultNative OnResult)
+{
+	if (!PopupWidgetClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("PopupWidgetClass is not configured in UExUIManagerSubsystem."));
+		return;
+	}
+
+	UCommonActivatableWidget* Widget = PushModal(PopupWidgetClass);
+	if (UExPopupWidget* Popup = Cast<UExPopupWidget>(Widget))
+	{
+		// C++ Native Bind
+		Popup->OnPopupResultNative = OnResult;
+		Popup->InitFromDescriptor(Descriptor);
+	}
+}
+
+// BP 
+UExPopupWidget* UExUIManagerSubsystem::ShowInfoBP(const FText& Title, const FText& Body, float AutoCloseSeconds)
+{
+	FExPopupDescriptor Desc;
+	Desc.PopupType = EExPopupType::Info;
+	Desc.Title = Title;
+	Desc.Body = Body;
+	Desc.AutoCloseSeconds = AutoCloseSeconds;
+	return ShowPopupBP(Desc);
+}
+
+UExPopupWidget* UExUIManagerSubsystem::ShowAcknowledgeBP(const FText& Title, const FText& Body)
+{
+	FExPopupDescriptor Desc;
+	Desc.PopupType = EExPopupType::Acknowledge;
+	Desc.Title = Title;
+	Desc.Body = Body;
+	
+	FExPopupButtonDesc Btn;
+	Btn.Label = FText::FromString(TEXT("OK"));
+	Btn.ResultValue = EExModalResult::Confirm;
+	Desc.Buttons.Add(Btn);
+
+	return ShowPopupBP(Desc);
+}
+
+UExPopupWidget* UExUIManagerSubsystem::ShowConfirmBP(const FText& Title, const FText& Body)
+{
+	FExPopupDescriptor Desc;
+	Desc.PopupType = EExPopupType::Confirm;
+	Desc.Title = Title;
+	Desc.Body = Body;
+
+	FExPopupButtonDesc BtnYes;
+	BtnYes.Label = FText::FromString(TEXT("Yes"));
+	BtnYes.ResultValue = EExModalResult::Confirm;
+	Desc.Buttons.Add(BtnYes);
+
+	FExPopupButtonDesc BtnNo;
+	BtnNo.Label = FText::FromString(TEXT("No"));
+	BtnNo.ResultValue = EExModalResult::Cancel;
+	Desc.Buttons.Add(BtnNo);
+
+	return ShowPopupBP(Desc);
+}
+
+UExPopupWidget* UExUIManagerSubsystem::ShowInputPromptBP(const FText& Title, const FText& Body, const FExPopupInputDesc& InputConfig)
+{
+	FExPopupDescriptor Desc;
+	Desc.PopupType = EExPopupType::InputPrompt;
+	Desc.Title = Title;
+	Desc.Body = Body;
+	Desc.InputConfig = InputConfig;
+
+	FExPopupButtonDesc BtnOk;
+	BtnOk.Label = FText::FromString(TEXT("Confirm"));
+	BtnOk.ResultValue = EExModalResult::Confirm;
+	Desc.Buttons.Add(BtnOk);
+
+	FExPopupButtonDesc BtnCancel;
+	BtnCancel.Label = FText::FromString(TEXT("Cancel"));
+	BtnCancel.ResultValue = EExModalResult::Cancel;
+	Desc.Buttons.Add(BtnCancel);
+
+	return ShowPopupBP(Desc);
+}
+
+UExPopupWidget* UExUIManagerSubsystem::ShowPopupBP(const FExPopupDescriptor& Descriptor)
+{
+	if (!PopupWidgetClass)
+	{
+		return nullptr;
+	}
+
+	UCommonActivatableWidget* Widget = PushModal(PopupWidgetClass);
+	UExPopupWidget* Popup = Cast<UExPopupWidget>(Widget);
+	if (Popup)
+	{
+		Popup->InitFromDescriptor(Descriptor);
+	}
+	return Popup;
+}
+
+// --- Toast API Implementation ---
+
+void UExUIManagerSubsystem::RegisterToastContainer(UPanelWidget* InToastContainer)
+{
+	ToastContainer = InToastContainer;
+	if (ToastContainer)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[ExUIManagerSubsystem] ToastContainer Registered."));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ExUIManagerSubsystem] ToastContainer unregistered (nullptr)."));
+		// Clean up valid active toasts if the container is gone
+		// Note: The GC handles UWidgets, but we just clear our tracking.
+		ActiveToasts.Empty();
+		PendingToastsQueue.Empty();
+	}
+}
+
+UExToastWidget* UExUIManagerSubsystem::ShowToastFromDescriptor(const FExToastDescriptor& Descriptor)
+{
+	if (!ToastContainer)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ShowToast failed: ToastContainer not registered."));
+		return nullptr;
+	}
+
+	// Remove invalid pointers
+	ActiveToasts.RemoveAll([](const TWeakObjectPtr<UExToastWidget>& Weak) { return !Weak.IsValid(); });
+
+	// If at max capacity, add to pending queue and return.
+	if (ActiveToasts.Num() >= MaxVisibleToasts)
+	{
+		PendingToastsQueue.Add(Descriptor);
+		return nullptr; // We don't return the widget because it's not created yet
+	}
+
+	if (!ToastWidgetClass)
+	{
+		return nullptr;
+	}
+
+	UExToastWidget* Toast = CreateWidget<UExToastWidget>(GetLocalPlayer()->GetPlayerController(GetWorld()), ToastWidgetClass);
+	if (Toast)
+	{
+		Toast->InitToast(Descriptor);
+		Toast->OnToastClosed.BindUObject(this, &UExUIManagerSubsystem::HandleToastClosed);
+		ToastContainer->AddChild(Toast);
+		ActiveToasts.Add(Toast);
+	}
+	return Toast;
+}
+
+UExToastWidget* UExUIManagerSubsystem::ShowToast(const FText& Message, float Duration)
+{
+	FExToastDescriptor Desc;
+	Desc.Message = Message;
+	Desc.Duration = Duration;
+	Desc.ProgressConfig.bShowProgressBar = false;
+	Desc.ProgressConfig.bAutoCountdown = true; // 프로그레스 바는 숨기되 타이머는 흘러가서 자동 삭제되도록!
+	return ShowToastFromDescriptor(Desc);
+}
+
+UExToastWidget* UExUIManagerSubsystem::ShowTimedToast(const FText& Message, float Duration)
+{
+	FExToastDescriptor Desc;
+	Desc.Message = Message;
+	Desc.Duration = Duration;
+	Desc.ProgressConfig.bShowProgressBar = true;
+	Desc.ProgressConfig.bAutoCountdown = true;
+	return ShowToastFromDescriptor(Desc);
+}
+
+UExToastWidget* UExUIManagerSubsystem::ShowLoadingToast(const FText& Message)
+{
+	FExToastDescriptor Desc;
+	Desc.Message = Message;
+	Desc.Duration = 0.0f; // Manual close
+	Desc.ProgressConfig.bShowProgressBar = true;
+	Desc.ProgressConfig.bAutoCountdown = false;
+	return ShowToastFromDescriptor(Desc);
+}
+
+void UExUIManagerSubsystem::HandleToastClosed(UExToastWidget* ClosedToast)
+{
+	ActiveToasts.RemoveAll([ClosedToast](const TWeakObjectPtr<UExToastWidget>& Weak)
+	{
+		return !Weak.IsValid() || Weak.Get() == ClosedToast;
+	});
+
+	// Process Pending Queue
+	if (ActiveToasts.Num() < MaxVisibleToasts && PendingToastsQueue.Num() > 0)
+	{
+		FExToastDescriptor NextDesc = PendingToastsQueue[0];
+		PendingToastsQueue.RemoveAt(0);
+
+		ShowToastFromDescriptor(NextDesc);
+	}
+}

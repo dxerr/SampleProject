@@ -51,6 +51,17 @@ public:
 	UFUNCTION(Exec)
 	void ExSetDebugValue(FString Category, float Value);
 
+	// ========== UI 시스템 (Popup / Toast) 테스트 ==========
+
+	UFUNCTION(Exec)
+	void ExUITestInfo(FString Title = TEXT("테스트"), FString Body = TEXT("안내 팝업입니다."));
+
+	UFUNCTION(Exec)
+	void ExUITestConfirm(FString Title = TEXT("확인"), FString Body = TEXT("진행하시겠습니까?"));
+
+	UFUNCTION(Exec)
+	void ExUITestToast(FString Message = TEXT("업적 플래티넘 달성!"));
+
 private:
 	/** 전체 디버그 토글 상태 추적 */
 	bool bAllDebugEnabled = false;

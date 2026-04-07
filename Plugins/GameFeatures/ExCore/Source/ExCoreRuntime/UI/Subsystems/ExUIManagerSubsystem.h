@@ -8,6 +8,10 @@
 #include "Widgets/CommonActivatableWidgetContainer.h"
 #include "GameplayTagContainer.h"
 #include "UI/Data/ExUIDataAsset.h"
+#include "UI/Data/ExPopupDescriptor.h"
+#include "UI/Data/ExToastDescriptor.h"
+#include "UI/Widgets/ExPopupWidget.h"
+#include "UI/Widgets/ExToastWidget.h"
 #include "ExUIManagerSubsystem.generated.h"
 
 // Forward declarations for specific widget types
@@ -21,7 +25,7 @@ class UExModalWidget;
  * Window 타입(인벤토리 등)이나 Modal 패턴(확인 안내창) 등 
  * 각종 위젯의 Push / Pop 라우팅을 총괄합니다.
  */
-UCLASS()
+UCLASS(Config=Game)
 class EXCORERUNTIME_API UExUIManagerSubsystem : public ULocalPlayerSubsystem
 {
 	GENERATED_BODY()
@@ -71,6 +75,50 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "ExUI")
 	void RemoveWidget(UCommonActivatableWidget* Widget);
+
+	// --- 팝업 (Popup) API ---
+
+	// C++ 전용 편의 함수 (람다 전달 용)
+	void ShowInfo(const FText& Title, const FText& Body, float AutoCloseSeconds = 3.0f);
+	void ShowAcknowledge(const FText& Title, const FText& Body, FOnExPopupResultNative OnResult = nullptr);
+	void ShowConfirm(const FText& Title, const FText& Body, FOnExPopupResultNative OnResult);
+	void ShowInputPrompt(const FText& Title, const FText& Body, const FExPopupInputDesc& InputConfig, FOnExPopupResultNative OnResult);
+	void ShowPopup(const FExPopupDescriptor& Descriptor, FOnExPopupResultNative OnResult = nullptr);
+
+	// BP 전용 편의 함수 (반환된 위젯의 OnPopupResult 바인딩 용)
+	UFUNCTION(BlueprintCallable, Category="ExUI|Popup", meta=(DisplayName="Show Info Popup"))
+	UExPopupWidget* ShowInfoBP(const FText& Title, const FText& Body, float AutoCloseSeconds = 3.0f);
+
+	UFUNCTION(BlueprintCallable, Category="ExUI|Popup", meta=(DisplayName="Show Acknowledge Popup"))
+	UExPopupWidget* ShowAcknowledgeBP(const FText& Title, const FText& Body);
+
+	UFUNCTION(BlueprintCallable, Category="ExUI|Popup", meta=(DisplayName="Show Confirm Popup"))
+	UExPopupWidget* ShowConfirmBP(const FText& Title, const FText& Body);
+
+	UFUNCTION(BlueprintCallable, Category="ExUI|Popup", meta=(DisplayName="Show Input Prompt Popup"))
+	UExPopupWidget* ShowInputPromptBP(const FText& Title, const FText& Body, const FExPopupInputDesc& InputConfig);
+
+	UFUNCTION(BlueprintCallable, Category="ExUI|Popup", meta=(DisplayName="Show Popup (Advanced)"))
+	UExPopupWidget* ShowPopupBP(const FExPopupDescriptor& Descriptor);
+
+	// --- 토스트 (Toast) API ---
+
+	UFUNCTION(BlueprintCallable, Category="ExUI|Toast")
+	void RegisterToastContainer(UPanelWidget* InToastContainer);
+
+	UFUNCTION(BlueprintCallable, Category="ExUI|Toast")
+	UExToastWidget* ShowToast(const FText& Message, float Duration = 3.0f);
+
+	UFUNCTION(BlueprintCallable, Category="ExUI|Toast")
+	UExToastWidget* ShowTimedToast(const FText& Message, float Duration = 3.0f);
+
+	UFUNCTION(BlueprintCallable, Category="ExUI|Toast")
+	UExToastWidget* ShowLoadingToast(const FText& Message);
+
+	UFUNCTION(BlueprintCallable, Category="ExUI|Toast")
+	UExToastWidget* ShowToastFromDescriptor(const FExToastDescriptor& Descriptor);
+
+	void HandleToastClosed(UExToastWidget* ClosedToast);
 
 	// --- 데이터 드리븐(Data-Driven) UI 제어 API ---
 
@@ -130,4 +178,24 @@ private:
 	/** HUD 레이아웃에서 등록된 메뉴/팝업 층 스택 포인터 */
 	UPROPERTY(Transient)
 	TObjectPtr<UCommonActivatableWidgetStack> MenuStack;
+
+	// --- 팝업 & 토스트 속성 ---
+
+	UPROPERTY(BlueprintReadWrite, Category="ExUI|Classes", meta=(AllowPrivateAccess="true"))
+	TSubclassOf<UExPopupWidget> PopupWidgetClass;
+
+	UPROPERTY(BlueprintReadWrite, Category="ExUI|Classes", meta=(AllowPrivateAccess="true"))
+	TSubclassOf<UExToastWidget> ToastWidgetClass;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UPanelWidget> ToastContainer;
+
+	// 서브시스템은 추적만 하므로 약참조 배열 (GC 개입 X)
+	TArray<TWeakObjectPtr<UExToastWidget>> ActiveToasts;
+
+	UPROPERTY(Config)
+	int32 MaxVisibleToasts = 3;
+
+	// 화면 노출 한계 치 초과율 방어용 큐 (이탈 메시지 방지)
+	TArray<FExToastDescriptor> PendingToastsQueue;
 };
