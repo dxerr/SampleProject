@@ -1,14 +1,12 @@
 /.agent
 /.gemini
 /.git
-/.sentry-native
-/.vs
 /.vscode
 /Bug
 /Content
-/DerivedDataCache
 /Intermediate
 /Md
+/NVIDIA Corporation
 /Saved
 /Tools
 /Plugins/GameFeatures/ExCore/Content
@@ -25,4 +23,5 @@
 /Plugins/UnrealCopilot/skills
 /Plugins/UnrealMCP/.git
 /Plugins/UnrealMCP/Intermediate
+/Plugins/UnrealMCP/Logs
 /Plugins/UnrealMCP/MCP
