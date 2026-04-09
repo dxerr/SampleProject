@@ -43,6 +43,7 @@ public class ExRunnerPlayRuntime : ModuleRules
 				"UMG",
 				"CommonUI",
 				"Sentry",
+				"BinkMediaPlayer",
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

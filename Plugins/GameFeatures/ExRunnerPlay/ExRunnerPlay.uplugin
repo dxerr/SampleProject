@@ -38,6 +38,10 @@
 		{
 			"Name": "Sentry",
 			"Enabled": true
+		},
+		{
+			"Name": "BinkMedia",
+			"Enabled": true
 		}
 	],
 	"ExplicitlyLoaded": true,
