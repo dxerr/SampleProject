@@ -477,3 +477,76 @@ MatchViewModel::OnGameOverReasonUpdated(FallDeath)
 11. ExRunnerGameMode 수정             (RuleManagerComponent 필요)
 12. DataAsset 에셋 생성 + BP 설정     (전체 완료 후)
 ```
+
+---
+
+## 8. 구현 고도화 예정 항목
+
+> ⚠️ 아래 항목들은 현재 1차 구현에서 누락되었거나 스텁(stub) 상태로, 추후 구현이 필요합니다.
+
+---
+
+### 8.1 `AExGameModeBase::OnMatchEnded_Implementation` 미구현
+
+현재 `ExGameModeBase.cpp`에서 `OnMatchEnded_Implementation()`은 **완전히 빈 함수**입니다.
+`AExRunnerGameMode::OnMatchEnded_Implementation()`에서 `Super::OnMatchEnded_Implementation()`을 호출하지만 아무 동작도 없습니다.
+
+**고도화 필요 내용**:
+```cpp
+// ExGameModeBase.cpp — 향후 구현 예정
+void AExGameModeBase::OnMatchEnded_Implementation()
+{
+    // [ ] 모든 플레이어 입력 비활성화
+    // [ ] BGM/SFX 페이드아웃
+    // [ ] 타이머 / Tick 일시 정지 (선택)
+    // [ ] 결과 데이터 저장 (통계, 점수 등)
+}
+```
+
+---
+
+### 8.2 `OnRuleTriggered` 이후 캐릭터 상태 처리
+
+룰 발동 시 `GameState::GameOverReason`이 설정되지만, **캐릭터는 아직 물리 시뮬레이션이 그대로 진행**됩니다.
+
+| 문제 | 증상 | 필요 처리 |
+|---|---|---|
+| **FallDeath** | 낙하 판정 후에도 캐릭터가 계속 떨어짐 | Kill Volume Overlap 즉시 이동 입력 차단, Ragdoll 또는 Death 애니메이션 재생 |
+| **TimeUp / GoalReached** | 결과 화면 전환 중에도 캐릭터가 계속 달림 | `bRunnerModeEnabled = false` 또는 입력 비활성화 |
+
+**구현 방향** — `RuleManagerComponent::OnRuleTriggered()` 내에서 처리:
+```cpp
+// [TODO] 추가 예정
+// 1. 플레이어 폰의 Movement 입력 잠금
+PlayerController->SetIgnoreMoveInput(true);
+
+// 2. FallDeath: 지정 Anim Montage(Death) 재생 또는 Ragdoll 전환
+// 3. TimeUp/GoalReached: 승리/패배 Montage 재생 후 정지 포즈 유지
+```
+
+---
+
+### 8.3 UI 고도화 예정
+
+| 항목 | 현재 상태 | 고도화 내용 |
+|---|---|---|
+| **WBP_FadeOverlay** | C++ 클래스만 존재 | BP 위젯 제작 — 페이드인 UMG 애니메이션, BindWidget, OnFadeComplete 호출 연결 |
+| **결과 화면 (index=2)** | 스위처 전환만 됨 | GameOverReason FieldNotify로 "승리/패배/시간초과" 텍스트/연출 분기 |
+| **FadeOverlayWidgetClass 연결** | MatchViewModel UPROPERTY 추가됨 | GameMode BP Details에서 WBP_FadeOverlay 에셋 연결 필요 |
+| **타이머 HUD** | RemainingTime FieldNotify 브로드캐스트됨 | HUD 위젯에 `GetRemainingTime` 바인딩 + 경고 애니메이션 트리거 (`bIsTimerWarning`) |
+
+---
+
+### 8.4 재시작/로비 복귀 흐름 완성
+
+현재 `UExRunnerFadeOverlayWidget::HandleRestartResult()`에서:
+
+```cpp
+// Confirm → RestartLevel() ✅ (임시 구현)
+// Cancel  → TODO: GameMode::ReturnToLobby() ❌ 미구현
+```
+
+**고도화 필요**:
+- `Cancel` 선택 시 `UExGameFlowSubsystem`을 통해 로비 맵으로 ServerTravel
+- 멀티플레이 환경에서 Host/Client 각각 처리 분기
+

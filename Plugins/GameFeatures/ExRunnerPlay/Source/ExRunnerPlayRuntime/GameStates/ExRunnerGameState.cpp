@@ -23,4 +23,32 @@ void AExRunnerGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 
 	DOREPLIFETIME(AExRunnerGameState, CurrentPathDistance);
 	DOREPLIFETIME(AExRunnerGameState, RealPlayerPathDistance);
+	DOREPLIFETIME(AExRunnerGameState, RemainingTimeSeconds);
+	DOREPLIFETIME(AExRunnerGameState, GameOverReason);
+}
+
+void AExRunnerGameState::SetRemainingTimeSeconds(int32 NewSeconds)
+{
+	RemainingTimeSeconds = NewSeconds;
+	// 서버 자신도 델리게이트를 받도록 직접 브로드캐스트
+	OnRemainingTimeChanged.Broadcast(NewSeconds);
+}
+
+void AExRunnerGameState::SetGameOverReason(EExRunnerGameOverReason NewReason)
+{
+	GameOverReason = NewReason;
+	// 서버 자신도 델리게이트를 받도록 직접 브로드캐스트
+	OnGameOverReasonChanged.Broadcast(NewReason);
+}
+
+void AExRunnerGameState::OnRep_RemainingTime()
+{
+	// OnRep은 UI 로직을 포함하지 않는다 — ViewModel이 구독
+	OnRemainingTimeChanged.Broadcast(RemainingTimeSeconds);
+}
+
+void AExRunnerGameState::OnRep_GameOverReason()
+{
+	// OnRep은 UI 로직을 포함하지 않는다 — ViewModel이 구독
+	OnGameOverReasonChanged.Broadcast(GameOverReason);
 }

@@ -6,10 +6,15 @@
 #include "GameModes/ExGameStateBase.h"
 #include "GameStates/ExRunnerGameState.h"
 #include "Tags/ExMatchTags.h"
+#include "Tags/ExRunnerTags.h"
 #include "Experience/ExExperienceManagerComponent.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "CommonAnimatedSwitcher.h"
+#include "UI/Subsystems/ExUIManagerSubsystem.h"
+#include "UI/Widgets/ExRunnerFadeOverlayWidget.h"
+#include "GameFramework/PlayerController.h"
+#include "Engine/LocalPlayer.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMatchVM, Log, All);
 
@@ -43,6 +48,15 @@ void UExRunnerMatchViewModel::AutoInitialize(UObject* WorldContextObject)
 	UpdateIndexByPhase(BoundGameState->GetCurrentMatchPhase());
 
 	BoundGameState->OnMatchPhaseChanged.AddDynamic(this, &UExRunnerMatchViewModel::OnMatchPhaseUpdated);
+
+	// ── 룰 시스템 바인딩 ──────────────────────────────────────────
+	if (AExRunnerGameState* RunnerGS = Cast<AExRunnerGameState>(GameState))
+	{
+		BoundRunnerGameState = RunnerGS;
+		RunnerGS->OnRemainingTimeChanged.AddUObject(this, &UExRunnerMatchViewModel::OnRemainingTimeUpdated);
+		RunnerGS->OnGameOverReasonChanged.AddUObject(this, &UExRunnerMatchViewModel::OnGameOverReasonUpdated);
+		UE_LOG(LogExRunnerMatchVM, Log, TEXT("[ExRunnerMatchViewModel] 룰 시스템 델리게이트 바인딩 완료."));
+	}
 
 	UE_LOG(LogExRunnerMatchVM, Log, TEXT("[ExRunnerMatchViewModel] AutoInitialize: 성공적으로 바인딩되었습니다. 초기 MatchPhase: %s"), *BoundGameState->GetCurrentMatchPhase().ToString());
 }
@@ -108,4 +122,103 @@ void UExRunnerMatchViewModel::SetActiveWidgetIndex(int32 NewIndex)
 int32 UExRunnerMatchViewModel::GetActiveWidgetIndex() const
 {
 	return ActiveWidgetIndex;
+}
+
+// ── 룰 시스템 Getter ───────────────────────────────────────────────
+
+float UExRunnerMatchViewModel::GetRemainingTime() const
+{
+	return RemainingTime;
+}
+
+bool UExRunnerMatchViewModel::GetIsTimerWarning() const
+{
+	return bIsTimerWarning;
+}
+
+EExRunnerGameOverReason UExRunnerMatchViewModel::GetGameOverReason() const
+{
+	return GameOverReason;
+}
+
+// ── 룰 시스템 콜백 ────────────────────────────────────────────────
+
+void UExRunnerMatchViewModel::OnRemainingTimeUpdated(int32 NewSeconds)
+{
+	// 클라이언트가 수신한 정수 초를 float로 변환하여 로컬 보간 시작점으로 설정
+	SetRemainingTime(static_cast<float>(NewSeconds));
+
+	// WarningTime 기준은 Rule_Timer가 EventSubsystem 태그로 처리
+	// 여기서는 GameState에 WarningTime 기준이 없으므로 직접 계산하지 않음
+	UE_LOG(LogExRunnerMatchVM, Verbose, TEXT("[ExRunnerMatchVM] RemainingTime: %d초"), NewSeconds);
+}
+
+void UExRunnerMatchViewModel::OnGameOverReasonUpdated(EExRunnerGameOverReason Reason)
+{
+	SetGameOverReasonValue(Reason);
+
+	if (Reason == EExRunnerGameOverReason::FallDeath)
+	{
+		// 페이드아웃 오버레이 → 재시작 팝업 흐름
+		// ViewModel은 "Presentation Logic 포함" 방식 (기존 BoundSwitcher->SetActiveWidgetIndex 패턴과 일관)
+		// UIManagerSubsystem 접근: WorldContextObject를 통해 LocalPlayer Subsystem 획득
+		if (UWorld* World = GetWorld())
+		{
+			if (APlayerController* PC = World->GetFirstPlayerController())
+			{
+				if (ULocalPlayer* LP = PC->GetLocalPlayer())
+				{
+					if (UExUIManagerSubsystem* UIMgr = LP->GetSubsystem<UExUIManagerSubsystem>())
+					{
+						if (FadeOverlayWidgetClass)
+						{
+							// Game Stack에 FadeOverlay 위젯 Push
+							UCommonActivatableWidget* Widget = UIMgr->PushGameOverlay(FadeOverlayWidgetClass);
+							if (UExRunnerFadeOverlayWidget* FadeWidget = Cast<UExRunnerFadeOverlayWidget>(Widget))
+							{
+								// 페이드인 시작 (BP에서 애니메이션 구현, 완료 시 OnFadeComplete 호출)
+								FadeWidget->PlayFadeIn(1.5f);
+							}
+							UE_LOG(LogExRunnerMatchVM, Log, TEXT("[ExRunnerMatchVM] FallDeath — FadeOverlay 표시 완료"));
+						}
+						else
+						{
+							UE_LOG(LogExRunnerMatchVM, Warning, TEXT("[ExRunnerMatchVM] FallDeath — FadeOverlayWidgetClass가 설정되지 않았습니다. BP에서 연결 필요."));
+						}
+					}
+				}
+			}
+		}
+	}
+	else if (Reason != EExRunnerGameOverReason::None)
+	{
+		// TimeUp / GoalReached → 결과 화면 (PostMatch, index=2)
+		SetActiveWidgetIndex(2);
+	}
+}
+
+// ── 룰 시스템 Setter ───────────────────────────────────────────────
+
+void UExRunnerMatchViewModel::SetRemainingTime(float NewTime)
+{
+	if (UE_MVVM_SET_PROPERTY_VALUE(RemainingTime, NewTime))
+	{
+		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(GetRemainingTime);
+	}
+}
+
+void UExRunnerMatchViewModel::SetIsTimerWarning(bool bNewWarning)
+{
+	if (UE_MVVM_SET_PROPERTY_VALUE(bIsTimerWarning, bNewWarning))
+	{
+		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(GetIsTimerWarning);
+	}
+}
+
+void UExRunnerMatchViewModel::SetGameOverReasonValue(EExRunnerGameOverReason NewReason)
+{
+	if (UE_MVVM_SET_PROPERTY_VALUE(GameOverReason, NewReason))
+	{
+		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(GetGameOverReason);
+	}
 }

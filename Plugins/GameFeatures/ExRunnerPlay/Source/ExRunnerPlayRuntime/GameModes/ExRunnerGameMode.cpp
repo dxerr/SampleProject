@@ -8,14 +8,17 @@
 #include "../Components/ExRunnerItemManager.h"
 #include "../Components/ExBeatSyncComponent.h"
 #include "../Components/ExPathManager.h"
+#include "../Components/ExRunnerRuleManagerComponent.h"
 #include "../GameStates/ExRunnerGameState.h"
 #include "../Data/ExCurveConfig.h"
 #include "ExGameplayTags.h"
 #include "ExGameplayEventSubsystem.h"
 #include "Kismet/GameplayStatics.h"
 #include "Tags/ExMatchTags.h"
+#include "Tags/ExRunnerTags.h"
 #include "Subsystems/ExMusicManagerSubsystem.h"
 #include "Data/ExBGMTrackDataAsset.h"
+#include "Components/BoxComponent.h"
 
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -40,6 +43,7 @@ AExRunnerGameMode::AExRunnerGameMode()
 	ObstacleManager = CreateDefaultSubobject<UExObstacleManager>(TEXT("ObstacleManager"));
 	ItemManager = CreateDefaultSubobject<UExRunnerItemManager>(TEXT("ItemManager"));
 	BeatSyncComponent = CreateDefaultSubobject<UExBeatSyncComponent>(TEXT("BeatSyncComponent"));
+	RuleManagerComponent = CreateDefaultSubobject<UExRunnerRuleManagerComponent>(TEXT("RuleManagerComponent"));
 	
 	// PathManager는 AExRunnerGameState로 이관되었습니다.
 	// [Fix] 블루프린트 생성 시 부모의 게임스테이트가 상속되지 않도록 명시적 기본값 설정
@@ -60,6 +64,10 @@ void AExRunnerGameMode::BeginPlay()
 		{
 			EventSubsystem->GetEventDelegate(TAG_Ex_Action_Climb_Start).AddDynamic(this, &AExRunnerGameMode::OnTraversalStart);
 			EventSubsystem->GetEventDelegate(TAG_Ex_Action_Climb_End).AddDynamic(this, &AExRunnerGameMode::OnTraversalEnd);
+
+			// 룰 종료 이벤트 구독 — TimeUp/GoalReached 시 SetMatchPhase(PostMatch) 호출
+			EventSubsystem->GetEventDelegate(TAG_Rule_TimeUp).AddDynamic(this, &AExRunnerGameMode::OnRuleEndGameEvent);
+			EventSubsystem->GetEventDelegate(TAG_Rule_GoalReached).AddDynamic(this, &AExRunnerGameMode::OnRuleEndGameEvent);
 		}
 	}
 }
@@ -209,16 +217,39 @@ void AExRunnerGameMode::OnMatchStarted_Implementation()
 	{
 		StartRunnerGame();
 	}
+
+	// 룰 시스템 활성화
+	if (RuleManagerComponent)
+	{
+		RuleManagerComponent->ActivateAllRules();
+	}
 }
 
 void AExRunnerGameMode::OnMatchEnded_Implementation()
 {
-	Super::OnMatchEnded_Implementation();
+	// 룰 시스템 비활성화 먼저 (역순 정리)
+	if (RuleManagerComponent)
+	{
+		RuleManagerComponent->DeactivateAllRules();
+	}
 
 	if (bRunnerModeEnabled)
 	{
 		StopRunnerGame();
 	}
+
+	Super::OnMatchEnded_Implementation();
+}
+
+UShapeComponent* AExRunnerGameMode::SpawnKillVolume(float KillVolumeZ)
+{
+	// 실제 Kill Volume 스폰은 RuleManagerComponent에 위임
+	// (RuleManagerComponent가 Volume의 소유권 및 수명을 관리)
+	if (RuleManagerComponent)
+	{
+		return RuleManagerComponent->SpawnKillVolume(KillVolumeZ);
+	}
+	return nullptr;
 }
 
 // ──────────────────────────────────────────────
@@ -232,4 +263,18 @@ void AExRunnerGameMode::SetRunnerPhase(FGameplayTag NewPhase)
 	}
 
 	UE_LOG(LogExRunnerPlay, Log, TEXT("러너 Phase 전환: %s"), *NewPhase.ToString());
+}
+
+// ──────────────────────────────────────────────
+// 룰 종료 이벤트 콜백
+// ──────────────────────────────────────────────
+void AExRunnerGameMode::OnRuleEndGameEvent(FGameplayTag EventTag, const FExGameplayEventPayload& Payload)
+{
+	// 서버 권한 검증
+	if (!HasAuthority()) return;
+
+	UE_LOG(LogExRunnerPlay, Log, TEXT("[ExRunnerGameMode] 룰 종료 이벤트 수신: %s → Match_PostMatch 전환"), *EventTag.ToString());
+
+	// Match_PostMatch로 전환 → ExGameModeBase::SetMatchPhase가 OnMatchEnded() 호출
+	SetMatchPhase(ExMatchTags::Match_PostMatch);
 }

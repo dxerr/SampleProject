@@ -15,7 +15,9 @@ class UExPathManager;
 class UExCurveConfig;
 class UExBGMTrackDataAsset;
 class UExMusicPhaseDataAsset;
+class UExRunnerRuleManagerComponent;
 struct FExGameplayEventPayload;
+class UShapeComponent;
 
 /**
  * AExRunnerGameMode
@@ -68,6 +70,13 @@ public:
 	/** 러너 인게임 Phase 전환 */
 	UFUNCTION(BlueprintCallable, Category = "Runner|Music")
 	void SetRunnerPhase(FGameplayTag NewPhase);
+
+	/**
+	 * FallDeath 룰로부터 호출되는 Kill Volume 스폰
+	 * @param KillVolumeZ Kill Volume을 배치할 Z 좌표 (cm)
+	 * @return 생성된 UBoxComponent 포인터
+	 */
+	UShapeComponent* SpawnKillVolume(float KillVolumeZ);
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
@@ -75,8 +84,9 @@ protected:
 	virtual void OnMatchStarted_Implementation() override;
 	virtual void OnMatchEnded_Implementation() override;
 
-
-
+	/** TimeUp/GoalReached 룰 발동 시 EventSubsystem 콜백 → SetMatchPhase(PostMatch) */
+	UFUNCTION()
+	void OnRuleEndGameEvent(FGameplayTag EventTag, const FExGameplayEventPayload& Payload);
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UExChunkSpawner> ChunkSpawner;
@@ -89,6 +99,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UExBeatSyncComponent> BeatSyncComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UExRunnerRuleManagerComponent> RuleManagerComponent;
 
 	/** 커브 설정 데이터 에셋 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Runner|Curve", meta = (AllowPrivateAccess = "true"))
