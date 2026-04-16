@@ -7,9 +7,11 @@
 
 TOptional<FUIInputConfig> UExHUDLayoutWidget::GetDesiredInputConfig() const
 {
-	// HUD 레이아웃 베이스는 화면 근간이므로, 오직 게임 액션 입력만 받고 커서를 자동으로 숨깁니다.
-	// ECommonInputMode::Game = 일반 플레이 중 마우스 회전 등 가능.
-	return FUIInputConfig(ECommonInputMode::Game, EMouseCaptureMode::CapturePermanently, /*bHideCursor=*/ true);
+	// HUD 레이아웃 베이스 기본값: UI와 게임 입력을 모두 허용하고 마우스 커서를 표시합니다.
+	// 로비처럼 마우스 클릭이 필요한 경우 이 기본값을 그대로 사용합니다.
+	// 게임플레이 전용 HUD(예: ExRunnerHUDLayout)에서는 이 함수를 오버라이드하여
+	// ECommonInputMode::Game + 커서 숨김 설정을 재정의합니다.
+	return FUIInputConfig(ECommonInputMode::All, EMouseCaptureMode::NoCapture, /*bHideCursor=*/ false);
 }
 
 void UExHUDLayoutWidget::NativeOnInitialized()
