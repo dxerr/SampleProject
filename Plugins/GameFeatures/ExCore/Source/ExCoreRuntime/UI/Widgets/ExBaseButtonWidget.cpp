@@ -2,6 +2,7 @@
 
 #include "UI/Widgets/ExBaseButtonWidget.h"
 #include "CommonTextBlock.h"
+#include "Components/Border.h"
 
 void UExBaseButtonWidget::NativePreConstruct()
 {
@@ -12,6 +13,8 @@ void UExBaseButtonWidget::NativePreConstruct()
 	{
 		ButtonTextBlock->SetText(ButtonText);
 	}
+
+	ApplyBackgroundAlpha();
 }
 
 void UExBaseButtonWidget::NativeConstruct()
@@ -23,6 +26,24 @@ void UExBaseButtonWidget::NativeConstruct()
 		ButtonTextBlock->SetText(ButtonText);
 	}
 
+	ApplyBackgroundAlpha();
+
 	// 애니메이션 및 스타일 갱신 알림
 	BP_UpdateButtonVisuals();
+}
+
+void UExBaseButtonWidget::SetBackgroundAlpha(float InAlpha)
+{
+	BackgroundAlpha = FMath::Clamp(InAlpha, 0.0f, 1.0f);
+	ApplyBackgroundAlpha();
+}
+
+void UExBaseButtonWidget::ApplyBackgroundAlpha()
+{
+	if (ButtonBackground)
+	{
+		FLinearColor NewColor = ButtonBackground->GetBrushColor();
+		NewColor.A = BackgroundAlpha;
+		ButtonBackground->SetBrushColor(NewColor);
+	}
 }

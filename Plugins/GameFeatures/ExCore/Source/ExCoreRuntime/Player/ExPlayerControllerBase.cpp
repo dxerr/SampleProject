@@ -10,6 +10,7 @@
 #include "Experience/ExExperienceDefinition.h"
 #include "UI/Subsystems/ExUIManagerSubsystem.h"
 #include "UI/Widgets/ExHUDLayoutWidget.h"
+#include "CommonActivatableWidget.h"
 #include "Engine/LocalPlayer.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExCorePC, Log, All);
@@ -144,7 +145,17 @@ void AExPlayerControllerBase::OnExperienceLoadComplete()
 						UExHUDLayoutWidget* NewHUD = CreateWidget<UExHUDLayoutWidget>(this, CurrentExperience->DefaultHUDLayout.Get());
 						if (NewHUD)
 						{
-							NewHUD->AddToViewport(); 
+							NewHUD->AddToViewport();
+
+							// CommonActivatableWidget 기반 HUD는 AddToViewport만으로 Activated 상태가 되지 않습니다.
+							// 빌드에서 CommonUI Input Routing이 Activated 상태의 위젯에만 입력을 전달하므로,
+							// 명시적으로 ActivateWidget()을 호출하여 버튼 등 입력 이벤트가 정상 수신되도록 합니다.
+							if (UCommonActivatableWidget* ActivatableHUD = Cast<UCommonActivatableWidget>(NewHUD))
+							{
+								ActivatableHUD->ActivateWidget();
+								UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] HUD Widget Activated (CommonActivatableWidget)."));
+							}
+
 							UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] HUD Widget Created & Added to Viewport."));
 						}
 						else
