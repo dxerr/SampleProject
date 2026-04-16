@@ -13,8 +13,8 @@ void UExGameFlowSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	CurrentFlowState = ExFlowTags::Flow_Boot;
 
 	// 허용되는 상태 전이 맵 (Transition Map) 구성
-	// Boot -> Auth.IDP
-	AllowedTransitions.Add(ExFlowTags::Flow_Boot, { ExFlowTags::Flow_Auth_IDP });
+	// Boot -> Auth.IDP (정식 인증 경로) 또는 Lobby (개발/인증 우회 경로)
+	AllowedTransitions.Add(ExFlowTags::Flow_Boot, { ExFlowTags::Flow_Auth_IDP, ExFlowTags::Flow_Lobby });
 	
 	// Auth.IDP -> Lobby 또는 Boot(재시도)
 	AllowedTransitions.Add(ExFlowTags::Flow_Auth_IDP, { ExFlowTags::Flow_Lobby, ExFlowTags::Flow_Boot });
