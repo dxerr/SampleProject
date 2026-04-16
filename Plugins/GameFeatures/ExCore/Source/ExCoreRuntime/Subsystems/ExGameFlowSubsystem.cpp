@@ -2,6 +2,8 @@
 
 #include "Subsystems/ExGameFlowSubsystem.h"
 #include "Tags/ExFlowTags.h"
+#include "Misc/PackageName.h"
+
 
 DEFINE_LOG_CATEGORY_STATIC(LogExGameFlow, Log, All);
 
@@ -68,9 +70,27 @@ void UExGameFlowSubsystem::SetFlowState(FGameplayTag NewState)
 
 void UExGameFlowSubsystem::RequestTravel(const FString& MapURL)
 {
+	// 짧은 맵 이름(예: L_ExRunnerTest)은 패키징 빌드에서 인식되지 않으므로
+	// FPackageName을 통해 전체 패키지 경로로 변환을 시도합니다.
+	FString ResolvedURL = MapURL;
+	if (FPackageName::IsShortPackageName(MapURL))
+	{
+		FString FullPath;
+		if (FPackageName::SearchForPackageOnDisk(MapURL, &FullPath))
+		{
+			// 파일 경로 → 패키지 경로로 변환 (예: .../L_ExRunnerTest.umap → /ExRunnerPlay/Map/L_ExRunnerTest)
+			FPackageName::TryConvertFilenameToLongPackageName(FullPath, ResolvedURL);
+			UE_LOG(LogExGameFlow, Log, TEXT("[ExGameFlowSubsystem] Map name resolved: %s -> %s"), *MapURL, *ResolvedURL);
+		}
+		else
+		{
+			UE_LOG(LogExGameFlow, Warning, TEXT("[ExGameFlowSubsystem] Could not resolve short map name '%s'. Make sure the map is cooked and included in the build."), *MapURL);
+		}
+	}
+
 	// GameMode 등 델리게이트를 수신할 수 있는 체계로 알림
-	UE_LOG(LogExGameFlow, Log, TEXT("[ExGameFlowSubsystem] Requesting Travel to %s"), *MapURL);
-	OnRequestTravel.Broadcast(MapURL);
+	UE_LOG(LogExGameFlow, Log, TEXT("[ExGameFlowSubsystem] Requesting Travel to %s"), *ResolvedURL);
+	OnRequestTravel.Broadcast(ResolvedURL);
 }
 
 void UExGameFlowSubsystem::TransitionToInGame(const FString& MapURL)

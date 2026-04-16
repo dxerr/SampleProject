@@ -149,3 +149,29 @@
 - **의존성 방향 (Dependency Direction)**: Feature 모듈은 Core 모듈을 참조할 수 있지만, **Core 모듈은 절대로 Feature 모듈을 참조해서는 안 됩니다.**
     - Core 모듈은 상위 개념이므로 하위(구체적) 구현 내용을 알면 안 됩니다.
 
+### 4.2 GameFeature 에셋 쿠킹 정책 (GameFeature Asset Cooking Policy)
+
+**핵심 원칙**: GameFeature 플러그인 내의 맵/에셋 쿠킹 포함 설정은 반드시 **해당 GameFeatureData 에셋 내부**에서 관리해야 합니다. `DefaultGame.ini`에 추가하면 해당 플러그인이 비활성화 상태여도 항상 포함되므로 **잘못된 방식**입니다.
+
+**올바른 방법 — `GameFeatureData` 에셋의 Asset Manager 설정**:
+
+1. 에디터에서 해당 GameFeature의 `.uasset`을 엽니다.  
+   예: `ExRunnerPlay/Content/ExRunnerPlay.uasset`
+2. 에셋 에디터 하단 **"Asset Manager"** 섹션 → **"Primary Asset Types to Scan"** 의 `⊕` 클릭
+3. 아래 값을 입력합니다:
+
+   | 필드 | 값 예시 |
+   |---|---|
+   | Primary Asset Type | `Map` |
+   | Asset Base Class | `World` |
+   | Directories | `/ExRunnerPlay/Map` |
+   | Cook Rule | `Always Cook` |
+
+**비교표**:
+
+| 방식 | 위치 | 쿠킹 조건 | ❌/✅ |
+|---|---|---|---|
+| `DefaultGame.ini` PrimaryAssetTypesToScan | Config 파일 | 플러그인 활성/비활성 무관 항상 포함 | ❌ 잘못된 방식 |
+| `GameFeatureData.uasset` Asset Manager | GameFeature 에셋 | 해당 GameFeature 활성화 시에만 포함 | ✅ 올바른 방식 |
+
+> **주의**: Core 계열(ExCore 등) 공통 에셋이 아닌 이상, 특정 GameFeature 전용 맵/에셋은 반드시 해당 플러그인의 GameFeatureData에서 관리합니다.
