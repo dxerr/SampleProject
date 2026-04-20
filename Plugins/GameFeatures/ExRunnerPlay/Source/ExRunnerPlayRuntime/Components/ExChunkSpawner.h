@@ -15,8 +15,7 @@
 class AExFloorChunk;
 class AExGameModeBase;
 class UExPathManager;
-class UExCurveConfig;
-class UExObstacleSpawnConfig;
+class UExRunnerConfig;
 
 /**
  * UExChunkSpawner
@@ -44,11 +43,8 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Spawner")
 	bool bUsePooling = false;
 
-	/**
-	 * 통합된 장애물 스폰 세팅 (여러 맵/모드에서 공유 가능)
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Spawner|Obstacle")
-	TObjectPtr<UExObstacleSpawnConfig> ObstacleConfig;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Spawner|RunnerConfig")
+	TWeakObjectPtr<UExRunnerConfig> RunnerConfig;
 
 	/**
 	 * 초기 풀 크기

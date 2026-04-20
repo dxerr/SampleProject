@@ -7,7 +7,7 @@
  */
 
 #include "ExPathManager.h"
-#include "../Data/ExCurveConfig.h"
+#include "../Data/ExRunnerConfig.h"
 #include "ExDebugStateSubsystem.h"
 #include "ExGameplayTags.h"
 #include "Engine/GameInstance.h"
@@ -43,8 +43,7 @@ void UExPathManager::InitializePath(const FVector& StartPosition, const FRotator
 	// 초기 직선 세그먼트 추가 (시작 구간은 항상 직선)
 	// 초기 직선 세그먼트 추가 (시작 구간은 항상 직선)
 	// ★ 중요: 첫 청크의 Center가 (0,0,0)에 오도록 하려면
-	// 세그먼트 시작점은 (-HalfLength, 0, 0)이어야 함.
-	const float FirstSegLength = CurveConfig ? 1000.f : 1000.f;
+	const float FirstSegLength = RunnerConfig.IsValid() ? 1000.f : 1000.f;
 	const float HalfLength = FirstSegLength * 0.5f;
 
 	FExPathSegment InitialSegment;
@@ -60,8 +59,15 @@ void UExPathManager::InitializePath(const FVector& StartPosition, const FRotator
 	PathSegments.Add(InitialSegment);
 	ConsecutiveStraightCount = 1;
 
-	UE_LOG(LogExPathManager, Log, TEXT("경로 초기화 완료: Start=%s, Dir=%s"),
-		*StartPosition.ToString(), *StartDirection.ToString());
+	if (RunnerConfig.IsValid())
+	{
+		UE_LOG(LogExPathManager, Log, TEXT("경로 초기화 완료: Start=%s, Dir=%s (Config: %s)"),
+			*StartPosition.ToString(), *StartDirection.ToString(), *RunnerConfig->GetName());
+	}
+	else
+	{
+		UE_LOG(LogExPathManager, Error, TEXT("경로 초기화 실패: RunnerConfig가 유효하지 않습니다! (기본값 사용)"));
+	}
 }
 
 // ──────────────────────────────────────────────
@@ -102,7 +108,7 @@ FExPathSegment UExPathManager::CreateSegment()
 {
 	FExPathSegment Segment;
 	
-	if (!CurveConfig)
+	if (!RunnerConfig.IsValid())
 	{
 		Segment.Type = EExPathSegmentType::Straight;
 		Segment.ArcLength = 1000.f;
@@ -144,11 +150,11 @@ FExPathSegment UExPathManager::CreateSegment()
 
 		Segment.Type = CheatCurrentCurve;
 		Segment.CurveAngle = 90.f;
-		Segment.CurveRadius = CurveConfig->FixedCurveRadius;
+		Segment.CurveRadius = RunnerConfig->Curve.FixedCurveRadius;
 		Segment.ArcLength = PI * Segment.CurveRadius * 0.5f;
 
 		// 3. 피치 적용 (상승/하강)
-		float TargetPitch = CurveConfig->SlopePitchAngle;
+		float TargetPitch = RunnerConfig->Curve.SlopePitchAngle;
 		if (!bCheatAscending)
 		{
 			TargetPitch = -TargetPitch;
@@ -177,7 +183,7 @@ FExPathSegment UExPathManager::CreateSegment()
 	}
 
 	// 1. 커브/직선 결정
-	const float Probability = CurveConfig->GetCurveProbability(ConsecutiveStraightCount);
+	const float Probability = RunnerConfig->Curve.GetCurveProbability(ConsecutiveStraightCount);
 	bool bShouldCurve = FMath::FRand() < Probability;
 
 	// ── Bounding Box 강제 커브 판정 ──
@@ -193,8 +199,8 @@ FExPathSegment UExPathManager::CreateSegment()
 		// 직선 세그먼트 스폰 시 예측 끝 지점
 		FVector ProjectedNextPos = EndPos + (ForwardDir * 1000.f); 
 
-		if (ProjectedNextPos.X < CurveConfig->WorldBoundsX.X || ProjectedNextPos.X > CurveConfig->WorldBoundsX.Y ||
-			ProjectedNextPos.Y < CurveConfig->WorldBoundsY.X || ProjectedNextPos.Y > CurveConfig->WorldBoundsY.Y)
+		if (ProjectedNextPos.X < RunnerConfig->Curve.WorldBoundsX.X || ProjectedNextPos.X > RunnerConfig->Curve.WorldBoundsX.Y ||
+			ProjectedNextPos.Y < RunnerConfig->Curve.WorldBoundsY.X || ProjectedNextPos.Y > RunnerConfig->Curve.WorldBoundsY.Y)
 		{
 			bForceCurve = true;
 			bShouldCurve = true;
@@ -251,7 +257,7 @@ FExPathSegment UExPathManager::CreateSegment()
 		Segment.Type = (FMath::RandBool()) ? EExPathSegmentType::CurveLeft : EExPathSegmentType::CurveRight;
 	}
 	Segment.CurveAngle = 90.f; // 고정 90도
-	Segment.CurveRadius = CurveConfig->FixedCurveRadius;
+	Segment.CurveRadius = RunnerConfig->Curve.FixedCurveRadius;
 
 	// 호 길이: 2 * PI * R * (90/360) = PI * R * 0.5
 	Segment.ArcLength = PI * Segment.CurveRadius * 0.5f;
@@ -270,13 +276,13 @@ FExPathSegment UExPathManager::CreateSegment()
 	float TargetPitch = 0.f;
 
 	// 설정된 횟수 이상 같은 방향으로 회전하면 경사 적용
-	if (ConsecutiveTurnCount >= CurveConfig->SlopeTriggerCount)
+	if (ConsecutiveTurnCount >= RunnerConfig->Curve.SlopeTriggerCount)
 	{
 		// 상승? 하강?
 		// 360도 루프를 피하려면 위나 아래로 보내야 함.
 		// 일단 상승(Positive Pitch)으로 고정하거나, 설정에 따라.
 		// 보통 나선형 계단은 한쪽으로 계속 올라감.
-		TargetPitch = CurveConfig->SlopePitchAngle;
+		TargetPitch = RunnerConfig->Curve.SlopePitchAngle;
 	}
 	else
 	{

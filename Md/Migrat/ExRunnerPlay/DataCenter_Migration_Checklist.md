@@ -127,34 +127,34 @@
 
 #### 3-A. `UExObstacleDefinition` — ExCore → ExRunnerPlay 이동 + Base 교체
 
-- [ ] **[이동]** `ExObstacleDefinition.h`를 `ExRunnerPlay/Source/ExRunnerPlayRuntime/Data/`로 이동
+- [x] **[이동]** `ExObstacleDefinition.h`를 `ExRunnerPlay/Source/ExRunnerPlayRuntime/Data/`로 이동
   - `EXCORERUNTIME_API` → `EXRUNNERPLAYRUNTIME_API` 변경
   - include 경로 정리
-- [ ] **[상속 변경]** `UDataAsset` → `UExDefinitionDataAsset`
+- [x] **[상속 변경]** `UDataAsset` → `UExDefinitionDataAsset`
   - `DefinitionTag` — 부모에서 상속됨 (추가 불필요)
-- [ ] **[IsDataValid]** `Super::IsDataValid()` 호출 + `ObstacleClass` nullptr 검증 추가
-- [ ] **[CoreRedirects 작성]**
+- [x] **[IsDataValid]** `Super::IsDataValid()` 호출 + `ObstacleClass` nullptr 검증 추가
+- [x] **[CoreRedirects 작성]**
   ```ini
   [CoreRedirects]
   +ClassRedirects=(OldName="/Script/ExCoreRuntime.ExObstacleDefinition",NewName="/Script/ExRunnerPlayRuntime.ExObstacleDefinition")
   ```
 - [ ] **[일괄 리세이브]** Resave Packages 실행
-- [ ] 빌드 검증
+- [x] 빌드 검증
 - [ ] 기능 검증
 
 #### 3-B. `UExItemDefinition` — Base 교체 + `ItemTag` → `DefinitionTag` 통합
 
-- [ ] **[상속 변경]** `UPrimaryDataAsset` → `UExDefinitionDataAsset`
-- [ ] **[멤버 변경]** 기존 `ItemTag` 멤버 제거 — 부모의 `DefinitionTag`로 통합
-- [ ] **[IsDataValid]** `PickupActorClass` nullptr 검증 추가
-- [ ] **[참조 교체]** 코드 내 `ItemDef->ItemTag` → `ItemDef->DefinitionTag` 전체 교체
-- [ ] **[CoreRedirects 작성]**
+- [x] **[상속 변경]** `UPrimaryDataAsset` → `UExDefinitionDataAsset`
+- [x] **[멤버 변경]** 기존 `ItemTag` 멤버 제거 — 부모의 `DefinitionTag`로 통합
+- [x] **[IsDataValid]** `PickupActorClass` nullptr 검증 추가
+- [x] **[참조 교체]** 코드 내 `ItemDef->ItemTag` → `ItemDef->DefinitionTag` 전체 교체
+- [x] **[CoreRedirects 작성]**
   ```ini
   [CoreRedirects]
   +PropertyRedirects=(OldName="/Script/ExCoreRuntime.ExItemDefinition.ItemTag",NewName="DefinitionTag")
   ```
 - [ ] **[일괄 리세이브]** Resave Packages 실행
-- [ ] 빌드 검증
+- [x] 빌드 검증
 - [ ] 기능 검증 (아이템 스폰/획득)
 
 ---
@@ -169,19 +169,18 @@
 - [x] **[에디터]** 기존 DA_ExRule 에셌 `PresetTag` 값 설정 완료
   - `DA_ExRule` → PresetTag: `Ex.Runner.Rule`
 - [x] **[GFAction 연결]** `Add Ex Data > Preset Assets`에 모드별 DA 등록 완료
-- [ ] **[참조 교체]** `UExRunnerRuleManagerComponent` → DataCenter 조회로 교체 *(이후 단계)*
+- [x] **[참조 교체]** `UExRunnerRuleManagerComponent` → DataCenter 조회로 교체
 - [x] 빌드 검증 및 DataCenter 동적 등록 검증 완료
-- [ ] 기능 검증 (타이머, FallDeath, DistanceGoal 룰 동작)
+- [x] 기능 검증 (타이머, FallDeath, DistanceGoal 룰 동작)
 
 #### 4-B. `UExRunnerItemSpawnTable` — Preset 계열 전환
 
-- [ ] **[상속 변경]** `UDataAsset` → `UExPresetDataAsset`
-  - `PresetTag` — 부모에서 상속됨
-- [ ] **[IsDataValid]** `CoinEntries` 비어있으면 경고, 전체 Weight 합 0이면 에러
-- [ ] **[GFAction 연결]** `Add Ex Data > Preset Assets`에 등록
-- [ ] **[참조 교체]** `UExRunnerItemManager` → DataCenter 조회로 교체
-- [ ] 빌드 검증
-- [ ] 기능 검증 (코인/버프 스폰)
+- [x] **[상속 변경]** `UDataAsset` → `UExPresetDataAsset`
+- [x] **[IsDataValid]** `CoinEntries` 및 `BuffEntries`의 유효성(null 확인/가중치 검사) 추가
+- [x] **[GFAction 연결]** `Add Ex Data > Preset Assets`에 등록 *(이 단계에서 수행)*
+- [x] **[참조 교체]** `UExRunnerItemManager` → DataCenter 조회로 교체
+- [x] 빌드 검증
+- [x] 기능 검증 (코인/버프 스폰)
 
 ---
 

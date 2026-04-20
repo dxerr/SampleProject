@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/DataAsset.h"
+#include "Base/ExPresetDataAsset.h"
 #include "FExItemSpawnEntry.h"
 #include "ExRunnerItemSpawnTable.generated.h"
 
@@ -12,7 +12,7 @@
  * 코인 라인 간격, 버프 등장 확률, 장애물 타입별 배치 옵션 등을 에디터에서 설정한다.
  */
 UCLASS(BlueprintType)
-class EXRUNNERPLAYRUNTIME_API UExRunnerItemSpawnTable : public UDataAsset
+class EXRUNNERPLAYRUNTIME_API UExRunnerItemSpawnTable : public UExPresetDataAsset
 {
 	GENERATED_BODY()
 
@@ -95,4 +95,14 @@ public:
 private:
 	/** 가중치 기반 랜덤 선택 공통 로직 */
 	static const UExItemDefinition* SelectWeightedRandom(const TArray<FExItemSpawnEntry>& Entries, float CurrentSpeed);
+
+#if WITH_EDITOR
+public:
+	/**
+	 * 저장 시점 유효성 검증.
+	 * - PresetTag 비어있으면 에러
+	 * - 엔트리들의 지정된 Definition이 null인 경우 에러
+	 */
+	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
+#endif
 };

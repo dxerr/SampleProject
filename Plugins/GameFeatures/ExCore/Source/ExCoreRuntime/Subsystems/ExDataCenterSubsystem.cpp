@@ -41,24 +41,26 @@ void UExDataCenterSubsystem::RegisterConfig(UExConfigDataAsset* ConfigAsset, FNa
 
 	UClass* AssetClass = ConfigAsset->GetClass();
 
-	// 중복 등록 경고
-	if (ConfigMap.Contains(AssetClass))
+	// [Fix] 블루프린트 상속 구조 지원: 부모 클래스 계층 전부에 대해 등록 (Native 조회 지원용)
+	UClass* CurrentClass = AssetClass;
+	while (CurrentClass && CurrentClass->IsChildOf(UExConfigDataAsset::StaticClass()))
 	{
-		UE_LOG(LogExDataCenter, Warning,
-			TEXT("[ExDataCenter] RegisterConfig: %s 타입의 Config가 이미 등록되어 있습니다. 무시합니다."),
-			*AssetClass->GetName());
-		return;
+		if (!ConfigMap.Contains(CurrentClass))
+		{
+			ConfigMap.Add(CurrentClass, ConfigAsset);
+			
+			// Feature 추적 등록
+			FExRegisteredEntry Entry;
+			Entry.Class = CurrentClass;
+			Entry.EntryType = FExRegisteredEntry::EType::Config;
+			FeatureRegistryMap.FindOrAdd(FeatureName).Add(Entry);
+		}
+
+		if (CurrentClass == UExConfigDataAsset::StaticClass()) break;
+		CurrentClass = CurrentClass->GetSuperClass();
 	}
 
-	ConfigMap.Add(AssetClass, ConfigAsset);
-
-	// Feature 추적 등록
-	FExRegisteredEntry Entry;
-	Entry.Class = AssetClass;
-	Entry.EntryType = FExRegisteredEntry::EType::Config;
-	FeatureRegistryMap.FindOrAdd(FeatureName).Add(Entry);
-
-	UE_LOG(LogExDataCenter, Log, TEXT("[ExDataCenter] Config 등록: %s (Feature: %s)"),
+	UE_LOG(LogExDataCenter, Log, TEXT("[ExDataCenter] Config 등록 완료: %s (Feature: %s)"),
 		*AssetClass->GetName(), *FeatureName.ToString());
 
 	OnDataCenterUpdated.Broadcast();
@@ -74,7 +76,6 @@ void UExDataCenterSubsystem::RegisterDefinition(UExDefinitionDataAsset* Definiti
 	UClass* AssetClass = DefinitionAsset->GetClass();
 	const FGameplayTag& Tag = DefinitionAsset->DefinitionTag;
 
-	// [런타임 시점] Tag 유효성 — 에디터에서는 IsDataValid가 차단하지만 런타임 방어선
 	if (!Tag.IsValid())
 	{
 		UE_LOG(LogExDataCenter, Warning,
@@ -83,27 +84,30 @@ void UExDataCenterSubsystem::RegisterDefinition(UExDefinitionDataAsset* Definiti
 		return;
 	}
 
-	TMap<FGameplayTag, TObjectPtr<UExDefinitionDataAsset>>& InnerMap = DefinitionMap.FindOrAdd(AssetClass);
-
-	// 태그 유일성 강제 — 동일 타입·태그 중복 시 경고 후 무시
-	if (InnerMap.Contains(Tag))
+	// [Fix] 블루프린트 상속 구조 지원: 부모 클래스 계층 전부에 대해 등록 (Native 조회 지원용)
+	UClass* CurrentClass = AssetClass;
+	while (CurrentClass && CurrentClass->IsChildOf(UExDefinitionDataAsset::StaticClass()))
 	{
-		UE_LOG(LogExDataCenter, Warning,
-			TEXT("[ExDataCenter] RegisterDefinition: %s 타입에 태그 '%s'가 이미 등록되어 있습니다. 무시합니다."),
-			*AssetClass->GetName(), *Tag.ToString());
-		return;
+		TMap<FGameplayTag, TObjectPtr<UExDefinitionDataAsset>>& InnerMap = DefinitionMap.FindOrAdd(CurrentClass);
+
+		// 태그 중복 체크 (동일 클래스 계층 내에서)
+		if (!InnerMap.Contains(Tag))
+		{
+			InnerMap.Add(Tag, DefinitionAsset);
+
+			// Feature 추적 등록
+			FExRegisteredEntry Entry;
+			Entry.Class = CurrentClass;
+			Entry.Tag = Tag;
+			Entry.EntryType = FExRegisteredEntry::EType::Definition;
+			FeatureRegistryMap.FindOrAdd(FeatureName).Add(Entry);
+		}
+
+		if (CurrentClass == UExDefinitionDataAsset::StaticClass()) break;
+		CurrentClass = CurrentClass->GetSuperClass();
 	}
 
-	InnerMap.Add(Tag, DefinitionAsset);
-
-	// Feature 추적 등록
-	FExRegisteredEntry Entry;
-	Entry.Class = AssetClass;
-	Entry.Tag = Tag;
-	Entry.EntryType = FExRegisteredEntry::EType::Definition;
-	FeatureRegistryMap.FindOrAdd(FeatureName).Add(Entry);
-
-	UE_LOG(LogExDataCenter, Log, TEXT("[ExDataCenter] Definition 등록: %s | Tag: %s (Feature: %s)"),
+	UE_LOG(LogExDataCenter, Log, TEXT("[ExDataCenter] Definition 등록 완료: %s | Tag: %s (Feature: %s)"),
 		*AssetClass->GetName(), *Tag.ToString(), *FeatureName.ToString());
 
 	OnDataCenterUpdated.Broadcast();

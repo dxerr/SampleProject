@@ -102,7 +102,7 @@ void AExItemPickupBase::ServerPickUp(AActor* PickupInstigator)
 	{
 		if (UExGameplayEventSubsystem* EventSub = World->GetSubsystem<UExGameplayEventSubsystem>())
 		{
-			EventSub->BroadcastEventSimple(ItemDefinition->ItemTag, PickupInstigator);
+			EventSub->BroadcastEventSimple(ItemDefinition->DefinitionTag, PickupInstigator);
 		}
 	}
 

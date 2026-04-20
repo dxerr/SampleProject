@@ -10,7 +10,8 @@
 #include "../Components/ExPathManager.h"
 #include "../Components/ExRunnerRuleManagerComponent.h"
 #include "../GameStates/ExRunnerGameState.h"
-#include "../Data/ExCurveConfig.h"
+#include "../Data/ExRunnerConfig.h"
+#include "Subsystems/ExDataCenterSubsystem.h"
 #include "ExGameplayTags.h"
 #include "ExGameplayEventSubsystem.h"
 #include "Kismet/GameplayStatics.h"
@@ -69,6 +70,17 @@ void AExRunnerGameMode::BeginPlay()
 			EventSubsystem->GetEventDelegate(TAG_Rule_TimeUp).AddDynamic(this, &AExRunnerGameMode::OnRuleEndGameEvent);
 			EventSubsystem->GetEventDelegate(TAG_Rule_GoalReached).AddDynamic(this, &AExRunnerGameMode::OnRuleEndGameEvent);
 		}
+
+		if (UGameInstance* GI = World->GetGameInstance())
+		{
+			if (UExDataCenterSubsystem* DataCenter = GI->GetSubsystem<UExDataCenterSubsystem>())
+			{
+				if (UExRunnerConfig* Config = DataCenter->GetConfig<UExRunnerConfig>())
+				{
+					RunnerConfig = Config;
+				}
+			}
+		}
 	}
 }
 
@@ -83,18 +95,38 @@ void AExRunnerGameMode::StartRunnerGame()
 		// PathManager 초기화
 		if (GS->PathManager)
 		{
-			if (CurveConfig)
+			// [Fix] 초기화 타이밍 이슈 대비: RunnerConfig가 없으면 다시 조회 시도
+			if (!RunnerConfig.IsValid())
 			{
-				GS->PathManager->CurveConfig = CurveConfig;
+				if (UGameInstance* GI = GetGameInstance())
+				{
+					if (UExDataCenterSubsystem* DataCenter = GI->GetSubsystem<UExDataCenterSubsystem>())
+					{
+						RunnerConfig = DataCenter->GetConfig<UExRunnerConfig>();
+						if (RunnerConfig.IsValid())
+						{
+							UE_LOG(LogExRunnerPlay, Log, TEXT("StartRunnerGame: RunnerConfig 재조회 성공."));
+						}
+					}
+				}
+			}
+
+			if (RunnerConfig.IsValid())
+			{
+				GS->PathManager->RunnerConfig = RunnerConfig;
 			}
 			GS->PathManager->InitializePath(FVector::ZeroVector, FRotator::ZeroRotator);
-			UE_LOG(LogExRunnerPlay, Log, TEXT("PathManager 초기화 완료 (CurveConfig=%s)"),
-				CurveConfig ? *CurveConfig->GetName() : TEXT("None"));
+			UE_LOG(LogExRunnerPlay, Log, TEXT("PathManager 초기화 완료 (RunnerConfig=%s)"),
+				RunnerConfig.IsValid() ? *RunnerConfig->GetName() : TEXT("None"));
 		}
 	}
 
 	if (ChunkSpawner)
 	{
+		if (RunnerConfig.IsValid())
+		{
+			ChunkSpawner->RunnerConfig = RunnerConfig;
+		}
 		ChunkSpawner->InitializeSpawner();
 	}
 

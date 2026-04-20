@@ -1,7 +1,11 @@
+// Copyright ExFrameWork. All Rights Reserved.
+
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/DataAsset.h"
+#include "Data/Base/ExDefinitionDataAsset.h"
+#include "Misc/DataValidation.h"
+#include "GameFramework/Actor.h"
 #include "ExObstacleDefinition.generated.h"
 
 /**
@@ -20,8 +24,8 @@ enum class EExObstacleType : uint8
 /**
  * Runner Game의 장애물 메타데이터 정의
  */
-UCLASS(BlueprintType)
-class EXCORERUNTIME_API UExObstacleDefinition : public UDataAsset
+UCLASS(BlueprintType, Blueprintable)
+class EXRUNNERPLAYRUNTIME_API UExObstacleDefinition : public UExDefinitionDataAsset
 {
 	GENERATED_BODY()
 
@@ -61,8 +65,6 @@ public:
 		meta = (EditCondition = "Type == EExObstacleType::Gap", EditConditionHides))
 	bool bDisableFloorMesh = true;
 
-
-
 	// ── WallRun 타입 전용 ──
 	// 벽 달리기 구간의 벽 높이 (cm)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Type|WallRun",
@@ -74,4 +76,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Type|Climb",
 		meta = (EditCondition = "Type == EExObstacleType::Climb", EditConditionHides))
 	float ClimbHeight = 400.f;
+
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override
+	{
+		bool bIsErrorEmpty = true;
+		if (!ObstacleClass)
+		{
+			Context.AddError(FText::FromString(TEXT("ObstacleClass가 비어 있습니다.")));
+			bIsErrorEmpty = false;
+		}
+
+		return bIsErrorEmpty ? Super::IsDataValid(Context) : EDataValidationResult::Invalid;
+	}
+#endif
 };

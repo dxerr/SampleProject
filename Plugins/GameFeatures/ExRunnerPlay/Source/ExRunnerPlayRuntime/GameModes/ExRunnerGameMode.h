@@ -11,8 +11,9 @@ class UExChunkSpawner;
 class UExObstacleManager;
 class UExRunnerItemManager;
 class UExBeatSyncComponent;
+class UExRunnerConfig;
 class UExPathManager;
-class UExCurveConfig;
+class UExPathManager;
 class UExBGMTrackDataAsset;
 class UExMusicPhaseDataAsset;
 class UExRunnerRuleManagerComponent;
@@ -103,9 +104,8 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UExRunnerRuleManagerComponent> RuleManagerComponent;
 
-	/** 커브 설정 데이터 에셋 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Runner|Curve", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<UExCurveConfig> CurveConfig;
+	/** DataCenter로부터 할당받은 RunnerConfig 의 약참조 */
+	TWeakObjectPtr<UExRunnerConfig> RunnerConfig;
 
 	/** PlayerPawn 캐시 */
 	TWeakObjectPtr<APawn> CachedPlayerPawn;

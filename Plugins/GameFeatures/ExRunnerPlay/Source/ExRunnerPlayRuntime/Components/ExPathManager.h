@@ -14,7 +14,7 @@
 #include "../Struct/FExPathSegment.h"
 #include "ExPathManager.generated.h"
 
-class UExCurveConfig;
+class UExRunnerConfig;
 
 /**
  * UExPathManager
@@ -31,7 +31,7 @@ public:
 
 	/** 커브 설정 데이터 에셋 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Path")
-	TObjectPtr<UExCurveConfig> CurveConfig;
+	TWeakObjectPtr<UExRunnerConfig> RunnerConfig;
 
 	// ========== 경로 조회 ==========
 

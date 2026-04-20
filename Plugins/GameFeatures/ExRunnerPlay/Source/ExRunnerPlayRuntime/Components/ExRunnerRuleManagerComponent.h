@@ -33,11 +33,11 @@ public:
 	// ── 설정 ──────────────────────────────────────────────────────
 
 	/**
-	 * 사용할 룰 조합 DataAsset
-	 * GameMode BP의 컴포넌트 Details에서 DA_ExRule_* 에셋 연결
+	 * 사용할 룰 조합 프리셋 태그
+	 * GameMode BP의 컴포넌트 Details에서 DataCenter 로드용 태그(Ex.Runner.Rule) 설정
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule")
-	TObjectPtr<UExRunnerRuleConfig> RuleConfig;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule", meta = (Categories = "Ex.Runner.Rule"))
+	FGameplayTag RuleConfigTag;
 
 	// ── 공개 인터페이스 ────────────────────────────────────────────
 
@@ -71,6 +71,10 @@ private:
 	/** 캐싱된 GameState 참조 */
 	UPROPERTY()
 	TObjectPtr<AExRunnerGameState> CachedGameState;
+
+	/** DataCenter에서 로드한 RuleConfig 캐싱 */
+	UPROPERTY(Transient)
+	TObjectPtr<UExRunnerRuleConfig> CachedRuleConfig;
 
 	/** 캐싱된 EventSubsystem 참조 */
 	UPROPERTY()

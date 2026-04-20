@@ -10,6 +10,7 @@
 #include "Components/BoxComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "Subsystems/ExDataCenterSubsystem.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExRuleManager, Log, All);
 
@@ -45,9 +46,21 @@ void UExRunnerRuleManagerComponent::TickComponent(float DeltaTime, ELevelTick Ti
 
 void UExRunnerRuleManagerComponent::ActivateAllRules()
 {
-	if (!RuleConfig)
+	if (!RuleConfigTag.IsValid())
 	{
-		UE_LOG(LogExRuleManager, Warning, TEXT("[RuleManager] RuleConfig가 설정되지 않았습니다. 룰 없이 게임 진행됩니다."));
+		UE_LOG(LogExRuleManager, Warning, TEXT("[RuleManager] RuleConfigTag가 설정되지 않았습니다. 룰 없이 게임 진행됩니다."));
+		return;
+	}
+
+	UExDataCenterSubsystem* DataCenter = GetWorld()->GetGameInstance()->GetSubsystem<UExDataCenterSubsystem>();
+	if (DataCenter)
+	{
+		CachedRuleConfig = DataCenter->GetPreset<UExRunnerRuleConfig>(RuleConfigTag);
+	}
+
+	if (!CachedRuleConfig)
+	{
+		UE_LOG(LogExRuleManager, Warning, TEXT("[RuleManager] DataCenter에서 [%s] Tag에 해당하는 RuleConfig를 찾을 수 없습니다."), *RuleConfigTag.ToString());
 		return;
 	}
 
@@ -57,7 +70,7 @@ void UExRunnerRuleManagerComponent::ActivateAllRules()
 	bGameOverHandled = false;
 	ActiveRules.Reset();
 
-	for (UExRunnerRuleBase* Rule : RuleConfig->Rules)
+	for (UExRunnerRuleBase* Rule : CachedRuleConfig->Rules)
 	{
 		if (!Rule) continue;
 

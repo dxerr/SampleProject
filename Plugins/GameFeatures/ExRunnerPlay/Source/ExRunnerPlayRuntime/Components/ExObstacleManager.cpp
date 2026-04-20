@@ -3,7 +3,7 @@
 #include "ExObstacleManager.h"
 #include "ExChunkSpawner.h" // For Delegate definition
 #include "../Actors/ExFloorChunk.h"
-#include "../Data/ExObstacleSpawnConfig.h"
+#include "../Data/ExRunnerConfig.h"
 #include "../Data/ExObstacleDefinition.h"
 #include "../Data/ExObstacleSpawnStrategy.h"
 
@@ -122,10 +122,10 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 {
 	if (ObstacleDefinitions.Num() == 0) return;
 	if (!Chunk) return;
-	if (!BoundSpawner || !BoundSpawner->ObstacleConfig) return;
+	if (!BoundSpawner || !BoundSpawner->RunnerConfig.IsValid()) return;
 
 	// 최대 장애물 갯수 제한 확인 로직 (옵션)
-	if (BoundSpawner->ObstacleConfig->MaxActiveObstacles > 0)
+	if (BoundSpawner->RunnerConfig->ObstacleSpawn.MaxActiveObstacles > 0)
 	{
 		int32 ActiveObstacleCount = 0;
 		// 현재 월드에 활성화된(보이는) 풀링 액터 세기
@@ -140,7 +140,7 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 			}
 		}
 
-		if (ActiveObstacleCount >= BoundSpawner->ObstacleConfig->MaxActiveObstacles)
+		if (ActiveObstacleCount >= BoundSpawner->RunnerConfig->ObstacleSpawn.MaxActiveObstacles)
 		{
 			return; // 제한 도달 시 스폰 생략
 		}
@@ -148,7 +148,7 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 
 	// 스포너에 설정된 기본 확률을 통한 장애물 배치 결정
 	// (비트 기반 포스 스폰일 경우는 무조건 통과)
-	if (!bForceSpawn && FMath::FRand() > BoundSpawner->ObstacleConfig->SpawnProbability)
+	if (!bForceSpawn && FMath::FRand() > BoundSpawner->RunnerConfig->ObstacleSpawn.SpawnProbability)
 	{
 		return;
 	}
@@ -185,7 +185,7 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 	float ChunkEndDist = ChunkStartDist + ChunkLength;
 	
 	// 실제 스폰 예정 거리 (스포너의 안전 거리 설정값 적용)
-	float ActualSpawnDist = SafeStartDist + BoundSpawner->ObstacleConfig->MinSafeDistance;
+	float ActualSpawnDist = SafeStartDist + BoundSpawner->RunnerConfig->ObstacleSpawn.MinSafeDistance;
 
 	// 청크 범위 초과 체크 (미리 검사)
 	if (ActualSpawnDist + ObsLen > ChunkEndDist) return;
@@ -217,7 +217,7 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 	Obstacle->SetActorHiddenInGame(false);
 
 	// ── Strategy 위임: 복귀 거리 계산 ──
-	float RunSpeed = BoundSpawner->ObstacleConfig->DefaultRunSpeed;
+	float RunSpeed = BoundSpawner->RunnerConfig->ObstacleSpawn.DefaultRunSpeed;
 	if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(UGameplayStatics::GetGameMode(this)))
 	{
 		if (APawn* PlayerPawn = GM->GetCachedPlayerPawn())
@@ -225,7 +225,7 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 			RunSpeed = PlayerPawn->GetVelocity().Size();
 			if (RunSpeed < 10.f)
 			{
-				RunSpeed = BoundSpawner->ObstacleConfig->DefaultRunSpeed; // 움직이지 않을 때는 기본 속도 가정
+				RunSpeed = BoundSpawner->RunnerConfig->ObstacleSpawn.DefaultRunSpeed; // 움직이지 않을 때는 기본 속도 가정
 			}
 		}
 	}
@@ -293,7 +293,7 @@ AActor* UExObstacleManager::GetObstacleFromPool(UClass* ObstacleClass)
 	if (!ObstacleClass) return nullptr;
 
 	// 스포너에 풀링 설정 여부 사용 (스포너나 옵션 데이터가 없으면 안전하게 풀링 안함)
-	bool bShouldPool = (BoundSpawner && BoundSpawner->ObstacleConfig) ? BoundSpawner->ObstacleConfig->bUsePooling : false;
+	bool bShouldPool = (BoundSpawner && BoundSpawner->RunnerConfig.IsValid()) ? BoundSpawner->RunnerConfig->ObstacleSpawn.bUsePooling : false;
 
 	// 오브젝트 풀링 미사용 시 무조건 바로 새로 스폰
 	if (!bShouldPool)
@@ -336,7 +336,7 @@ void UExObstacleManager::ReturnObstacleToPool(AActor* Obstacle)
 	if (!IsValid(Obstacle)) return;
 
 	// 스포너 설정 사용
-	bool bShouldPool = (BoundSpawner && BoundSpawner->ObstacleConfig) ? BoundSpawner->ObstacleConfig->bUsePooling : false;
+	bool bShouldPool = (BoundSpawner && BoundSpawner->RunnerConfig.IsValid()) ? BoundSpawner->RunnerConfig->ObstacleSpawn.bUsePooling : false;
 
 	// 풀링 사용 안 하면 아예 액터 소멸
 	if (!bShouldPool)

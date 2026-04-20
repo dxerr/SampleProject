@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "ExItemSpawnManagerBase.h"
 #include "Struct/FExObstacleContext.h"
+#include "GameplayTagContainer.h"
 #include "ExRunnerItemManager.generated.h"
 
 class AExFloorChunk;
@@ -38,9 +39,17 @@ public:
 
 	// ── 데이터 ──
 
-	/** 이 러너 스테이지에서 사용할 아이템 스폰 테이블 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner|Item")
-	TObjectPtr<UExRunnerItemSpawnTable> SpawnTable;
+	/** 이 러너 스테이지에서 사용할 아이템 스폰 테이블 탐색 태그 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner|Item", meta = (Categories = "Ex.Runner.SpawnTable"))
+	FGameplayTag SpawnTableTag;
+
+protected:
+	/** 캐싱된 스폰 테이블 데이터 (DataCenter에서 획득) */
+	UPROPERTY(Transient)
+	TObjectPtr<UExRunnerItemSpawnTable> CachedSpawnTable;
+
+	/** DataCenter로부터 SpawnTable을 동적 로드 (지연 로딩 지원) */
+	void EnsureSpawnTableLoaded();
 
 	// ── Z축 배치 설정 ──
 
@@ -70,6 +79,7 @@ public:
 	float SlideTopPlacementRatio = 0.3f;
 
 	// ── 중앙 제어 인터페이스 ──
+public:
 
 	/**
 	 * ChunkSpawner가 장애물 배치를 완료한 후 명시적으로 호출한다.

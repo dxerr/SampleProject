@@ -10,6 +10,9 @@
 #include "ExChunkSpawner.h"
 #include "Curves/CurveFloat.h"
 #include "Components/SphereComponent.h"
+#include "Subsystems/ExDataCenterSubsystem.h"
+#include "Engine/World.h"
+#include "Engine/GameInstance.h"
 
 UExRunnerItemManager::UExRunnerItemManager()
 {
@@ -19,8 +22,27 @@ UExRunnerItemManager::UExRunnerItemManager()
 void UExRunnerItemManager::BeginPlay()
 {
 	Super::BeginPlay();
-	UE_LOG(LogExItemSystem, Log, TEXT("[ExRunnerItemManager] BeginPlay — SpawnTable: %s"),
-		SpawnTable ? *SpawnTable->GetName() : TEXT("미할당"));
+
+	// BeginPlay에서 미리 로드를 시도하지만, ChunkSpawner가 더 일찍 동작할 수 있으므로
+	// SpawnItemsOnChunk 등에서 캐싱 검사를 한 번 더 수행합니다.
+	EnsureSpawnTableLoaded();
+
+	UE_LOG(LogExItemSystem, Log, TEXT("[ExRunnerItemManager] BeginPlay — SpawnTableTag: %s / Load: %s"),
+		*SpawnTableTag.ToString(), CachedSpawnTable ? TEXT("Success") : TEXT("Fail"));
+}
+
+void UExRunnerItemManager::EnsureSpawnTableLoaded()
+{
+	if (!CachedSpawnTable && SpawnTableTag.IsValid())
+	{
+		if (UGameInstance* GI = GetWorld()->GetGameInstance())
+		{
+			if (UExDataCenterSubsystem* DataCenter = GI->GetSubsystem<UExDataCenterSubsystem>())
+			{
+				CachedSpawnTable = DataCenter->GetPreset<UExRunnerItemSpawnTable>(SpawnTableTag);
+			}
+		}
+	}
 }
 
 // ── Z축 배치 결정 ──
@@ -76,7 +98,9 @@ void UExRunnerItemManager::SpawnItemsOnChunk(AExFloorChunk* TargetChunk, UExObst
 		return;
 	}
 
-	if (!SpawnTable)
+	EnsureSpawnTableLoaded();
+
+	if (!CachedSpawnTable)
 	{
 		UE_LOG(LogExItemSystem, Warning, TEXT("[ExRunnerItemManager] SpawnTable이 할당되지 않았습니다! (아이템 스폰 건너뜀)"));
 		return;
@@ -99,7 +123,7 @@ void UExRunnerItemManager::SpawnItemsOnChunk(AExFloorChunk* TargetChunk, UExObst
 	bool bCoinLineSpawned = false;
 
 	// 코인 라인 스폰 확률 판정
-	if (FMath::FRand() < SpawnTable->CoinLineSpawnProbability)
+	if (FMath::FRand() < CachedSpawnTable->CoinLineSpawnProbability)
 	{
 		SpawnCoinLine(TargetChunk, ObstacleManager, SafeStart, SafeEnd);
 		bCoinLineSpawned = true;
@@ -113,10 +137,10 @@ void UExRunnerItemManager::SpawnItemsOnChunk(AExFloorChunk* TargetChunk, UExObst
 	}
 
 	// 코인 라인 없는 청크: 단독 버프 배치
-	if (!bCoinLineSpawned && FMath::FRand() < SpawnTable->BuffSoloSpawnProbability)
+	if (!bCoinLineSpawned && FMath::FRand() < CachedSpawnTable->BuffSoloSpawnProbability)
 	{
 		float BuffDistance = FMath::FRandRange(SafeStart, SafeEnd);
-		float SnakeOffset = SpawnTable->bUseSnakePattern ? CurrentLaneYOffset : 0.f;
+		float SnakeOffset = CachedSpawnTable->bUseSnakePattern ? CurrentLaneYOffset : 0.f;
 		SpawnBuffItem(TargetChunk, ObstacleManager, BuffDistance, SnakeOffset);
 	}
 }
@@ -125,12 +149,14 @@ void UExRunnerItemManager::SpawnItemsOnChunk(AExFloorChunk* TargetChunk, UExObst
 
 void UExRunnerItemManager::SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManager* ObstacleManager, float StartDistance, float EndDistance)
 {
-	if (!SpawnTable || SpawnTable->CoinEntries.Num() == 0)
+	EnsureSpawnTableLoaded();
+
+	if (!CachedSpawnTable || CachedSpawnTable->CoinEntries.Num() == 0)
 	{
 		return;
 	}
 
-	const float Spacing = SpawnTable->CoinSpacing;
+	const float Spacing = CachedSpawnTable->CoinSpacing;
 	float CurrentDistance = StartDistance;
 
 	// 바닥의 실제 Y 범위 구해 LaneWidth 산출 (레벨 디자인상 3등분 폭)
@@ -147,7 +173,7 @@ void UExRunnerItemManager::SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManage
 	
 	// 라인 중 버프 교체 삽입 (확률 판정 후 임의의 슬롯 인덱스 지정)
 	int32 BuffReplaceIndex = -1;
-	if (FMath::FRand() < SpawnTable->BuffSpawnProbability)
+	if (FMath::FRand() < CachedSpawnTable->BuffSpawnProbability)
 	{
 		BuffReplaceIndex = FMath::RandRange(0, EstimatedSpawns - 1);
 	}
@@ -163,11 +189,11 @@ void UExRunnerItemManager::SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManage
 			PersistentTargetLane = PossibleLanes[FMath::RandRange(0, PossibleLanes.Num() - 1)];
 
 			// 할당량 갱신
-			RemainingCoinsInCurrentLane = FMath::RandRange(SpawnTable->MinCoinsPerLine, SpawnTable->MaxCoinsPerLine);
+			RemainingCoinsInCurrentLane = FMath::RandRange(CachedSpawnTable->MinCoinsPerLine, CachedSpawnTable->MaxCoinsPerLine);
 		}
 
 		// 코인 라인 중간 끊김 판정
-		if (i > 0 && FMath::FRand() < SpawnTable->CoinLineBreakProbability)
+		if (i > 0 && FMath::FRand() < CachedSpawnTable->CoinLineBreakProbability)
 		{
 			CurrentDistance += Spacing * 2.f; // 끊김 시 간격 2배
 			
@@ -178,13 +204,13 @@ void UExRunnerItemManager::SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManage
 
 		// 스폰할 아이템 정의서 결정 (교체형 버프 vs 코인)
 		const UExItemDefinition* ItemDef = nullptr;
-		if (i == BuffReplaceIndex && SpawnTable->BuffEntries.Num() > 0)
+		if (i == BuffReplaceIndex && CachedSpawnTable->BuffEntries.Num() > 0)
 		{
-			ItemDef = SpawnTable->SelectRandomBuff(0.f); 
+			ItemDef = CachedSpawnTable->SelectRandomBuff(0.f); 
 		}
 		else
 		{
-			ItemDef = SpawnTable->SelectRandomCoin(0.f);
+			ItemDef = CachedSpawnTable->SelectRandomCoin(0.f);
 		}
 
 		if (!ItemDef)
@@ -194,14 +220,14 @@ void UExRunnerItemManager::SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManage
 		}
 
 		// 뱀(Snake) 패턴 보간 계산 (목표 레인을 향해 한 걸음씩 드리프트)
-		if (SpawnTable->bUseSnakePattern)
+		if (CachedSpawnTable->bUseSnakePattern)
 		{
 			float TargetY = PersistentTargetLane * LaneWidth;
 			float DistanceToTarget = TargetY - CurrentLaneYOffset;
 			
 			if (FMath::Abs(DistanceToTarget) > KINDA_SMALL_NUMBER)
 			{
-				float Drift = SpawnTable->LateralDriftPerCoin;
+				float Drift = CachedSpawnTable->LateralDriftPerCoin;
 				if (FMath::Abs(DistanceToTarget) <= Drift)
 				{
 					CurrentLaneYOffset = TargetY;
@@ -289,10 +315,12 @@ float UExRunnerItemManager::GetCachedCoinRadius()
 		return CachedCoinRadius;
 	}
 
+	EnsureSpawnTableLoaded();
+
 	// 스폰 테이블의 첫 번째 코인 애셋 정보를 실시간으로 질의하여 반지름 획득
-	if (SpawnTable && SpawnTable->CoinEntries.Num() > 0)
+	if (CachedSpawnTable && CachedSpawnTable->CoinEntries.Num() > 0)
 	{
-		if (const UExItemDefinition* CoinDef = SpawnTable->CoinEntries[0].ItemDefinition)
+		if (const UExItemDefinition* CoinDef = CachedSpawnTable->CoinEntries[0].ItemDefinition)
 		{
 			if (TSubclassOf<AExItemPickupBase> PickupClass = CoinDef->PickupActorClass)
 			{
@@ -319,12 +347,14 @@ float UExRunnerItemManager::GetCachedCoinRadius()
 
 void UExRunnerItemManager::SpawnBuffItem(AExFloorChunk* Chunk, UExObstacleManager* ObstacleManager, float AtDistance, float LateralOffset)
 {
-	if (!SpawnTable || SpawnTable->BuffEntries.Num() == 0)
+	EnsureSpawnTableLoaded();
+
+	if (!CachedSpawnTable || CachedSpawnTable->BuffEntries.Num() == 0)
 	{
 		return;
 	}
 
-	const UExItemDefinition* BuffDef = SpawnTable->SelectRandomBuff(0.f); // TODO: 현재 속도 연동
+	const UExItemDefinition* BuffDef = CachedSpawnTable->SelectRandomBuff(0.f); // TODO: 현재 속도 연동
 	if (!BuffDef)
 	{
 		return;
@@ -350,7 +380,7 @@ void UExRunnerItemManager::SpawnBuffItem(AExFloorChunk* Chunk, UExObstacleManage
 	FExObstacleContext Context;
 	if (ObstacleManager)
 	{
-		ObstacleManager->QueryObstacleAtDistance(GlobalPathDistance, SpawnTable->MinDistanceFromObstacle, Context);
+		ObstacleManager->QueryObstacleAtDistance(GlobalPathDistance, CachedSpawnTable->MinDistanceFromObstacle, Context);
 	}
 
 	float FinalZ = CalculateItemZ(Context, SpawnLocation.Z, 0.5f);

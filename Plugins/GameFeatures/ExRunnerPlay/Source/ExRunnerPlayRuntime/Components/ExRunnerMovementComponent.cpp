@@ -9,7 +9,7 @@
 #include "ExRunnerStatComponent.h"
 #include "../GameStates/ExRunnerGameState.h"
 #include "../Components/ExPathManager.h"
-#include "../Data/ExCurveConfig.h"
+#include "../Data/ExRunnerConfig.h"
 #include "GameFramework/Character.h"
 #include "DrawDebugHelpers.h"
 #include "ExRunnerInputComponent.h"
@@ -357,7 +357,7 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 	if (!TargetPawn) return;
 
 	AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
-	if (!GS || !GS->PathManager || !GS->PathManager->CurveConfig) return;
+	if (!GS || !GS->PathManager || !GS->PathManager->RunnerConfig.IsValid()) return;
 
 	AController* Controller = TargetPawn->GetController();
 	if (!Controller) return;

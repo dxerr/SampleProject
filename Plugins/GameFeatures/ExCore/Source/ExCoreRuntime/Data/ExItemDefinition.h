@@ -3,11 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/DataAsset.h"
+#include "Data/Base/ExDefinitionDataAsset.h"
 #include "GameplayTagContainer.h"
+#include "Misc/DataValidation.h"
+#include "../Items/ExItemPickupBase.h"
 #include "ExItemDefinition.generated.h"
-
-class AExItemPickupBase;
 class UExItemEffect;
 class USoundBase;
 class UNiagaraSystem;
@@ -20,17 +20,11 @@ class UNiagaraSystem;
  * 코드 수정 없이 DataAsset 인스턴스를 추가하는 것만으로 새 아이템을 생성할 수 있다.
  */
 UCLASS(BlueprintType)
-class EXCORERUNTIME_API UExItemDefinition : public UPrimaryDataAsset
+class EXCORERUNTIME_API UExItemDefinition : public UExDefinitionDataAsset
 {
 	GENERATED_BODY()
 
 public:
-	// ── 식별 ──
-
-	/** 아이템 고유 태그 (Ex.Item.Coin, Ex.Item.SpeedBoost 등) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item|Identity")
-	FGameplayTag ItemTag;
-
 	/** 표시 이름 (UI/현지화용) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item|Identity")
 	FText DisplayName;
@@ -65,4 +59,18 @@ public:
 	/** 획득 시 재생할 나이아가라 이펙트 (Soft Reference) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item|Feedback")
 	TSoftObjectPtr<UNiagaraSystem> PickupVFX;
+
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override
+	{
+		bool bIsErrorEmpty = true;
+		if (!PickupActorClass)
+		{
+			Context.AddError(FText::FromString(TEXT("PickupActorClass가 설정되지 않았습니다.")));
+			bIsErrorEmpty = false;
+		}
+
+		return bIsErrorEmpty ? Super::IsDataValid(Context) : EDataValidationResult::Invalid;
+	}
+#endif
 };

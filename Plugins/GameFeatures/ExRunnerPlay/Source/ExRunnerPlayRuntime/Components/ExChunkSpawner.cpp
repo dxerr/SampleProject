@@ -10,7 +10,7 @@
 #include "../Actors/ExFloorChunk.h"
 #include "ExPathManager.h"
 #include "../GameStates/ExRunnerGameState.h"
-#include "../Data/ExCurveConfig.h"
+#include "../Data/ExRunnerConfig.h"
 #include "../Components/ExObstacleManager.h"
 #include "../Components/ExRunnerItemManager.h"
 #include "Kismet/GameplayStatics.h"
@@ -113,12 +113,25 @@ AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
 		}
 	}
 
-	if (PM && PM->CurveConfig)
+	if (PM && PM->RunnerConfig.IsValid())
 	{
 		// ── 경로 기반 배치 ──
 		
 		const FExPathSegment* CurrentSeg = nullptr;
 
+		// [Debug] 설정값 확인 로그 (첫 스폰 시 1회 유도)
+		static bool bLoggedConfig = false;
+		if (!bLoggedConfig)
+		{
+			const auto& Curve = PM->RunnerConfig->Curve;
+			const auto& Obs = PM->RunnerConfig->ObstacleSpawn;
+			UE_LOG(LogExChunkSpawner, Log, TEXT("=== RunnerConfig 활성화됨 ==="));
+			UE_LOG(LogExChunkSpawner, Log, TEXT(" - CurveRadius: %.1f"), Curve.FixedCurveRadius);
+			UE_LOG(LogExChunkSpawner, Log, TEXT(" - ProbBase: %.2f"), Curve.CurveProbabilityBase);
+			UE_LOG(LogExChunkSpawner, Log, TEXT(" - ObstacleProb: %.2f"), Obs.SpawnProbability);
+			bLoggedConfig = true;
+		}
+		
 		// 1) 세그먼트 확보 (Override 또는 신규 생성)
 		if (OverrideSegmentIndex >= 0)
 		{
@@ -174,7 +187,7 @@ AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
 		const bool bIsLeft = (Seg.Type == EExPathSegmentType::CurveLeft);
 		
 		Chunk->ApplyCurve(Seg.CurveAngle, Seg.CurveRadius, 
-			PM->CurveConfig->SplineSegmentCount, bIsLeft, Seg.HeightOffset);
+			PM->RunnerConfig->Curve.SplineSegmentCount, bIsLeft, Seg.HeightOffset);
 
 		UE_LOG(LogExChunkSpawner, Log, TEXT("경로 기반 스폰: [%s] Type=%d, PathDist=%.1f (Mid), Pos=%s"),
 			*Chunk->GetName(), (int32)Seg.Type, MidDistance, *SpawnPos.ToString());
@@ -210,7 +223,7 @@ AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
 
 	// [중앙 제어] 명시적인 순서로 매니저 호출 (장애물 먼저, 그 이후 아이템)
 	// ★ 개발 중 Hot Reload(Re-instancing)로 인해 포인터가 stale해지는 경우를 대비해 유효성 체크 강화
-	if (!CachedObstacleManager || !CachedItemManager || !CachedItemManager->SpawnTable)
+	if (!CachedObstacleManager || !CachedItemManager)
 	{
 		CachedObstacleManager = GetOwner()->FindComponentByClass<UExObstacleManager>();
 		CachedItemManager = GetOwner()->FindComponentByClass<UExRunnerItemManager>();

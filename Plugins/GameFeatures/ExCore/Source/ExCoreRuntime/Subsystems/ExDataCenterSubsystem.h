@@ -118,13 +118,20 @@ public:
 		static_assert(TIsDerivedFrom<T, UExConfigDataAsset>::IsDerived,
 			"GetConfig<T>: T는 UExConfigDataAsset의 서브클래스여야 합니다.");
 
-		if (UExConfigDataAsset* const* Found = ConfigMap.Find(T::StaticClass()))
+		if (const auto* Found = ConfigMap.Find(T::StaticClass()))
 		{
 			return Cast<T>(*Found);
 		}
 
-		ReportMissingData(FString::Printf(TEXT("GetConfig: %s 타입의 Config가 DataCenter에 등록되지 않았습니다. GameFeatureAction_AddExData 세팅을 확인하세요."),
-			*T::StaticClass()->GetName()));
+		// [Debug] 검색 실패 시 맵 상태 출력
+		TArray<TObjectPtr<UClass>> Keys;
+		ConfigMap.GetKeys(Keys);
+		FString KeyList;
+		for(TObjectPtr<UClass> K : Keys) { KeyList += K->GetName() + TEXT(", "); }
+
+		ReportMissingData(FString::Printf(TEXT("GetConfig 상세: Target=[%s], MapKeys=[%s]"),
+			*T::StaticClass()->GetName(), *KeyList));
+		
 		return nullptr;
 	}
 
@@ -141,9 +148,9 @@ public:
 		static_assert(TIsDerivedFrom<T, UExDefinitionDataAsset>::IsDerived,
 			"FindDefinition<T>: T는 UExDefinitionDataAsset의 서브클래스여야 합니다.");
 
-		if (const TMap<FGameplayTag, UExDefinitionDataAsset*>* InnerMap = DefinitionMap.Find(T::StaticClass()))
+		if (const auto* InnerMap = DefinitionMap.Find(T::StaticClass()))
 		{
-			if (UExDefinitionDataAsset* const* Found = InnerMap->Find(Tag))
+			if (const TObjectPtr<UExDefinitionDataAsset>* Found = InnerMap->Find(Tag))
 			{
 				return Cast<T>(*Found);
 			}
@@ -164,7 +171,7 @@ public:
 			"GetAllDefinitions<T>: T는 UExDefinitionDataAsset의 서브클래스여야 합니다.");
 
 		TArray<T*> Result;
-		if (const TMap<FGameplayTag, UExDefinitionDataAsset*>* InnerMap = DefinitionMap.Find(T::StaticClass()))
+		if (const auto* InnerMap = DefinitionMap.Find(T::StaticClass()))
 		{
 			for (const auto& Pair : *InnerMap)
 			{
@@ -192,9 +199,9 @@ public:
 		static_assert(TIsDerivedFrom<T, UExPresetDataAsset>::IsDerived,
 			"GetPreset<T>: T는 UExPresetDataAsset의 서브클래스여야 합니다.");
 
-		if (const TMap<FGameplayTag, UExPresetDataAsset*>* InnerMap = PresetMap.Find(T::StaticClass()))
+		if (const auto* InnerMap = PresetMap.Find(T::StaticClass()))
 		{
-			if (UExPresetDataAsset* const* Found = InnerMap->Find(ModeTag))
+			if (const TObjectPtr<UExPresetDataAsset>* Found = InnerMap->Find(ModeTag))
 			{
 				return Cast<T>(*Found);
 			}

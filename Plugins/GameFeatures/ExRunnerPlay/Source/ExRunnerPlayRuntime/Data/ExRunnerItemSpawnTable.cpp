@@ -3,6 +3,10 @@
 #include "ExRunnerItemSpawnTable.h"
 #include "ExItemDefinition.h"
 
+#if WITH_EDITOR
+#include "Misc/DataValidation.h"
+#endif
+
 const UExItemDefinition* UExRunnerItemSpawnTable::SelectRandomCoin(float CurrentSpeed) const
 {
 	return SelectWeightedRandom(CoinEntries, CurrentSpeed);
@@ -49,3 +53,40 @@ const UExItemDefinition* UExRunnerItemSpawnTable::SelectWeightedRandom(const TAr
 	// 부동소수점 오차 방지: 마지막 항목 반환
 	return ValidEntries.Last()->ItemDefinition;
 }
+
+#if WITH_EDITOR
+EDataValidationResult UExRunnerItemSpawnTable::IsDataValid(FDataValidationContext& Context) const
+{
+	EDataValidationResult Result = Super::IsDataValid(Context);
+
+	auto ValidateEntries = [&](const TArray<FExItemSpawnEntry>& Entries, const FString& ArrayName)
+	{
+		for (int32 i = 0; i < Entries.Num(); ++i)
+		{
+			const FExItemSpawnEntry& Entry = Entries[i];
+			if (Entry.ItemDefinition == nullptr)
+			{
+				Context.AddError(FText::Format(
+					FText::FromString(TEXT("{0}[{1}]의 ItemDefinition이 비어 있습니다. 유효한 에셋을 할당하세요.")),
+					FText::FromString(ArrayName),
+					FText::AsNumber(i)
+				));
+				Result = EDataValidationResult::Invalid;
+			}
+			if (Entry.Weight <= 0.0f)
+			{
+				Context.AddWarning(FText::Format(
+					FText::FromString(TEXT("{0}[{1}]의 가중치(Weight)가 0 이하입니다. 0 초과여야 스폰될 수 있습니다.")),
+					FText::FromString(ArrayName),
+					FText::AsNumber(i)
+				));
+			}
+		}
+	};
+
+	ValidateEntries(CoinEntries, TEXT("CoinEntries"));
+	ValidateEntries(BuffEntries, TEXT("BuffEntries"));
+
+	return Result;
+}
+#endif
