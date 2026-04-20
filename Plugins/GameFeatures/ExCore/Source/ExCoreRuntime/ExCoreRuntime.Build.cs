@@ -14,6 +14,7 @@ public class ExCoreRuntime : ModuleRules
 				ModuleDirectory,
 				Path.Combine(ModuleDirectory, "GameModes"),
 				Path.Combine(ModuleDirectory, "Data"),
+				Path.Combine(ModuleDirectory, "Data", "Base"),	        // DataCenter 3-Base 클래스
 				Path.Combine(ModuleDirectory, "Components"),
 				Path.Combine(ModuleDirectory, "Actors"),
 				Path.Combine(ModuleDirectory, "Player"),
@@ -25,6 +26,7 @@ public class ExCoreRuntime : ModuleRules
 				Path.Combine(ModuleDirectory, "Items"),
 				Path.Combine(ModuleDirectory, "Items", "Effects"),
 				Path.Combine(ModuleDirectory, "Struct", "Items"),
+				Path.Combine(ModuleDirectory, "Subsystems"),             // ExDataCenterSubsystem
 				Path.Combine(ModuleDirectory, "UI"),
 				Path.Combine(ModuleDirectory, "UI", "Subsystems"),
 				Path.Combine(ModuleDirectory, "UI", "Widgets"),
