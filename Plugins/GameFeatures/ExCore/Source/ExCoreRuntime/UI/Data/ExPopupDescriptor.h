@@ -18,6 +18,17 @@ struct EXCORERUNTIME_API FExPopupButtonDesc
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Popup|Button")
 	EExModalResult ResultValue = EExModalResult::Confirm;
+
+	/**
+	 * 버튼의 고정 크기 (Width, Height).
+	 * X 또는 Y 값이 0.f이면 해당 축은 자동 크기(Content 기반)로 동작합니다.
+	 * 기본값(160 x 70)은 모바일 터치 환경에 적합한 표준 크기입니다.
+	 * 예: FVector2D(200.f, 80.f) → 가로 200, 세로 80 고정
+	 * 예: FVector2D(0.f, 0.f)   → 양쪽 모두 자동 크기
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Popup|Button",
+		meta = (DisplayName = "버튼 크기 (0이면 자동)"))
+	FVector2D ButtonSize = FVector2D(160.f, 70.f);
 };
 
 /**

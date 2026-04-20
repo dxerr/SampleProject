@@ -2,6 +2,8 @@
 
 #include "ExRunnerFadeOverlayWidget.h"
 #include "UI/Subsystems/ExUIManagerSubsystem.h"
+#include "Subsystems/ExGameFlowSubsystem.h"
+#include "Tags/ExFlowTags.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/LocalPlayer.h"
 #include "Animation/WidgetAnimation.h"
@@ -91,7 +93,20 @@ void UExRunnerFadeOverlayWidget::HandleRestartResult(EExModalResult Result, cons
 	else
 	{
 		UE_LOG(LogFadeOverlay, Log, TEXT("[FadeOverlay] 취소 선택 — ReturnToLobby"));
-		// TODO: GameMode::ReturnToLobby 연결 (GameFlowSubsystem 활용)
+		
+		// GameFlowSubsystem을 통해 로비 맵으로 전환 요청. 
+		// (TODO: 향후 로비 맵 이름도 하드코딩하지 않고 매니저 세팅에서 가져오는 구조로 개선 권장)
+		if (CachedUIMgr)
+		{
+			if (UGameInstance* GI = GetGameInstance())
+			{
+				if (UExGameFlowSubsystem* FlowSub = GI->GetSubsystem<UExGameFlowSubsystem>())
+				{
+					FlowSub->SetFlowState(ExFlowTags::Flow_Lobby);
+					FlowSub->RequestTravel(TEXT("L_Lobby"));
+				}
+			}
+		}
 	}
 
 	// 오버레이 제거

@@ -1,18 +1,12 @@
 #include "UI/Widgets/ExPopupWidget.h"
 #include "Components/PanelWidget.h"
 #include "Components/EditableTextBox.h"
+#include "Components/SizeBox.h"
 #include "CommonRichTextBlock.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "UI/Widgets/ExBaseButtonWidget.h"
-#include "UI/Widgets/ExBaseButtonWidget.h" // We need to assume some button class exists or dynamically add it.
-// Assuming ExCore uses UExBaseButtonWidget for auto-generated buttons, but wait, the document says "버튼 동적 생성"
-// I will keep it simple and just leave SetupButtons empty indicating BP should implement it, or wait...
-// UPanelWidget can add children. Usually button instantiation requires a WidgetClass. Since the class isn't provided in the Descriptor, we might need a property for the generic ButtonClass.
-// However, the focus of the request is core architecture. I'll implement what's possible.
-
-// Since there is no ButtonClass specified in the Descriptor or Widget, I will just control visibility of existing buttons if they exist, or emit a warning if it's purely dynamic. Let's add a placeholder comment for SetupButtons.
 
 void UExPopupWidget::InitFromDescriptor(const FExPopupDescriptor& Descriptor)
 {
@@ -85,12 +79,24 @@ void UExPopupWidget::SetupButtons(const TArray<FExPopupButtonDesc>& ButtonDescs)
 			NewButton->ButtonText = Desc.Label;
 
 			// 클릭 이벤트 바인딩 (Native C++ Event)
-			// OnClicked()는 매개변수가 없는 FCommonButtonEvent를 반환하므로,
-			// Payload 기능을 이용해 람다나 추가 인자를 전달할 수 있습니다.
 			NewButton->OnClicked().AddUObject(this, &UExPopupWidget::OnButtonClicked, Desc.ResultValue);
 
-			// 패널에 세팅하고 패딩(여백) 살짝 주기
-			UPanelSlot* AddedSlot = Panel_Buttons->AddChild(NewButton);
+			// ButtonSize가 지정된 경우 USizeBox로 래핑하여 크기 강제 적용
+			const bool bHasWidthOverride  = Desc.ButtonSize.X > 0.f;
+			const bool bHasHeightOverride = Desc.ButtonSize.Y > 0.f;
+
+			UWidget* ChildToAdd = NewButton;
+			if (bHasWidthOverride || bHasHeightOverride)
+			{
+				USizeBox* SizeBox = NewObject<USizeBox>(this);
+				if (bHasWidthOverride)  SizeBox->SetWidthOverride(Desc.ButtonSize.X);
+				if (bHasHeightOverride) SizeBox->SetHeightOverride(Desc.ButtonSize.Y);
+				SizeBox->AddChild(NewButton);
+				ChildToAdd = SizeBox;
+			}
+
+			// 패널에 추가하고 HorizontalBoxSlot 패딩 적용
+			UPanelSlot* AddedSlot = Panel_Buttons->AddChild(ChildToAdd);
 			if (UHorizontalBoxSlot* HBoxSlot = Cast<UHorizontalBoxSlot>(AddedSlot))
 			{
 				HBoxSlot->SetPadding(FMargin(10.0f, 0.0f, 10.0f, 0.0f));

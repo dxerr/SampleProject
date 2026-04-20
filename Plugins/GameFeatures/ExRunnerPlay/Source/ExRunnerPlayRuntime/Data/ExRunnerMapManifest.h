@@ -1,20 +1,28 @@
+/**
+ * @file ExRunnerMapManifest.h
+ * @brief ExRunnerPlay 플러그인 전용 에셋 매니페스트
+ * @details ExCore의 UExFeatureAssetManifest를 상속받아 Runner 전용 에셋을 관리합니다.
+ *          맵 목록(FeatureMaps)과 추가 에셋(AdditionalAssets)은 베이스 클래스에 정의되어 있으며,
+ *          Runner 플러그인 전용 데이터가 필요하다면 이 클래스에 추가하면 됩니다.
+ *
+ * Copyright ExFrameWork. All Rights Reserved.
+ */
+
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/DataAsset.h"
+#include "ExFeatureAssetManifest.h"
 #include "ExRunnerMapManifest.generated.h"
 
 /**
- * UExRunnerMapManifest
- * ExRunnerPlay 플러그인에 종속된 맵 파일들을 패키징 시 자동으로 쿠킹(포함)시키기 위한 매니페스트 데이터 에셋.
+ * UExRunnerAssetManifest
+ * ExRunnerPlay 플러그인 전용 에셋 매니페스트.
+ * 맵 및 추가 에셋 등록은 부모 클래스(UExFeatureAssetManifest)의 필드를 사용합니다.
  */
 UCLASS(BlueprintType)
-class EXRUNNERPLAYRUNTIME_API UExRunnerMapManifest : public UPrimaryDataAsset
+class EXRUNNERPLAYRUNTIME_API UExRunnerAssetManifest : public UExFeatureAssetManifest
 {
 	GENERATED_BODY()
 
-public:
-	// 에디터에서 오직 맵(.umap) 파일만 배열로 선택할 수 있도록 강제 필터링합니다.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Game Feature Maps")
-	TArray<TSoftObjectPtr<UWorld>> FeatureMaps;
+	// 향후 ExRunnerPlay 전용 필드가 필요하면 여기에 추가합니다.
 };

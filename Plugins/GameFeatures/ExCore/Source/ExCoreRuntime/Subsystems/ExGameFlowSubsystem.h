@@ -7,6 +7,8 @@
 #include "GameplayTagContainer.h"
 #include "ExGameFlowSubsystem.generated.h"
 
+class UExExperienceDefinition;
+
 // Travel 요청 델리게이트 (서버 권한인 GameMode가 이를 구독하여 실제 Travel 수행)
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRequestTravel, const FString&, MapURL);
 
@@ -41,11 +43,11 @@ public:
 	void RequestTravel(const FString& MapURL);
 
 	/** 
-	 * [UI 호출용] 로비에서 인게임으로 서버 이동을 직접 요청합니다.
-	 * 델리게이트를 통해 GameMode가 실질적인 SeamlessTravel을 수행합니다.
+	 * [UI 호출용] 경험 데이터 에셋(Experience Definition) 기반으로 인게임 전환을 요청합니다.
+	 * 맵 이름 대신 데이터 에셋을 인자로 받아, 그 안에서 지정된 맵 경로를 찾아 트래블합니다.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "ExFlow")
-	void TransitionToInGame(const FString& MapURL);
+	UFUNCTION(BlueprintCallable, Category = "ExFlow", meta=(DisplayName="Transition To Experience"))
+	void TransitionToExperience(const UExExperienceDefinition* ExperienceConfig);
 
 public:
 	UPROPERTY(BlueprintAssignable, Category = "ExFlow")

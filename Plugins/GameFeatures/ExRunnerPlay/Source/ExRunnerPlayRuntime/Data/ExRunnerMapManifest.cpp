@@ -1,3 +1,5 @@
+// Copyright ExFrameWork. All Rights Reserved.
+
 #include "ExRunnerMapManifest.h"
 
-// 이 파일은 UPrimaryDataAsset 기본 동작을 수행하므로 비워두어도 됩니다.
+// UExFeatureAssetManifest의 기본 동작을 그대로 사용합니다.

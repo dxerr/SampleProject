@@ -2,6 +2,7 @@
 
 #include "Subsystems/ExGameFlowSubsystem.h"
 #include "Tags/ExFlowTags.h"
+#include "Experience/ExExperienceDefinition.h"
 #include "Misc/PackageName.h"
 
 
@@ -93,11 +94,25 @@ void UExGameFlowSubsystem::RequestTravel(const FString& MapURL)
 	OnRequestTravel.Broadcast(ResolvedURL);
 }
 
-void UExGameFlowSubsystem::TransitionToInGame(const FString& MapURL)
+void UExGameFlowSubsystem::TransitionToExperience(const UExExperienceDefinition* ExperienceConfig)
 {
-	// 로비 -> 인게임 상태로 내부 전환 시도
-	SetFlowState(ExFlowTags::Flow_InGame);
+	if (!ExperienceConfig)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[ExGameFlow] TransitionToExperience 실패: ExperienceConfig가 유효하지 않습니다."));
+		return;
+	}
 
-	// 게임 모드에 맵 로딩 지시
-	RequestTravel(MapURL);
+	if (ExperienceConfig->MapToLoad.IsNull())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[ExGameFlow] TransitionToExperience 실패: %s 데이터 에셋 안에 대상 MapToLoad이 지정되지 않았습니다."), *ExperienceConfig->GetName());
+		return;
+	}
+
+	// TSoftObjectPtr<UWorld> 경로에서 로드용 URL 스트링 추출 (.umap을 제외하고 패키지 이름만 추출)
+	FString MapURL = ExperienceConfig->MapToLoad.ToSoftObjectPath().GetLongPackageName();
+
+	UE_LOG(LogTemp, Log, TEXT("[ExGameFlow] Experience [%s] 전환 요청. 대상 맵: %s"), *ExperienceConfig->GetName(), *MapURL);
+
+	SetFlowState(ExFlowTags::Flow_InGame);
+	OnRequestTravel.Broadcast(MapURL);
 }
