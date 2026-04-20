@@ -123,14 +123,8 @@ public:
 			return Cast<T>(*Found);
 		}
 
-		// [Debug] 검색 실패 시 맵 상태 출력
-		TArray<TObjectPtr<UClass>> Keys;
-		ConfigMap.GetKeys(Keys);
-		FString KeyList;
-		for(TObjectPtr<UClass> K : Keys) { KeyList += K->GetName() + TEXT(", "); }
-
-		ReportMissingData(FString::Printf(TEXT("GetConfig 상세: Target=[%s], MapKeys=[%s]"),
-			*T::StaticClass()->GetName(), *KeyList));
+		ReportMissingData(FString::Printf(TEXT("GetConfig: %s 타입의 Config가 DataCenter에 등록되지 않았습니다. GameFeatureAction_AddExData 세팅을 확인하세요."),
+			*T::StaticClass()->GetName()));
 		
 		return nullptr;
 	}

@@ -1,13 +1,17 @@
 /.agent
+/.claude
 /.gemini
 /.git
+/.sentry-native
 /.vscode
 /Bug
 /Content
+/DerivedDataCache
 /Intermediate
 /Md
 /NVIDIA Corporation
 /Saved
+/tmp
 /Tools
 /Plugins/GameFeatures/ExCore/Content
 /Plugins/GameFeatures/ExCore/Intermediate

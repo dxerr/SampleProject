@@ -119,19 +119,6 @@ AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
 		
 		const FExPathSegment* CurrentSeg = nullptr;
 
-		// [Debug] 설정값 확인 로그 (첫 스폰 시 1회 유도)
-		static bool bLoggedConfig = false;
-		if (!bLoggedConfig)
-		{
-			const auto& Curve = PM->RunnerConfig->Curve;
-			const auto& Obs = PM->RunnerConfig->ObstacleSpawn;
-			UE_LOG(LogExChunkSpawner, Log, TEXT("=== RunnerConfig 활성화됨 ==="));
-			UE_LOG(LogExChunkSpawner, Log, TEXT(" - CurveRadius: %.1f"), Curve.FixedCurveRadius);
-			UE_LOG(LogExChunkSpawner, Log, TEXT(" - ProbBase: %.2f"), Curve.CurveProbabilityBase);
-			UE_LOG(LogExChunkSpawner, Log, TEXT(" - ObstacleProb: %.2f"), Obs.SpawnProbability);
-			bLoggedConfig = true;
-		}
-		
 		// 1) 세그먼트 확보 (Override 또는 신규 생성)
 		if (OverrideSegmentIndex >= 0)
 		{

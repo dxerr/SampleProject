@@ -71,12 +71,6 @@ struct EXRUNNERPLAYRUNTIME_API FExCurveSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curve|Mesh", meta = (ClampMin = "3", ClampMax = "20"))
 	int32 SplineSegmentCount = 10;
 
-	// ========== 캐릭터 회전 ==========
-
-	/** 커브 진입 시 캐릭터 회전 보간 속도 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curve|Character", meta = (ClampMin = "1.0"))
-	float CharacterRotationInterpSpeed = 5.f;
-
 	// ========== 헬퍼 함수 ==========
 
 	/**
