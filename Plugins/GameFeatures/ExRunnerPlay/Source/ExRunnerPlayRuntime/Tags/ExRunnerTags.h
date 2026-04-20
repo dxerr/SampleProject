@@ -31,3 +31,4 @@ EXRUNNERPLAYRUNTIME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Rule_Timer_Warning);
 
 /** 플레이어가 Kill Volume에 진입 시 브로드캐스트 (FallDeath 룰 내부 트리거) */
 EXRUNNERPLAYRUNTIME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Player_DeathVolume);
+

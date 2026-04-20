@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFeatureAction.h"
+#include "GameFeaturesSubsystem.h"
 #include "GameFeatureAction_AddExData.generated.h"
 
 class UExConfigDataAsset;
@@ -70,4 +71,17 @@ public:
 
 	/** GameFeature 비활성화 시 DataCenter에서 이 Feature가 등록한 데이터를 일괄 해제한다. */
 	virtual void OnGameFeatureDeactivating(FGameFeatureDeactivatingContext& Context) override;
+
+private:
+	/** 특정 GameInstance의 DataCenter에 데이터를 등룍 */
+	void AddToDataCenter(UGameInstance* GameInstance, const FGameFeatureStateChangeContext& Context);
+
+	/** 특정 GameInstance의 DataCenter에서 데이터 해제 */
+	void RemoveFromDataCenter(UGameInstance* GameInstance, const FGameFeatureStateChangeContext& Context);
+
+	/** PIE 등 새로운 GameInstance 생성 시 호출되는 핸들러 */
+	void HandleGameInstanceStart(UGameInstance* GameInstance, FGameFeatureStateChangeContext ChangeContext);
+
+	/** PIE 등 새로운 GameInstance 생성 시 활성화될 Delegate Handles */
+	TArray<FDelegateHandle> GameInstanceStartHandles;
 };
