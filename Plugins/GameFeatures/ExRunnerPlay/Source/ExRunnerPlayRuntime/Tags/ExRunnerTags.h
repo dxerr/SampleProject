@@ -32,3 +32,12 @@ EXRUNNERPLAYRUNTIME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Rule_Timer_Warning);
 /** 플레이어가 Kill Volume에 진입 시 브로드캐스트 (FallDeath 룰 내부 트리거) */
 EXRUNNERPLAYRUNTIME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Player_DeathVolume);
 
+// ========== Obstacle Tags ==========
+/** 장애물: 틈새 (Gap) */
+EXRUNNERPLAYRUNTIME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Obstacle_Gap);
+
+/** 장애물: 슬라이드 (Slide) */
+EXRUNNERPLAYRUNTIME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Obstacle_Slide);
+
+/** 장애물: 등반 (Climb) */
+EXRUNNERPLAYRUNTIME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Obstacle_Climb);

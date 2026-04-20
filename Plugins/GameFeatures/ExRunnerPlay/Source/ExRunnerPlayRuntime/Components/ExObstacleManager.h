@@ -29,10 +29,10 @@ public:
 	UExObstacleManager();
 
 	/**
-	 * 장애물 정의 목록
+	 * DataCenter에서 불러온 장애물 정의 목록 캐시
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Obstacle")
-	TArray<UExObstacleDefinition*> ObstacleDefinitions;
+	UPROPERTY(Transient)
+	TArray<UExObstacleDefinition*> CachedObstacleDefinitions;
 
 	/**
 	 * 타입별 스폰 전략 매핑 (Strategy Pattern)

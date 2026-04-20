@@ -17,3 +17,7 @@ UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Rule_GoalReached,    "Ex.Runner.Rule.GoalReac
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Rule_Timer_Warning,  "Ex.Runner.Rule.Timer.Warning",   "타이머 경고 구간 진입");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Player_DeathVolume,  "Ex.Runner.Player.DeathVolume",   "플레이어가 Kill Volume 진입");
 
+// ========== Obstacle Tags ==========
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Obstacle_Gap,        "Ex.Runner.Obstacle.Gap",                "장애물: 틈새(Gap)");
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Obstacle_Slide,      "Ex.Runner.Obstacle.Slide",              "장애물: 슬라이드(Slide)");
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Obstacle_Climb,      "Ex.Runner.Obstacle.Climb",              "장애물: 등반(Climb)");

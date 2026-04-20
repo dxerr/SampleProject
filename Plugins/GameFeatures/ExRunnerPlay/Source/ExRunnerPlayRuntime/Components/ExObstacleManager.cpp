@@ -10,6 +10,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "Components/BoxComponent.h"
 #include "../GameModes/ExRunnerGameMode.h"
+#include "Subsystems/ExDataCenterSubsystem.h"
+#include "Engine/GameInstance.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExObstacleManager, Log, All);
 
@@ -22,6 +24,16 @@ void UExObstacleManager::BeginPlay()
 {
 	Super::BeginPlay();
 	LastObstacleSafeEndDistance = -99999.f;
+
+	// DataCenter에서 활성화된 플러그인의 모든 Obstacle Definition을 가져와 캐싱
+	if (UGameInstance* GI = GetWorld()->GetGameInstance())
+	{
+		if (UExDataCenterSubsystem* DataCenter = GI->GetSubsystem<UExDataCenterSubsystem>())
+		{
+			CachedObstacleDefinitions = DataCenter->GetAllDefinitions<UExObstacleDefinition>();
+			UE_LOG(LogExObstacleManager, Log, TEXT("[ExObstacleManager] Loaded %d Obstacle Definitions from DataCenter"), CachedObstacleDefinitions.Num());
+		}
+	}
 }
 
 void UExObstacleManager::BindToSpawner(UExChunkSpawner* Spawner)
@@ -55,7 +67,7 @@ void UExObstacleManager::OnChunkDespawned(AExFloorChunk* Chunk)
 	{
 		// 이 매니저가 관리하는 장애물인 경우에만 풀로 반환 (코인 등 다른 액터가 오염되는 것 방지)
 		bool bIsObstacle = false;
-		for (const UExObstacleDefinition* Def : ObstacleDefinitions)
+		for (const UExObstacleDefinition* Def : CachedObstacleDefinitions)
 		{
 			if (Def && Attached->IsA(Def->ObstacleClass))
 			{
@@ -120,7 +132,7 @@ FBoxSphereBounds UExObstacleManager::GetVisualBounds(AActor* Actor)
 
 void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float ChunkStartLocalX, float ChunkLength, bool bForceSpawn)
 {
-	if (ObstacleDefinitions.Num() == 0) return;
+	if (CachedObstacleDefinitions.Num() == 0) return;
 	if (!Chunk) return;
 	if (!BoundSpawner || !BoundSpawner->RunnerConfig.IsValid()) return;
 
@@ -173,26 +185,31 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 	}
 
 	// ── 공통 로직: 배치 가능성 검사 ──
-	// [변경] World X가 아닌 Path Distance 기반 계산
-	// ExChunkSpawner에서 PathDistance를 Center 기준으로 설정하므로, StartDist는 HalfLength를 뻼
 	float ChunkStartDist = Chunk->PathDistance - (ChunkLength * 0.5f);
-	float SafeStartDist = LastObstacleSafeEndDistance;
-	
-	// 이전 장애물 끝 지점이 현재 청크 시작보다 전이면, 현재 청크 시작부터
-	if (SafeStartDist < ChunkStartDist) SafeStartDist = ChunkStartDist;
+	float ChunkEndDist = ChunkStartDist + ChunkLength;
+
+	// 목표 스폰 거리는 이전 장애물 끝점 + 안전 거리
+	float TargetSpawnDist = LastObstacleSafeEndDistance + BoundSpawner->RunnerConfig->ObstacleSpawn.MinSafeDistance;
+
+	// 만약 목표 지점이 현재 청크 시작점 이전이라면, 현재 청크 시작점에서부터 스폰 가능
+	if (TargetSpawnDist < ChunkStartDist)
+	{
+		TargetSpawnDist = ChunkStartDist;
+	}
 
 	float ObsLen = SelectedDef->MaxSize.X;
-	float ChunkEndDist = ChunkStartDist + ChunkLength;
-	
-	// 실제 스폰 예정 거리 (스포너의 안전 거리 설정값 적용)
-	float ActualSpawnDist = SafeStartDist + BoundSpawner->RunnerConfig->ObstacleSpawn.MinSafeDistance;
 
-	// 청크 범위 초과 체크 (미리 검사)
-	if (ActualSpawnDist + ObsLen > ChunkEndDist) return;
+	// 실제 스폰 예정 거리가 현재 활성화된 청크 범위를 벗어난다면 이번 청크엔 스폰 생략
+	if (TargetSpawnDist + ObsLen > ChunkEndDist) 
+	{
+		return;
+	}
+
+	float ActualSpawnDist = TargetSpawnDist;
 
 	// ── Strategy 위임: 스폰 위치 계산 ──
-	// SafeStartX 인자에 SafeStartDist(거리) 전달
-	FTransform SpawnTrans = Strategy->CalculateSpawnPosition(SelectedDef, Chunk, SafeStartDist);
+	// 거리(PathDistance)로 ActualSpawnDist 전달
+	FTransform SpawnTrans = Strategy->CalculateSpawnPosition(SelectedDef, Chunk, ActualSpawnDist);
 	FVector SpawnPos = SpawnTrans.GetLocation();
 
 	// ── 공통 로직: 풀에서 가져오기 ──
@@ -243,10 +260,10 @@ void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float Chunk
 
 UExObstacleDefinition* UExObstacleManager::SelectRandomDefinition() const
 {
-	if (ObstacleDefinitions.Num() == 0) return nullptr;
+	if (CachedObstacleDefinitions.Num() == 0) return nullptr;
 
-	const int32 Index = FMath::RandRange(0, ObstacleDefinitions.Num() - 1);
-	return ObstacleDefinitions[Index];
+	const int32 Index = FMath::RandRange(0, CachedObstacleDefinitions.Num() - 1);
+	return CachedObstacleDefinitions[Index];
 }
 
 void UExObstacleManager::ActivateObstacle(AActor* Obstacle)
@@ -410,12 +427,12 @@ bool UExObstacleManager::QueryObstacleAtDistance(float PathDist, float QueryRadi
 				continue;
 			}
 
-			// 장애물 Definition 매칭 (ObstacleDefinitions에서 클래스로 역참조)
+			// 장애물 Definition 매칭 (CachedObstacleDefinitions에서 클래스로 역참조)
 			EExObstacleType FoundType = EExObstacleType::None;
 			bool bFoundClimbable = false;
 			float ClimbableThreshold = 200.f;
 
-			for (const UExObstacleDefinition* Def : ObstacleDefinitions)
+			for (const UExObstacleDefinition* Def : CachedObstacleDefinitions)
 			{
 				if (Def && Attached->IsA(Def->ObstacleClass))
 				{

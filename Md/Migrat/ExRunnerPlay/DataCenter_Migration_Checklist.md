@@ -77,49 +77,49 @@
 
 ---
 
-### Phase 2 — Config 통합 신규 클래스 생성
+### Phase 2 — Config 통합 신규 클래스 생성 *(완료)*
 
 > `UExCurveConfig`, `UExObstacleSpawnConfig` 두 클래스를 하나의 `UExRunnerConfig`로 통합
 
 #### 2-A. `FExCurveSettings` USTRUCT 생성
 
-- [ ] `ExRunnerPlay/Struct/FExCurveSettings.h` 신규 생성
+- [x] `ExRunnerPlay/Struct/FExCurveSettings.h` 신규 생성
   - 기존 `UExCurveConfig`의 모든 멤버를 USTRUCT로 이전
   - `GetCurveProbability()` 인라인 함수 포함 유지
-- [ ] 빌드 검증
+- [x] 빌드 검증
 
 #### 2-B. `FExObstacleSpawnSettings` USTRUCT 생성
 
-- [ ] `ExRunnerPlay/Struct/FExObstacleSpawnSettings.h` 신규 생성
+- [x] `ExRunnerPlay/Struct/FExObstacleSpawnSettings.h` 신규 생성
   - 기존 `UExObstacleSpawnConfig`의 모든 멤버를 USTRUCT로 이전
 
 #### 2-C. `UExRunnerConfig` 신규 생성 (`UExConfigDataAsset` 상속)
 
-- [ ] `ExRunnerPlay/Data/ExRunnerConfig.h/.cpp` 신규 생성
+- [x] `ExRunnerPlay/Data/ExRunnerConfig.h/.cpp` 신규 생성
   - `UExConfigDataAsset` 상속
   - `UPROPERTY FExCurveSettings Curve` 멤버
   - `UPROPERTY FExObstacleSpawnSettings ObstacleSpawn` 멤버
-- [ ] `IsDataValid` 구현
+- [x] `IsDataValid` 구현
   - `Curve.FixedCurveRadius > 0` 검증
   - `Curve.MinStraightChunks < Curve.MaxStraightChunks` 검증
   - `ObstacleSpawn.SpawnProbability` 범위(0~1) 검증
-- [ ] 빌드 검증
+- [x] 빌드 검증
 
 #### 2-D. 기존 참조 교체
 
-- [ ] `AExRunnerGameMode` — `UExCurveConfig* CurveConfig` 멤버 제거
+- [x] `AExRunnerGameMode` — `UExCurveConfig* CurveConfig` 멤버 제거
   - `BeginPlay`에서 `DataCenter->GetConfig<UExRunnerConfig>()` 조회 후 `TWeakObjectPtr` 캐싱
-- [ ] `UExObstacleManager` 등 — `UExObstacleSpawnConfig*` 직접 참조 → DataCenter 조회로 교체
-- [ ] **[CoreRedirects 작성]** `DefaultEngine.ini`에 리디렉트 추가
+- [x] `UExObstacleManager` 등 — `UExObstacleSpawnConfig*` 직접 참조 → DataCenter 조회로 교체
+- [x] **[CoreRedirects 작성]** `DefaultEngine.ini`에 리디렉트 추가
   ```ini
   [CoreRedirects]
   +ClassRedirects=(OldName="/Script/ExRunnerPlayRuntime.ExCurveConfig",NewName="/Script/ExRunnerPlayRuntime.ExRunnerConfig")
   +ClassRedirects=(OldName="/Script/ExRunnerPlayRuntime.ExObstacleSpawnConfig",NewName="/Script/ExRunnerPlayRuntime.ExRunnerConfig")
   ```
-- [ ] **[기존 DA 삭제 또는 대체]** 에디터에서 `DA_ExCurveConfig`, `DA_ExObstacleSpawnConfig` → 새 `DA_ExConfig_Runner` 생성 및 값 이전
-- [ ] **[일괄 리세이브]** Resave Packages 실행
-- [ ] 빌드 검증
-- [ ] 기능 검증 (커브 경로, 장애물 배치 기존과 동일)
+- [x] **[기존 DA 삭제 또는 대체]** 에디터에서 `DA_ExCurveConfig`, `DA_ExObstacleSpawnConfig` → 새 `DA_ExConfig_Runner` 생성 및 값 이전
+- [x] **[일괄 리세이브]** Resave Packages 실행
+- [x] 빌드 검증
+- [x] 기능 검증 (커브 경로, 장애물 배치 기존과 동일)
 
 ---
 
@@ -138,9 +138,9 @@
   [CoreRedirects]
   +ClassRedirects=(OldName="/Script/ExCoreRuntime.ExObstacleDefinition",NewName="/Script/ExRunnerPlayRuntime.ExObstacleDefinition")
   ```
-- [ ] **[일괄 리세이브]** Resave Packages 실행
+- [x] **[일괄 리세이브]** Resave Packages 실행
 - [x] 빌드 검증
-- [ ] 기능 검증
+- [x] 기능 검증
 
 #### 3-B. `UExItemDefinition` — Base 교체 + `ItemTag` → `DefinitionTag` 통합
 
@@ -153,9 +153,9 @@
   [CoreRedirects]
   +PropertyRedirects=(OldName="/Script/ExCoreRuntime.ExItemDefinition.ItemTag",NewName="DefinitionTag")
   ```
-- [ ] **[일괄 리세이브]** Resave Packages 실행
+- [x] **[일괄 리세이브]** Resave Packages 실행
 - [x] 빌드 검증
-- [ ] 기능 검증 (아이템 스폰/획득)
+- [x] 기능 검증 (아이템 스폰/획득)
 
 ---
 
