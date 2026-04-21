@@ -3,18 +3,18 @@
 #include "ExRunnerInputStrategy_AutoRun.h"
 #include "ExRunnerInputComponent.h"
 #include "ExRunnerMovementComponent.h"
-#include "Data/Modes/ExGameModeDataSet.h"
+#include "Data/ExRunnerConfig.h"
 
 void UExRunnerInputStrategy_AutoRun::Initialize(UExRunnerInputComponent* InOwner)
 {
 	Super::Initialize(InOwner);
 
-	// GetGameModeDataSet() 게터를 통해 쿨다운 값 로드 (없으면 기본값 0.3초 유지)
+	// GetCachedConfig() 게터를 통해 쿨다운 값 로드 (없으면 기본값 0.3초 유지)
 	if (InOwner)
 	{
-		if (UExGameModeDataSet* DataSet = InOwner->GetGameModeDataSet())
+		if (UExRunnerConfig* Config = InOwner->GetCachedConfig())
 		{
-			ActionCooldown = DataSet->AutoRunActionCooldown;
+			ActionCooldown = Config->Gameplay.AutoRunActionCooldown;
 		}
 	}
 }
@@ -23,7 +23,7 @@ void UExRunnerInputStrategy_AutoRun::HandleHorizontalInput(const FVector2D& Axis
 {
 	if (!OwnerInput) return;
 
-	// ExGameModeDataSet의 SwipeActivationPercentage를 공통 임계치로 사용
+	// RunnerConfig의 SwipeActivationPercentage를 공통 임계치로 사용
 	const float LaneThreshold = OwnerInput->GetSwipeActivationPercentage();
 
 	// 수직(점프/슬라이드) 스와이프 도중 미세한 가로 흔들림으로 인한 레인 이동 방지

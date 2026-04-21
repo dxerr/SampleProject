@@ -15,7 +15,8 @@
 #include "ExRunnerInputComponent.h"
 #include "Util/Actor/ExActorUtil.h"
 #include "../Actors/ExFloorChunk.h"
-#include "Data/Modes/ExGameModeDataSet.h"
+#include "Subsystems/ExDataCenterSubsystem.h"
+#include "ExDebugStateSubsystem.h"
 #include "ExDebugStateSubsystem.h"
 #include "ExGameplayTags.h"
 
@@ -47,6 +48,17 @@ void UExRunnerMovementComponent::BeginPlay()
 void UExRunnerMovementComponent::TryInitializeMover()
 {
 	if (TargetPawn) return; // 이미 초기화 완료
+
+	if (!CachedConfig)
+	{
+		if (UGameInstance* GI = GetWorld()->GetGameInstance())
+		{
+			if (UExDataCenterSubsystem* DC = GI->GetSubsystem<UExDataCenterSubsystem>())
+			{
+				CachedConfig = DC->GetConfig<UExRunnerConfig>();
+			}
+		}
+	}
 
 	// ExActorUtil을 사용하여 Owner → AttachParent 순으로 Pawn 탐색
 	APawn* ParentPawn = UExActorUtil::FindOwnerPawn(this);
@@ -84,15 +96,16 @@ void UExRunnerMovementComponent::TryInitializeMover()
 				if (AExFloorChunk* Chunk = Cast<AExFloorChunk>(FloorChunks[0]))
 				{
 					float TotalWidth = Chunk->GetFloorBounds().GetSize().Y;
-					LaneWidth = TotalWidth / 3.0f;
+					DynamicLaneWidth = TotalWidth / 3.0f;
 					bIsLaneWidthCalculated = true;
-					UE_LOG(LogExRunnerMovement, Log, TEXT("[ExRunnerMovement] LaneWidth dynamically calculated: %.1f (from TotalWidth: %.1f)"), LaneWidth, TotalWidth);
+					UE_LOG(LogExRunnerMovement, Log, TEXT("[ExRunnerMovement] LaneWidth dynamically calculated: %.1f (from TotalWidth: %.1f)"), DynamicLaneWidth, TotalWidth);
 				}
 			}
 			else
 			{
 				// 만약 타이밍 이슈로 아직 청크가 스폰되지 않았다면, Blueprint에서 설정된 기본값을 사용하거나 다음 Tick에서 시도합니다.
-				UE_LOG(LogExRunnerMovement, Warning, TEXT("[ExRunnerMovement] No ExFloorChunk found in world during initialization. Falling back to default LaneWidth: %.1f"), LaneWidth);
+				float FallbackWidth = CachedConfig ? CachedConfig->Movement.LaneWidth : 100.0f;
+				UE_LOG(LogExRunnerMovement, Warning, TEXT("[ExRunnerMovement] No ExFloorChunk found in world during initialization. Falling back to default LaneWidth: %.1f"), FallbackWidth);
 			}
 			
 			// 성공 시 타이머 안전 종료
@@ -147,14 +160,14 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 				bIsFalling = (MoverComp->GetMovementModeName() == FName("Falling"));
 			}
 
-			if (bIsFalling && GameModeDataSet)
+			if (bIsFalling && CachedConfig)
 			{
 				float LookAheadLimit = GS->RealPlayerPathDistance + 600.0f;
 				FRotator CurrentRot = GS->PathManager->GetDirectionAtDistance(GS->RealPlayerPathDistance);
 				FRotator FutureRot = GS->PathManager->GetDirectionAtDistance(LookAheadLimit);
 				
 				float DeltaYaw = FRotator::NormalizeAxis(FutureRot.Yaw - CurrentRot.Yaw);
-				float Weight = GameModeDataSet->JumpYawPredictionWeight;
+				float Weight = CachedConfig->Gameplay.JumpYawPredictionWeight;
 				
 				BaseDir = BaseDir.RotateAngleAxis(DeltaYaw * Weight, FVector::UpVector);
 			}
@@ -241,8 +254,12 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 
 bool UExRunnerMovementComponent::IsLaneTransitionComplete() const
 {
-	// TargetY: 목표 레인 오프셋 (CurrentLaneIndex * LaneWidth)
-	const float TargetY = CurrentLaneIndex * LaneWidth;
+	// TargetY: 목표 레인 오프셋 (CurrentLaneIndex * TargetLaneWidth)
+	float CurrentLaneWidth = 100.0f;
+	if (bIsLaneWidthCalculated) { CurrentLaneWidth = DynamicLaneWidth; }
+	else if (CachedConfig) { CurrentLaneWidth = CachedConfig->Movement.LaneWidth; }
+
+	const float TargetY = CurrentLaneIndex * CurrentLaneWidth;
 	// 오차 5cm 이내면 이동 완료로 판정
 	return FMath::IsNearlyEqual(CurrentLaneYOffset, TargetY, 5.0f);
 }
@@ -282,12 +299,12 @@ void UExRunnerMovementComponent::OnLookRequestedCallback(float AxisValue)
 	// [수정] GameModeDataSet이 에디터(BP)에서 할당되지 않았을 경우를 대비한 안전 장치.
 	// 할당되어 있다면 그 값(0 포함)을 온전히 따르고, 아예 Null이라면 기본값 45도를 사용합니다.
 	// 필수 애셋 누락 시 에디터 크래시(check)를 발생시켜 즉시 인지하고 수정하도록 강제합니다. (가이드라인 1.7 준수)
-	checkf(GameModeDataSet, TEXT("UExRunnerMovementComponent: GameModeDataSet이 할당되지 않았습니다. 캐릭터 블루프린트에서 설정해주세요."));
+	checkf(CachedConfig, TEXT("UExRunnerMovementComponent: RunnerConfig가 로드되지 않았습니다. 캐릭터 블루프린트에서 설정해주세요."));
 
 	float MaxYaw = 45.0f;
-	if (GameModeDataSet)
+	if (CachedConfig)
 	{
-		MaxYaw = GameModeDataSet->MaxRunnerYawAngle;
+		MaxYaw = CachedConfig->Gameplay.MaxRunnerYawAngle;
 	}
 	TargetLookYawOffset = AxisValue * MaxYaw;
 }
@@ -308,19 +325,23 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
 			if (AExFloorChunk* Chunk = Cast<AExFloorChunk>(FloorChunks[0]))
 			{
 				float TotalWidth = Chunk->GetFloorBounds().GetSize().Y;
-				LaneWidth = TotalWidth / 3.0f;
+				DynamicLaneWidth = TotalWidth / 3.0f;
 				bIsLaneWidthCalculated = true; // 계산 완료 마킹
-				UE_LOG(LogExRunnerMovement, Log, TEXT("[ExRunnerMovement] LaneWidth lazily calculated in Tick: %.1f (TotalWidth: %.1f)"), LaneWidth, TotalWidth);
+				UE_LOG(LogExRunnerMovement, Log, TEXT("[ExRunnerMovement] LaneWidth lazily calculated in Tick: %.1f (TotalWidth: %.1f)"), DynamicLaneWidth, TotalWidth);
 			}
 		}
 	}
 
+	float CurrentLaneWidth = 100.0f;
+	if (bIsLaneWidthCalculated) { CurrentLaneWidth = DynamicLaneWidth; }
+	else if (CachedConfig) { CurrentLaneWidth = CachedConfig->Movement.LaneWidth; }
+
 	// 목표 레인 오프셋 계산 (가운데: 0, 왼쪽: -LaneWidth, 오른쪽: +LaneWidth)
-	float TargetY = CurrentLaneIndex * LaneWidth;
+	float TargetY = CurrentLaneIndex * CurrentLaneWidth;
 
 	// 보간 속도: "기존처럼 자연스러운 전환"을 원하시므로 초고속(50.0f) 대신 기존 LaneChangeSpeed를 그대로 사용합니다.
 	// bUseDirectLateralMovement 는 속도의 차이가 아니라, "물리 마찰력 상실 시 궤도 이탈 방지(강제 스냅)" 여부만을 결정합니다.
-	float SpeedToUse = LaneChangeSpeed;
+	float SpeedToUse = CachedConfig ? CachedConfig->Movement.LaneChangeSpeed : 10.0f;
 	CurrentLaneYOffset = FMath::FInterpTo(CurrentLaneYOffset, TargetY, DeltaTime, SpeedToUse);
 	
 	// [개선] 점프 체공 상태나 마찰력 없는 슬라이딩 상태 파훼용 SetActorLocation 보정 처리 (bUseDirectLateralMovement 플래그 전용)
@@ -416,7 +437,7 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 	float DesiredLateralOffset = CurrentLaneYOffset;
 	float LateralError = LateralOffset - DesiredLateralOffset;
 
-	float DynamicInterpSpeed = (GameModeDataSet) ? GameModeDataSet->LookInterpSpeed : 8.0f;
+	float DynamicInterpSpeed = (CachedConfig) ? CachedConfig->Gameplay.LookInterpSpeed : 8.0f;
 
 	// [개선] SetActorRotation 강제 오버라이드 삭제 완료.
 	// 이유: ProduceInput_Implementation에서 주입하는 Inputs.OrientationIntent가
@@ -510,7 +531,7 @@ void UExRunnerMovementComponent::ApplyPreJumpRotation()
 	if (!TargetPawn || !bIsAutoRunMode) return;
 
 	AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
-	if (!GS || !GS->PathManager || !GameModeDataSet) return;
+	if (!GS || !GS->PathManager) return;
 
 	float PlayerDist = GS->RealPlayerPathDistance;
 	
@@ -524,7 +545,7 @@ void UExRunnerMovementComponent::ApplyPreJumpRotation()
 	float DeltaYaw = FRotator::NormalizeAxis(FuturePathRot.Yaw - CurrentPathRot.Yaw);
 
 	// 추가 회전 가중치 적용
-	float Weight = GameModeDataSet->JumpYawPredictionWeight;
+	float Weight = CachedConfig ? CachedConfig->Gameplay.JumpYawPredictionWeight : 1.0f;
 	float FinalYaw = CurrentPathRot.Yaw + (DeltaYaw * Weight);
 
 	// 액터 본체 회전 적용 (점프 개시 시 이 정면 각을 기준으로 날아감)

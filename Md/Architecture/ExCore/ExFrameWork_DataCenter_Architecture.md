@@ -213,3 +213,137 @@ Base 클래스들은 `IsDataValid`를 오버라이드하여 저장 시점에 데
    - 전환 후 관련 에셋 전체 일괄 리세이브(Resave Packages) 필수
 3. **3단계**: `UExItemDefinition`, `UExObstacleDefinition`의 Base를 `UExDefinitionDataAsset`으로 변경  
    `ExRunnerRuleConfig`, `ExRunnerItemSpawnTable`의 Base를 `UExPresetDataAsset`으로 변경
+
+---
+
+## 11. 추가 마이그레이션 후보 분석 (ExRunnerPlay 컴포넌트)
+
+> **분석일:** 2026-04-21  
+> **상태:** 검토 대기 — 수정 전 승인 필요  
+> **대상 플러그인:** `ExRunnerPlay`
+
+Phase 1~5 마이그레이션 완료 후에도 ExRunnerPlay 컴포넌트들의 멤버 변수 중 DataCenter Config로 이전 가능한 항목들이 남아 있다.
+
+---
+
+### 11.1 발견된 이슈: UExGameModeDataSet 이중 문제
+
+**파일:** `Source/ExFrameWork/Data/Modes/ExGameModeDataSet.h` (ExCore 모듈)
+
+`UExGameModeDataSet`는 두 가지 문제를 동시에 가진다.
+
+| 문제 | 내용 |
+|---|---|
+| **위치 위반** | ExCore 모듈에 있으나 Runner 전용 설정값(`MaxRunnerYawAngle`, `RunnerLookSensitivity`, `LookInterpSpeed`, `SwipeActivationPercentage`, `AutoRunActionCooldown`, `JumpYawPredictionWeight`)을 포함 → Core/Feature 분리 원칙 위반 |
+| **DataCenter 외부** | `UDataAsset`을 직접 상속하여 DataCenter 3-Base 시스템 밖에 존재 |
+
+현재 `UExRunnerInputComponent`와 `UExRunnerMovementComponent`가 이 클래스를 폴백 참조로 직접 포인터로 들고 있다.
+
+```cpp
+// ExRunnerInputComponent.h — 현재 상태 (개선 대상)
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="ExInput|Runner|Settings")
+class UExGameModeDataSet* GameModeDataSet;  // DataCenter 외부 직접 참조
+
+// ExRunnerMovementComponent.h — 현재 상태 (개선 대상)
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Runner|Look")
+class UExGameModeDataSet* GameModeDataSet;  // DataCenter 외부 직접 참조
+```
+
+`UExGameModeDataSet`의 멤버 중 범용적인 것(`MaxScore`, `NumRounds`, `ContainerPawnClass`, `LocalPlayerClass`)은 ExCore 수준 Config로, Runner 특화 항목들은 `UExRunnerConfig`로 통합하는 것이 바람직하다.
+
+---
+
+### 11.2 컴포넌트별 Config 후보 멤버 목록
+
+#### UExBeatSyncComponent
+**파일:** `ExRunnerPlayRuntime/Components/ExBeatSyncComponent.h`  
+**현재 상태:** 세 멤버 모두 컴포넌트에 `UPROPERTY(EditAnywhere)`로 직접 노출
+
+| 멤버 변수 | 타입 | 기본값 | 제안 구조체 |
+|---|---|---|---|
+| `SpawnProbabilityPerBeat` | `float` | `0.5f` | `FExBeatSyncSettings` |
+| `StrongBeatBonus` | `float` | `0.2f` | `FExBeatSyncSettings` |
+| `bBeatSyncEnabled` | `bool` | `true` | `FExBeatSyncSettings` |
+
+---
+
+#### UExChunkSpawner
+**파일:** `ExRunnerPlayRuntime/Components/ExChunkSpawner.h`  
+**현재 상태:** `TWeakObjectPtr<UExRunnerConfig> RunnerConfig` 참조는 이미 존재하나, 아래 설정값들은 여전히 컴포넌트 자체 멤버로 남아있음 (부분 마이그레이션 상태)
+
+| 멤버 변수 | 타입 | 기본값 | 제안 구조체 |
+|---|---|---|---|
+| `bUsePooling` | `bool` | `false` | `FExChunkSpawnSettings` |
+| `InitialPoolSize` | `int32` | `5` | `FExChunkSpawnSettings` |
+| `SpawnStartX` | `float` | `0.f` | `FExChunkSpawnSettings` |
+| `ChunkSpacing` | `float` | `1000.f` | `FExChunkSpawnSettings` |
+| `MaxActiveChunks` | `int32` | `10` | `FExChunkSpawnSettings` |
+
+> 참고: `ChunkClass`(`TSubclassOf<AExFloorChunk>`)는 에디터 배치 설정으로 Config와 성격이 달라 제외.
+
+---
+
+#### UExRunnerMovementComponent
+**파일:** `ExRunnerPlayRuntime/Components/ExRunnerMovementComponent.h`
+
+| 멤버 변수 | 타입 | 기본값 | 제안 구조체 |
+|---|---|---|---|
+| `LaneWidth` | `float` | `100.0f` | `FExMovementSettings` |
+| `LaneChangeSpeed` | `float` | `10.0f` | `FExMovementSettings` |
+
+> 참고: `GameModeDataSet` 포인터는 11.1에서 설명한 이중 문제 항목으로 별도 검토.
+
+---
+
+#### UExRunnerInputComponent
+**파일:** `ExRunnerPlayRuntime/Components/ExRunnerInputComponent.h`
+
+| 멤버 변수 | 타입 | 기본값 | 제안 구조체 | 비고 |
+|---|---|---|---|---|
+| `RunnerLookSensitivity` | `float` | `0.5f` | `FExInputSettings` | `UExGameModeDataSet::RunnerLookSensitivity`와 중복 |
+| `DefaultInputMode` | `EExRunnerInputMode` | `Manual` | `FExInputSettings` | |
+
+> 참고: `JumpAction`, `SlideAction` 등 `UInputAction*` 참조는 에디터 바인딩 데이터이므로 제외.  
+> `GameModeDataSet` 포인터는 11.1 항목으로 별도 검토.
+
+---
+
+#### UExObstacleManager
+**파일:** `ExRunnerPlayRuntime/Components/ExObstacleManager.h`
+
+| 멤버 변수 | 타입 | 기본값 | 제안 구조체 | 비고 |
+|---|---|---|---|---|
+| `bSuppressDefaultChunkSpawn` | `bool` | `false` | `FExObstacleSpawnSettings` (기존) | 비트 동기화 활성화 시 청크 스폰 트리거 억제 플래그. 런타임 동적 변경이 필요한지 여부 확인 필요 |
+
+> 참고: `SpawnStrategies` (`TMap<EExObstacleType, UExObstacleSpawnStrategy*>`)는 Strategy Pattern 인스턴스이므로 DataCenter 대상 아님.
+
+---
+
+### 11.3 제안 통합 방향
+
+모든 후보를 `UExRunnerConfig` 단일 Config DA에 USTRUCT 형태로 추가하는 방식을 권장한다.
+
+```
+UExRunnerConfig (UExConfigDataAsset)
+├── FExCurveSettings          Curve          [기존 완료]
+├── FExObstacleSpawnSettings  ObstacleSpawn  [기존 완료 + bSuppressDefaultChunkSpawn 추가 검토]
+├── FExBeatSyncSettings       BeatSync       [신규]
+├── FExChunkSpawnSettings     ChunkSpawn     [신규]
+├── FExMovementSettings       Movement       [신규]
+└── FExInputSettings          Input          [신규]
+```
+
+`UExGameModeDataSet`의 Runner 전용 멤버들(`MaxRunnerYawAngle`, `LookInterpSpeed`, `SwipeActivationPercentage`, `AutoRunActionCooldown`, `JumpYawPredictionWeight`)도 `FExInputSettings` 또는 별도 `FExGameplaySettings`로 통합을 검토한다.
+
+---
+
+### 11.4 마이그레이션 제외 항목 (이유 포함)
+
+| 클래스 | 멤버 | 제외 이유 |
+|---|---|---|
+| `UExChunkSpawner` | `ChunkClass` (`TSubclassOf`) | 에디터 배치 레퍼런스, Config 성격 아님 |
+| `UExObstacleManager` | `SpawnStrategies` | Strategy Pattern 인스턴스, 설정값 아님 |
+| `UExRunnerInputComponent` | `JumpAction`, `SlideAction` 등 | Enhanced Input 바인딩, Config 성격 아님 |
+| `AExRunnerGameState` | `CurrentPathDistance`, `RemainingTimeSeconds` 등 | 런타임 게임 진행 상태 |
+| `UExRunnerStatComponent` | 현재 스탯들 | 플레이어별 동적 상태 |
+| `AExFloorChunk` | `KillZ`, 커브 캐시 등 | 청크 인스턴스 런타임 상태 |

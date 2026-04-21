@@ -22,17 +22,13 @@ class EXRUNNERPLAYRUNTIME_API UExBeatSyncComponent : public UActorComponent
 public:
 	UExBeatSyncComponent();
 
-	/** 매 비트마다 장애물 스폰을 시도할 확률 (0~1) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "BeatSync")
-	float SpawnProbabilityPerBeat = 0.5f;
+	/** 매 비트마다 장애물 스폰을 시도할 확률 (DataCenter 캐시용) */
+	UPROPERTY(Transient)
+	TObjectPtr<class UExRunnerConfig> CachedConfig;
 
-	/** 강박(1, 3번째 비트 등)에서의 추가 스폰 확률 보너스 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "BeatSync")
-	float StrongBeatBonus = 0.2f;
-
-	/** 비트 동기화 활성화 여부 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "BeatSync")
-	bool bBeatSyncEnabled = true;
+	/** 비트 동기화 활성화 여부 (런타임 제어용, 초기값은 Config 따름) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "BeatSync")
+	bool bRuntimeBeatSyncEnabled = true;
 
 	/**
 	 * 비트 동기화 활성화 여부 변경 (블루프린트 런타임 제어용)

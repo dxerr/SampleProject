@@ -44,7 +44,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category="ExUI|RunnerInput")
 	void OnSprintCheckStateChanged(bool bIsChecked);
 
-	// 스와이프 발동 비율은 DA_ExGameModeDataSet > GameMode|Runner > SwipeActivationPercentage 에서 관리됩니다.
+	// 스와이프 발동 비율은 DataCenter > RunnerConfig > Gameplay > SwipeActivationPercentage 에서 관리됩니다.
 	// ExRunnerInputComponent::GetSwipeActivationPercentage() 를 통해 참조합니다.
 
 	// 커스텀 터치 패드 이동 (ViewBinding 이벤트)

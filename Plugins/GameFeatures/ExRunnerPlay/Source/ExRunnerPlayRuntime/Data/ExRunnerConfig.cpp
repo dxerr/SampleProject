@@ -27,6 +27,12 @@ EDataValidationResult UExRunnerConfig::IsDataValid(FDataValidationContext& Conte
 		bIsErrorEmpty = false;
 	}
 
+	if (ChunkSpawn.ChunkSpacing <= 0.f)
+	{
+		Context.AddError(FText::FromString(TEXT("ChunkSpawn.ChunkSpacing은 0보다 커야 합니다.")));
+		bIsErrorEmpty = false;
+	}
+
 	return bIsErrorEmpty ? Super::IsDataValid(Context) : EDataValidationResult::Invalid;
 }
 #endif

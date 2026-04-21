@@ -37,38 +37,8 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Spawner")
 	TSubclassOf<AExFloorChunk> ChunkClass;
 
-	/**
-	 * 청크 풀 사용 여부 (true = 성능 향상 모드, false = 즉각 Spawn/Destroy 모드)
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Spawner")
-	bool bUsePooling = false;
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Spawner|RunnerConfig")
 	TWeakObjectPtr<UExRunnerConfig> RunnerConfig;
-
-	/**
-	 * 초기 풀 크기
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Spawner")
-	int32 InitialPoolSize = 5;
-
-	/**
-	 * 청크 스폰 시작 X 좌표 (플레이어 앞)
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Spawner")
-	float SpawnStartX = 0.f;
-
-	/**
-	 * 청크 간 간격 (겹치지 않도록)
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Spawner")
-	float ChunkSpacing = 1000.f;
-
-	/**
-	 * 최대 활성 청크 수
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Spawner")
-	int32 MaxActiveChunks = 10;
 
 	/**
 	 * 스포너 초기화 및 초기 청크 배치

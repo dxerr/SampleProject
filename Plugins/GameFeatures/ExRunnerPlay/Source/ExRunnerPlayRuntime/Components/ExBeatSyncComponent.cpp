@@ -4,8 +4,10 @@
 #include "ExObstacleManager.h"
 #include "ExGameplayEventSubsystem.h"
 #include "Tags/ExMusicTags.h"
-#include "Engine/World.h"
 #include "Math/UnrealMathUtility.h"
+#include "Data/ExRunnerConfig.h"
+#include "Subsystems/ExDataCenterSubsystem.h"
+#include "Engine/GameInstance.h"
 
 UExBeatSyncComponent::UExBeatSyncComponent()
 	: BoundObstacleManager(nullptr)
@@ -13,16 +15,29 @@ UExBeatSyncComponent::UExBeatSyncComponent()
 	, MinBeatSpawnInterval(0.2f)
 {
 	PrimaryComponentTick.bCanEverTick = false;
-	bBeatSyncEnabled = true;
+	bRuntimeBeatSyncEnabled = true;
 }
 
 void UExBeatSyncComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 전역 이벤트 서브시스템에서 비트 이벤트 구독
 	if (UWorld* World = GetWorld())
 	{
+		if (UGameInstance* GI = World->GetGameInstance())
+		{
+			if (UExDataCenterSubsystem* DC = GI->GetSubsystem<UExDataCenterSubsystem>())
+			{
+				CachedConfig = DC->GetConfig<UExRunnerConfig>();
+			}
+		}
+
+		if (CachedConfig)
+		{
+			bRuntimeBeatSyncEnabled = CachedConfig->BeatSync.bBeatSyncEnabled;
+		}
+
+		// 전역 이벤트 서브시스템에서 비트 이벤트 구독
 		if (UExGameplayEventSubsystem* EventSubsystem = World->GetSubsystem<UExGameplayEventSubsystem>())
 		{
 			// TAG_Music_Beat은 매 비트마다 발생
@@ -50,22 +65,22 @@ void UExBeatSyncComponent::BindToObstacleManager(UExObstacleManager* InManager)
 	if (BoundObstacleManager)
 	{
 		// 초기 상태 동기화
-		BoundObstacleManager->bSuppressDefaultChunkSpawn = bBeatSyncEnabled;
+		BoundObstacleManager->bSuppressDefaultChunkSpawn = bRuntimeBeatSyncEnabled;
 	}
 }
 
 void UExBeatSyncComponent::SetBeatSyncEnabled(bool bEnabled)
 {
-	bBeatSyncEnabled = bEnabled;
+	bRuntimeBeatSyncEnabled = bEnabled;
 	if (BoundObstacleManager)
 	{
-		BoundObstacleManager->bSuppressDefaultChunkSpawn = bBeatSyncEnabled;
+		BoundObstacleManager->bSuppressDefaultChunkSpawn = bRuntimeBeatSyncEnabled;
 	}
 }
 
 void UExBeatSyncComponent::OnMusicBeat(FGameplayTag EventTag, const FExGameplayEventPayload& Payload)
 {
-	if (!bBeatSyncEnabled || !BoundObstacleManager)
+	if (!bRuntimeBeatSyncEnabled || !BoundObstacleManager)
 		return;
 
 	float CurrentTime = GetWorld()->GetTimeSeconds();
@@ -74,7 +89,7 @@ void UExBeatSyncComponent::OnMusicBeat(FGameplayTag EventTag, const FExGameplayE
 	if (CurrentTime - LastBeatSpawnTime < MinBeatSpawnInterval)
 		return;
 
-	float FinalProbability = SpawnProbabilityPerBeat;
+	float FinalProbability = CachedConfig ? CachedConfig->BeatSync.SpawnProbabilityPerBeat : 0.5f;
 
 	// Payload에 비트 인덱스나 강박 정보가 있다면 참조 (여기서는 단순 태그 보너스 예시로 Music_Beat_Strong일 경우 보너스 추가)
 	// Payload 대신 향후 EventTag가 Music_Beat_Strong도 같이 받을 수 있으나

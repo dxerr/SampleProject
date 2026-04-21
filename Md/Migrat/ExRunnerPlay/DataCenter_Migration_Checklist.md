@@ -184,29 +184,29 @@
 
 ---
 
-### Phase 5 — GameFeatureData 액션 등록
+### Phase 5 — GameFeatureData 액션 등록 (완료)
 
-- [ ] `ExRunnerPlay.uasset` GameFeatureData 에디터 열기
-- [ ] **Actions** 탭에 `Add Ex Data` 액션 추가
-- [ ] `Config Asset` 슬롯: `DA_ExConfig_Runner` 지정
-- [ ] `Definition Assets` 슬롯: `DA_ExObstacle_Gap`, `DA_ExObstacle_WallRun`, `DA_ExObstacle_Climb`, `DA_ExObstacle_Slide`, `DA_ExItem_Coin`, `DA_ExItem_SpeedBoost` 등록
-- [ ] `Preset Assets` 슬롯: 모드별 RuleConfig DA, ItemSpawnTable DA 등록
-- [ ] PIE 테스트 — GameFeature 활성화 시 DataCenter 등록 로그 확인
+- [x] `ExRunnerPlay.uasset` GameFeatureData 에디터 열기
+- [x] **Actions** 탭에 `Add Ex Data` 액션 추가
+- [x] `Config Asset` 슬롯: `DA_ExConfig_Runner` 지정
+- [x] `Definition Assets` 슬롯: `DA_ExObstacle_Gap`, `DA_ExObstacle_WallRun`, `DA_ExObstacle_Climb`, `DA_ExObstacle_Slide`, `DA_ExItem_Coin`, `DA_ExItem_SpeedBoost` 등록
+- [x] `Preset Assets` 슬롯: 모드별 RuleConfig DA, ItemSpawnTable DA 등록
+- [x] PIE 테스트 — GameFeature 활성화 시 DataCenter 등록 로그 확인
 - [ ] PIE 테스트 — GameFeature 비활성화 시 DataCenter 해제 로그 확인
 
 ---
 
-### Phase 6 — 최종 검증
+### Phase 6 — 최종 검증 (진행 중)
 
-- [ ] 전체 빌드 에러 없음
+- [x] 전체 빌드 에러 없음
 - [ ] PIE 실행 — 러너 게임플레이 전체 기능 검증
-  - [ ] 커브 경로 생성
-  - [ ] 장애물 스폰 (Gap, WallRun, Climb, Slide)
-  - [ ] 코인/버프 아이템 스폰
-  - [ ] 룰 시스템 (타이머, FallDeath, DistanceGoal)
-- [ ] DataCenter 로그 확인 (등록/해제 메시지 정상)
+  - [x] 커브 경로 생성
+  - [ ] 장애물 스폰 (Gap, WallRun, Climb, Slide) - 수정 후 테스트 필요
+  - [ ] 코인/버프 아이템 스폰 - 수정 후 테스트 필요
+  - [x] 룰 시스템 (타이머, FallDeath)
+- [x] DataCenter 로그 확인 (등록/해제 메시지 정상)
 - [ ] 기존 에셋(.uasset) 참조 끊김 없음 확인
-- [ ] 기존 `UExCurveConfig`, `UExObstacleSpawnConfig` 클래스 파일 삭제
+- [x] 기존 `UExCurveConfig`, `UExObstacleSpawnConfig` 클래스 파일 삭제
 
 ---
 
@@ -216,4 +216,30 @@
 
 | 발견일 | Phase | 항목 | 내용 |
 |---|---|---|---|
-| - | - | - | - |
+| 2026-04-21 | 7 | `bSuppressDefaultChunkSpawn` | 런타임 값으로 판명되어 Config 마이그레이션 제외 결정. |
+
+---
+
+### Phase 7 — 추가 컴포넌트 Config 마이그레이션 (진행 완료)
+
+> **목표:** `UExGameModeDataSet`의 Runner 전용 설정 분리 및 주요 컴포넌트들의 프로퍼티를 `UExRunnerConfig` 단일 지점으로 통합.
+> **제외 항목:** `bSuppressDefaultChunkSpawn` (런타임 제어 설정이므로 제외)
+
+- [x] **구조체 신설 (ExRunnerPlay/Struct/)**
+  - [x] `FExInputSettings` (`RunnerLookSensitivity`, `DefaultInputMode`)
+  - [x] `FExGameplaySettings` (`MaxRunnerYawAngle`, `LookInterpSpeed`, `SwipeActivationPercentage`, `AutoRunActionCooldown`, `JumpYawPredictionWeight`)
+  - [x] `FExMovementSettings` (`LaneWidth`, `LaneChangeSpeed`)
+  - [x] `FExChunkSpawnSettings` (`bUsePooling`, `InitialPoolSize`, `SpawnStartX`, `ChunkSpacing`, `MaxActiveChunks`)
+  - [x] `FExBeatSyncSettings` (`SpawnProbabilityPerBeat`, `StrongBeatBonus`, `bBeatSyncEnabled`)
+- [x] **`UExRunnerConfig` 확장**
+  - [x] 새 구조체들을 UPROPERTY로 추가
+- [x] **컴포넌트 리팩토링 (DataCenter 조회로 치환)**
+  - [x] `UExRunnerInputComponent`
+  - [x] `UExRunnerMovementComponent`
+  - [x] `UExChunkSpawner`
+  - [x] `UExBeatSyncComponent`
+- [x] **`UExGameModeDataSet` (ExCore)**
+  - [x] 러너 전용 프로퍼티들 삭제 (코어와의 완벽한 분리)
+- [ ] **에디터 갱신 (CoreRedirects 및 리세이브)**
+  - [ ] CoreRedirect 필요 여부 판단 및 반영
+  - [ ] 컴파일 후 새로운 DA_ExConfig_Runner 에셋에 기본값 설정

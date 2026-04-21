@@ -6,6 +6,11 @@
 #include "Data/Base/ExConfigDataAsset.h"
 #include "Struct/FExCurveSettings.h"
 #include "Struct/FExObstacleSpawnSettings.h"
+#include "Struct/FExInputSettings.h"
+#include "Struct/FExGameplaySettings.h"
+#include "Struct/FExMovementSettings.h"
+#include "Struct/FExChunkSpawnSettings.h"
+#include "Struct/FExBeatSyncSettings.h"
 #include "ExRunnerConfig.generated.h"
 
 /**
@@ -27,6 +32,26 @@ public:
 	/** 장애물 생성 관련 설정 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner Config|Obstacle", meta = (ShowOnlyInnerProperties))
 	FExObstacleSpawnSettings ObstacleSpawn;
+
+	/** 입력(사용자 제어) 관련 설정 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner Config|Input", meta = (ShowOnlyInnerProperties))
+	FExInputSettings Input;
+
+	/** 조작 민감도 등 기타 게임플레이 관련 설정 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner Config|Gameplay", meta = (ShowOnlyInnerProperties))
+	FExGameplaySettings Gameplay;
+
+	/** 이동 및 레인 전환 설정 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner Config|Movement", meta = (ShowOnlyInnerProperties))
+	FExMovementSettings Movement;
+
+	/** 청크 스팬 시스템 설정 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner Config|ChunkSpawn", meta = (ShowOnlyInnerProperties))
+	FExChunkSpawnSettings ChunkSpawn;
+
+	/** 비트 동기화(리듬) 관련 설정 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner Config|BeatSync", meta = (ShowOnlyInnerProperties))
+	FExBeatSyncSettings BeatSync;
 
 #if WITH_EDITOR
 	/** 에디터 상에서 데이터의 유효성을 검증합니다. */

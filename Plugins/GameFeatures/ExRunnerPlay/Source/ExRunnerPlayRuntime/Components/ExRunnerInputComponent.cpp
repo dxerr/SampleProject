@@ -3,7 +3,8 @@
 #include "InputActionValue.h"
 #include "InputAction.h"
 #include "Util/Actor/ExActorUtil.h"
-#include "Data/Modes/ExGameModeDataSet.h"
+#include "Data/ExRunnerConfig.h"
+#include "Subsystems/ExDataCenterSubsystem.h"
 #include "GameFramework/Pawn.h"
 #include "Debug/ExDebugDrawSubsystem.h"
 #include "Tags/ExGameplayTags.h"
@@ -17,8 +18,22 @@ void UExRunnerInputComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	if (UGameInstance* GI = GetWorld()->GetGameInstance())
+	{
+		if (UExDataCenterSubsystem* DC = GI->GetSubsystem<UExDataCenterSubsystem>())
+		{
+			CachedConfig = DC->GetConfig<UExRunnerConfig>();
+		}
+	}
+
+	EExRunnerInputMode InitMode = EExRunnerInputMode::Manual;
+	if (CachedConfig)
+	{
+		InitMode = CachedConfig->Input.DefaultInputMode;
+	}
+
 	// DefaultInputMode에 설정된 모드로 Strategy 초기화
-	ApplyInputMode(DefaultInputMode);
+	ApplyInputMode(InitMode);
 }
 
 void UExRunnerInputComponent::InitializeInputBindings(UEnhancedInputComponent* EnhancedInputComponent)
@@ -197,12 +212,11 @@ void UExRunnerInputComponent::RequestLaneChange(int32 LaneDirection)
 float UExRunnerInputComponent::GetSwipeActivationPercentage() const
 {
 	// 필수 애셋 누락 시 에디터 크래시(check)를 발생시켜 개발자가 즉시 인지하고 수정하도록 강제합니다. (가이드라인 1.7 준수)
-	checkf(GameModeDataSet, TEXT("UExRunnerInputComponent: GameModeDataSet이 할당되지 않았습니다. 캐릭터 블루프린트에서 설정해주세요."));
+	checkf(CachedConfig, TEXT("UExRunnerInputComponent: RunnerConfig가 로드되지 않았습니다. DataCenter 시스템을 확인해주세요."));
 
-	// GameModeDataSet이 할당된 경우 DataSet 값 우선 반환
-	if (GameModeDataSet)
+	if (CachedConfig)
 	{
-		return GameModeDataSet->SwipeActivationPercentage;
+		return CachedConfig->Gameplay.SwipeActivationPercentage;
 	}
 	
 	// Shipping 빌드 등 check가 무시되는 환경을 대비한 Fallback (30%)

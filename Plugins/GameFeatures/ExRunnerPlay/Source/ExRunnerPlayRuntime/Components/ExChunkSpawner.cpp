@@ -17,6 +17,8 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Components/BoxComponent.h"
+#include "Subsystems/ExDataCenterSubsystem.h"
+#include "Engine/GameInstance.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExChunkSpawner, Log, All);
 
@@ -31,10 +33,29 @@ void UExChunkSpawner::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	// 초기 풀 크기만큼 청크 생성 보관 (풀링 사용 시에만)
-	if (bUsePooling)
+	if (UGameInstance* GI = GetWorld()->GetGameInstance())
 	{
-		for (int32 i = 0; i < InitialPoolSize; ++i)
+		if (UExDataCenterSubsystem* DC = GI->GetSubsystem<UExDataCenterSubsystem>())
+		{
+			RunnerConfig = DC->GetConfig<UExRunnerConfig>();
+		}
+	}
+
+	bool bShouldUsePooling = false;
+	int32 ExpectedPoolSize = 5;
+	float StartX = 0.f;
+
+	if (RunnerConfig.IsValid())
+	{
+		bShouldUsePooling = RunnerConfig->ChunkSpawn.bUsePooling;
+		ExpectedPoolSize = RunnerConfig->ChunkSpawn.InitialPoolSize;
+		StartX = RunnerConfig->ChunkSpawn.SpawnStartX;
+	}
+
+	// 초기 풀 크기만큼 청크 생성 보관 (풀링 사용 시에만)
+	if (bShouldUsePooling)
+	{
+		for (int32 i = 0; i < ExpectedPoolSize; ++i)
 		{
 			AExFloorChunk* NewChunk = CreateNewChunk();
 			if (NewChunk)
@@ -45,7 +66,7 @@ void UExChunkSpawner::BeginPlay()
 	}
 	
 	// 초기 스폰 위치 설정
-	NextSpawnX = SpawnStartX;
+	NextSpawnX = StartX;
 }
 
 void UExChunkSpawner::InitializeSpawner()
@@ -75,7 +96,13 @@ void UExChunkSpawner::InitializeSpawner()
 	}
 
 	// 나머지 청크 채우기 (새 세그먼트 생성)
-	for (int32 i = SpawnCount; i < MaxActiveChunks; ++i)
+	int32 MaxChunksTarget = 10;
+	if (RunnerConfig.IsValid())
+	{
+		MaxChunksTarget = RunnerConfig->ChunkSpawn.MaxActiveChunks;
+	}
+
+	for (int32 i = SpawnCount; i < MaxChunksTarget; ++i)
 	{
 		SpawnNextChunk(-1);
 	}
@@ -182,13 +209,21 @@ AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
 	else
 	{
 		// ── 레거시 직선 배치 (기존 로직) ──
-		float SpawnX = SpawnStartX;
+		float ConfigSpawnStartX = 0.f;
+		float ConfigChunkSpacing = 1000.f;
+		if (RunnerConfig.IsValid())
+		{
+			ConfigSpawnStartX = RunnerConfig->ChunkSpawn.SpawnStartX;
+			ConfigChunkSpacing = RunnerConfig->ChunkSpawn.ChunkSpacing;
+		}
+
+		float SpawnX = ConfigSpawnStartX;
 		if (ActiveChunks.Num() > 0)
 		{
 			AExFloorChunk* LastChunk = ActiveChunks.Last();
 			if (IsValid(LastChunk))
 			{
-				SpawnX = LastChunk->GetActorLocation().X + ChunkSpacing;
+				SpawnX = LastChunk->GetActorLocation().X + ConfigChunkSpacing;
 			}
 		}
 
@@ -252,7 +287,8 @@ void UExChunkSpawner::ReturnChunkToPool(AExFloorChunk* Chunk)
 	}
 
 	// 풀링 사용 안 하면 아예 액터 소멸
-	if (!bUsePooling)
+	bool bShouldUsePooling = RunnerConfig.IsValid() ? RunnerConfig->ChunkSpawn.bUsePooling : false;
+	if (!bShouldUsePooling)
 	{
 		Chunk->Destroy();
 		return;
@@ -303,7 +339,8 @@ void UExChunkSpawner::OnChunkReachedKillZ(AExFloorChunk* Chunk)
 AExFloorChunk* UExChunkSpawner::GetChunkFromPool()
 {
 	// 오브젝트 풀링 미사용 시 무조건 바로 새로 스폰
-	if (!bUsePooling)
+	bool bShouldUsePooling = RunnerConfig.IsValid() ? RunnerConfig->ChunkSpawn.bUsePooling : false;
+	if (!bShouldUsePooling)
 	{
 		return CreateNewChunk();
 	}

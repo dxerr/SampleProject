@@ -17,7 +17,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerLaneChangeRequested, int32,
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerInputModeChanged, EExRunnerInputMode, NewMode);
 class UInputAction;
 class UExRunnerInputStrategy;
-class UExGameModeDataSet;
+class UExRunnerConfig;
 class UExRunnerMovementComponent;
 
 /**
@@ -53,22 +53,10 @@ protected:
 	virtual void InitializeInputBindings(class UEnhancedInputComponent* EnhancedInputComponent) override;
 
 	// ============================================
-	// 1. Runner 설정 (DA_ExGameModeDataSet 또는 개별 값)
+	// 1. Runner 설정 캐시 (DataCenter 연동)
 	// ============================================
-	// 외부에 정의된 GameModeDataSet (할당 시 이 데이터의 설정값을 우선 사용)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="ExInput|Runner|Settings")
-	class UExGameModeDataSet* GameModeDataSet;
-
-	// 조이스틱 값을 실제 회전 델타로 적용할 민감도 스케일 (GameModeDataSet이 없으면 이 값 사용)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="ExInput|Runner|Settings")
-	float RunnerLookSensitivity = 0.5f; // 높은 값이 들어올 경우를 대비해 기본 스케일을 작게 설정
-
-	// ============================================
-	// 3. 입력 모드 (Strategy Pattern)
-	// ============================================
-	/** 기본 입력 모드 — BP 에디터 디테일 패널에서 설정 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="ExInput|Runner|Mode")
-	EExRunnerInputMode DefaultInputMode = EExRunnerInputMode::Manual;
+	UPROPERTY(Transient)
+	TObjectPtr<class UExRunnerConfig> CachedConfig;
 
 	
 public:
@@ -107,9 +95,9 @@ protected:
 	TObjectPtr<UExRunnerInputStrategy> ActiveStrategy;
 
 public:
-	/** GameModeDataSet 접근자 (Strategy 초기화 시 쿨다운 등 설정 값 로드용) */
+	/** GameModeDataSet 대체: RunnerConfig 접근자 */
 	UFUNCTION(BlueprintPure, Category="ExInput|Runner|Settings")
-	UExGameModeDataSet* GetGameModeDataSet() const { return GameModeDataSet; }
+	class UExRunnerConfig* GetRunnerConfig() const { return CachedConfig; }
 	// ============================================
 	// 2. Action Requesters (UI 및 Enhanced Input에서 호출하는 진입점)
 	// ============================================
@@ -145,6 +133,10 @@ public:
 	/** 현재 활성 입력 모드 반환 */
 	UFUNCTION(BlueprintPure, Category="ExInput|Runner|Mode")
 	EExRunnerInputMode GetCurrentInputMode() const { return CurrentInputMode; }
+
+	/** DataSet을 대체하는 Config 캐시 반환 */
+	UFUNCTION(BlueprintPure, Category = "ExInput|Runner|Settings")
+	UExRunnerConfig* GetCachedConfig() const { return CachedConfig; }
 
 	// MovementComponent가 초기화 완료 시 자신을 등록하는 콜백 함수
 	void RegisterMovementComponent(UExRunnerMovementComponent* InMovementComp);

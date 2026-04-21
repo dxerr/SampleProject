@@ -83,16 +83,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner")
 	TObjectPtr<APawn> TargetPawn;
 
-	/** 레인 폭 (단위: cm) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner|Lane")
-	float LaneWidth = 100.0f;
-
-	/** 레인 변경 속도 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner|Lane")
-	float LaneChangeSpeed = 10.0f;
-	/** GameModeDataSet (MaxRunnerYawAngle, LookInterpSpeed 참조용) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Runner|Look")
-	class UExGameModeDataSet* GameModeDataSet;
+	/** 데이터센터에서 로드된 러너 설정 (LaneWidth, LaneChangeSpeed, GameMode 변수 등 포함) */
+	UPROPERTY(Transient)
+	TObjectPtr<class UExRunnerConfig> CachedConfig;
 
 private:
 	/** 레인 위치 업데이트 (Interp) */
@@ -131,6 +124,9 @@ private:
 	// 동적 델리게이트 바인딩 지연 여부 체크
 	bool bIsLookInputBound = false;
 
+	/** 동적으로 계산되거나 설정값에서 가져온 현재 레인 간격 캐시 */
+	UPROPERTY(Transient)
+	float DynamicLaneWidth = 300.0f;
 
 public:
 	// 점프 직전에 곡선 구간을 예측하여 향해야 할 Yaw 각도로 캐릭터를 회전시킵니다.
