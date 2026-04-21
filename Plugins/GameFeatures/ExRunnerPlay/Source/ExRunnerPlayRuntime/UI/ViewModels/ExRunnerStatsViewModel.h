@@ -29,6 +29,10 @@ public:
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Setter, Getter, meta=(AllowPrivateAccess))
 	int32 CoinCount = 0;
 
+	/** 이동 거리 (미터법 변환 등 UI 표현을 위해 보관) */
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Setter, Getter, meta=(AllowPrivateAccess))
+	float CurrentDistance = 0.0f;
+
 	/** 스프린트 버프 남은 시간 */
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Setter, Getter, meta=(AllowPrivateAccess))
 	float SprintRemainingTime = 0.0f;
@@ -46,6 +50,9 @@ public:
 	int32 GetCoinCount() const { return CoinCount; }
 	void SetCoinCount(int32 NewCount);
 
+	float GetCurrentDistance() const { return CurrentDistance; }
+	void SetCurrentDistance(float NewDistance);
+
 	float GetSprintRemainingTime() const { return SprintRemainingTime; }
 	void SetSprintRemainingTime(float NewTime);
 
@@ -59,6 +66,10 @@ public:
 	/** 코인 갯수를 텍스트 포맷으로 반환 */
 	UFUNCTION(BlueprintPure, FieldNotify, Category="ExUI|RunnerViewModel")
 	FText GetCoinCountText() const;
+
+	/** 현재 이동 거리를 텍스트 포맷으로 반환 */
+	UFUNCTION(BlueprintPure, FieldNotify, Category="ExUI|RunnerViewModel")
+	FText GetCurrentDistanceText() const;
 
 	/** 현재 스프린트 남은 시간을 텍스트 포맷으로 반환 */
 	UFUNCTION(BlueprintPure, FieldNotify, Category="ExUI|RunnerViewModel")
@@ -92,6 +103,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category="ExUI|RunnerViewModel")
 	void AutoInitialize(APlayerController* InController);
 
+	UFUNCTION()
+	void OnPawnPossessed(APawn* OldPawn, APawn* NewPawn);
+
 private:
 	// 상태 감지용 컴포넌트 포인터 (안전 참조)
 	TWeakObjectPtr<UExRunnerStatComponent> BoundStatComponent;
@@ -104,6 +118,9 @@ private:
 
 	UFUNCTION()
 	void OnCoinCountUpdated(int32 NewCount);
+
+	UFUNCTION()
+	void OnDistanceUpdated(float NewDistance);
 
 	UFUNCTION()
 	void OnSprintTimeUpdated(float RemainingTime);

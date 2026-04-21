@@ -28,6 +28,11 @@ protected:
 	// 로컬 플레이어가 배정되어 뷰포트 접근이 가능해지는 시점
 	virtual void ReceivedPlayer() override;
 	virtual void PostSeamlessTravel() override;
+	virtual void PlayerTick(float DeltaTime) override;
+
+protected:
+	// Experience Manager 바인딩 시도 함수
+	void TryBindExperienceManager();
 
 	// GameState의 ExperienceManager 로드 완료 이벤트를 수신하는 콜백
 	UFUNCTION()
@@ -36,4 +41,7 @@ protected:
 	// 클라이언트가 UI 및 에셋 로딩을 마쳤음을 서버에 알림
 	UFUNCTION(Server, Reliable, WithValidation)
 	void Server_NotifyReadyForMatch();
+
+private:
+	bool bWaitingForGameState = false;
 };

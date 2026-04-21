@@ -8,6 +8,7 @@
 
 #include "ExPathManager.h"
 #include "../Data/ExRunnerConfig.h"
+#include "../GameStates/ExRunnerGameState.h"
 #include "ExDebugStateSubsystem.h"
 #include "ExGameplayTags.h"
 #include "Engine/GameInstance.h"
@@ -40,7 +41,16 @@ void UExPathManager::InitializePath(const FVector& StartPosition, const FRotator
 	bCheatAscending = true;
 	CheatCurrentCurve = EExPathSegmentType::CurveLeft;
 
-	// 초기 직선 세그먼트 추가 (시작 구간은 항상 직선)
+	// 시드 초기화 (GameState의 공유 시드 사용, 만약 유효하지 않다면 보조수단)
+	if (AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>())
+	{
+		PathRandomStream.Initialize(GS->SharedTrackSeed);
+	}
+	else
+	{
+		PathRandomStream.GenerateNewSeed();
+	}
+
 	// 초기 직선 세그먼트 추가 (시작 구간은 항상 직선)
 	// ★ 중요: 첫 청크의 Center가 (0,0,0)에 오도록 하려면
 	const float FirstSegLength = RunnerConfig.IsValid() ? 1000.f : 1000.f;
@@ -184,7 +194,7 @@ FExPathSegment UExPathManager::CreateSegment()
 
 	// 1. 커브/직선 결정
 	const float Probability = RunnerConfig->Curve.GetCurveProbability(ConsecutiveStraightCount);
-	bool bShouldCurve = FMath::FRand() < Probability;
+	bool bShouldCurve = PathRandomStream.FRand() < Probability;
 
 	// ── Bounding Box 강제 커브 판정 ──
 	bool bForceCurve = false;
@@ -254,7 +264,7 @@ FExPathSegment UExPathManager::CreateSegment()
 	}
 	else
 	{
-		Segment.Type = (FMath::RandBool()) ? EExPathSegmentType::CurveLeft : EExPathSegmentType::CurveRight;
+		Segment.Type = (PathRandomStream.RandRange(0, 1) == 1) ? EExPathSegmentType::CurveLeft : EExPathSegmentType::CurveRight;
 	}
 	Segment.CurveAngle = 90.f; // 고정 90도
 	Segment.CurveRadius = RunnerConfig->Curve.FixedCurveRadius;

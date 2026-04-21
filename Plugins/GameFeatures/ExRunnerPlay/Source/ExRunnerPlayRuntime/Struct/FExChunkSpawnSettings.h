@@ -30,4 +30,8 @@ public:
 	/** 동시에 필드에 존재할 수 있는 최대 청크 개수. 뒤처진 청크는 삭제/풀 회수 됨 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="ExRunner|ChunkSpawn")
 	int32 MaxActiveChunks = 10;
+
+	/** 생성할 바닥(Floor) 청크 블루프린트 클래스 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="ExRunner|ChunkSpawn")
+	TSubclassOf<class AExFloorChunk> ChunkClass;
 };

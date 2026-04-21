@@ -43,17 +43,7 @@ void AExFloorChunk::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 게임모드 캐시
-	CachedGameMode = Cast<AExRunnerGameMode>(UGameplayStatics::GetGameMode(this));
-	
-	if (!CachedGameMode)
-	{
-		UE_LOG(LogExFloorChunk, Warning, TEXT("ExFloorChunk: Could not find ExRunnerGameMode"));
-	}
-	else
-	{
-		UE_LOG(LogExFloorChunk, Log, TEXT("ExFloorChunk: GameMode found."));
-	}
+	// 더 이상 GameMode에 종속되지 않습니다. (클라이언트 스폰 지원)
 
 	// 레벨에 직접 배치된 청크는 자동으로 활성화
 	if (!bIsPooled)
@@ -79,13 +69,9 @@ void AExFloorChunk::Tick(float DeltaTime)
 	// KillZ 도달 체크 (경로 거리 기반 또는 상대 X좌표 기반)
 	bool bReachedKillZ = false;
 
-	if (CachedGameMode)
+	if (AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>())
 	{
-		float PlayerDist = 0.f;
-		if (AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>())
-		{
-			PlayerDist = GS->CurrentPathDistance;
-		}
+		float PlayerDist = GS->CurrentPathDistance;
 		// KillZ는 스폰 오프셋(음수값)으로, 캐릭터 뒤쪽 범위를 의미
 		bReachedKillZ = (PathDistance < PlayerDist + KillZ);
 	}

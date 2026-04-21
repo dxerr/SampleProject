@@ -58,6 +58,10 @@ protected:
 	UPROPERTY(Transient)
 	TObjectPtr<class UExRunnerConfig> CachedConfig;
 
+	/** DataCenter 업데이트 시 구성 데이터를 다시 로드하기 위한 콜백 */
+	UFUNCTION()
+	void OnDataCenterUpdated();
+
 	
 public:
 	// ============================================

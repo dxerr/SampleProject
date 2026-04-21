@@ -8,6 +8,9 @@
 #include "ExRunnerGameState.generated.h"
 
 class UExPathManager;
+class UExChunkSpawner;
+class UExObstacleManager;
+class UExRunnerItemManager;
 
 /** Timer 룰 — 잔여 시간(초) 변경 알림 */
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnRemainingTimeChanged, int32 /*NewSeconds*/);
@@ -44,6 +47,35 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ExRunner|Status")
 	float GetPlayerPathDistance() const { return RealPlayerPathDistance; }
 
+	// ── JIP (Join-In-Progress) 및 다중 플레이어 동기화 변수 ──
+	
+	/** 전체 플레이어 중 가장 앞서가는 거리 */
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "ExRunner|Multiplayer")
+	float LeadDistance = 0.f;
+
+	/** 전체 플레이어 중 가장 뒤처진 거리 */
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "ExRunner|Multiplayer")
+	float TailDistance = 0.f;
+
+	/** 트랙 생성용 공유 시드 (모든 클라이언트가 같은 맵 시드 사용) */
+	UPROPERTY(ReplicatedUsing = OnRep_SharedTrackSeed, VisibleAnywhere, BlueprintReadOnly, Category = "ExRunner|Multiplayer")
+	int32 SharedTrackSeed = 0;
+
+	UFUNCTION()
+	void OnRep_SharedTrackSeed();
+
+	/** 현재까지 생성된 세그먼트 수 (JIP 클라이언트 추적용) */
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "ExRunner|Multiplayer")
+	int32 CurrentSegmentIndex = 0;
+
+	/** 최신 세그먼트의 시작 누적 거리 */
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "ExRunner|Multiplayer")
+	float SegmentStartDistance = 0.f;
+
+	/** 청크 정리가 완료된 플로어 거리 기준점 (이 거리 이전의 청크는 JIP가 생성 스킵) */
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "ExRunner|Multiplayer")
+	float CleanupWatermark = 0.f;
+
 	// ── 룰 시스템 — Replicated 프로퍼티 ──────────────────────────────
 
 	/** Timer 룰이 초당 1회 갱신 — 클라이언트 HUD 타이머 표시 */
@@ -64,10 +96,23 @@ public:
 	/** 서버에서 RuleManager가 호출 */
 	void SetGameOverReason(EExRunnerGameOverReason NewReason);
 
-	// 클라이언트 클라이언트 모두 접근할 경로 매니저 컴포넌트
+	// 클라이언트 모두 접근할 경로 매니저 컴포넌트
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UExPathManager> PathManager;
 
+	// 결정론적 스폰을 위해 GameState로 이관된 로컬 스포너 관리자들
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UExChunkSpawner> ChunkSpawner;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UExObstacleManager> ObstacleManager;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UExRunnerItemManager> ItemManager;
+
+	/** 매 프레임 플레이어 배열을 돌며 Lead/Tail 갱신 */
+	virtual void Tick(float DeltaSeconds) override;
+	
 private:
 	UFUNCTION()
 	void OnRep_RemainingTime();

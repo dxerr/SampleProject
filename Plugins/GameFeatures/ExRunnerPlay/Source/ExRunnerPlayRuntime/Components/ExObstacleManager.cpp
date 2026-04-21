@@ -132,6 +132,13 @@ FBoxSphereBounds UExObstacleManager::GetVisualBounds(AActor* Actor)
 
 void UExObstacleManager::SpawnObstaclesOnChunk(AExFloorChunk* Chunk, float ChunkStartLocalX, float ChunkLength, bool bForceSpawn)
 {
+	// 장애물은 Replicated 액터이므로 서버에서만 스폰해야 합니다. 
+	// 클라이언트는 서버가 생성한 액터를 복제받게 됩니다.
+	if (GetOwner() && !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
 	if (CachedObstacleDefinitions.Num() == 0) return;
 	if (!Chunk) return;
 	if (!BoundSpawner || !BoundSpawner->RunnerConfig.IsValid()) return;

@@ -57,6 +57,22 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Runner|Stats")
 	void SetCurrentRunningSpeed(float NewSpeed);
 
+	// -- 이동 거리 (Distance) --
+	
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRunnerDistanceChanged, float, NewDistance);
+
+	/** 거리가 의미 있는 변화 폭으로 변경될 때 발행되는 이벤트 */
+	UPROPERTY(BlueprintAssignable, Category = "Runner|Stats|Events")
+	FOnRunnerDistanceChanged OnRunnerDistanceChanged;
+
+	/** 현재 누적 이동 거리 반환 */
+	UFUNCTION(BlueprintPure, Category = "Runner|Stats")
+	float GetCurrentDistance() const { return CurrentDistance; }
+
+	/** 이동 거리를 갱신합니다. */
+	UFUNCTION(BlueprintCallable, Category = "Runner|Stats")
+	void SetCurrentDistance(float NewDistance);
+
 	// -- 코인 시스템 --
 
 	/** 코인 개수가 변경될 때 발행되는 이벤트 */
@@ -120,6 +136,10 @@ private:
 	/** 현재 달리기 속도 (cm/s). 멀티플레이 확장 시 ReplicatedUsing으로 전환 가능 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner|Stats", meta=(AllowPrivateAccess))
 	float CurrentRunningSpeed = 0.0f;
+
+	/** 현재 달린 거리 (cm) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner|Stats", meta=(AllowPrivateAccess))
+	float CurrentDistance = 0.0f;
 
 	/** 획득한 총 코인 점수 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner|Stats", meta=(AllowPrivateAccess))

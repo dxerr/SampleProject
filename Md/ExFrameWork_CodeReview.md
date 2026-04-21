@@ -62,16 +62,18 @@
 ### 1.7 언리얼 엔진 베스트 프랙티스 (UE5 Best Practices)
 - **TObjectPtr**: 헤더 파일의 멤버 변수 선언 시 Raw Pointer(`*`) 대신 `TObjectPtr<T>`를 사용하는 것을 권장합니다 (UE5 표준).
 - **로그 매크로**: `LogTemp` 대신 프로젝트 전용 로그 카테고리(`LogExFrameWork`)를 정의하여 사용합니다.
+- Tick 사용한 로직이 있으면 면밀히 판단하여, 타이머 이벤트나 델리게이트로 처리 가능한지 확인, Tick 로직처리를 최대한 보수적으로 검토합니다.
 - **검증(Assertions) 및 필수 포인터 체크**:
     - **필수 애셋/클래스 포인터의 사전 검증**: 중요 로직을 처리해야 하는데 필수적인 애셋이나 클래스 포인터(예: `GameModeDataSet` 등)가 할당되지 않은 경우, 단순 `if` 조건문만 써서 로직이 소리 없이 무시(Silent Failure)되게 방치해선 안 됩니다. **반드시 `if` 조건문과 함께 `check()` 또는 `ensure()` 어설트를 추가하여 개발자가 사전에 즉각 인지하고 수정할 수 있도록 작성합니다.**
     - `check()`: 치명적인 오류, 필수 데이터 누락 등 개발 중 즉시 중지되어야 하는 경우.
     - `ensure()`: 예외 상황이지만 실행은 계속되어야 하는 경우 (최초 1회만 에디터에 알림).
 
 ### 1.8 네트워크 및 멀티플레이어 규칙 (Networking & Multiplayer)
-- **서버 권한(Authority) 고려**: 모든 게임 로직 작성 시 데디케이티드 서버(Dedicated Server) 환경을 기본으로 고려합니다.
+- 중요!! **서버 권한(Authority) 고려**: 모든 게임 로직 작성 시 데디케이티드 서버(Dedicated Server) 또는 리슨 서버(Listen Server) 환경을 기본으로 고려합니다.
     - 주요 상태 변경이나 중요한 로직은 반드시 서버 권한(`HasAuthority()`)을 확인하고 실행해야 합니다.
     - 클라이언트는 서버의 상태를 복제받아 표현(Presentation)하는 역할에 집중합니다.
     - RPC(Remote Procedure Call) 사용 시 보안과 대역폭을 고려하여 최소화합니다.
+    - 특히 스폰과 같은 처리에 대한 내용은 안정성과 서버 권위로 진행되는지 체크해야 합니다.
 
 ### 1.9 생성자 및 초기화 규칙 (Constructors & Initialization)
 - **생성자 내 NewObject 금지**: 클래스 생성자(`Constructor`) 내부에서는 `NewObject<>`를 호출하거나 물리/렌더링 상태를 갱신하는 함수(`SetBoxExtent` 등)를 호출하면 안 됩니다.
@@ -82,33 +84,6 @@
 - **Cheat 기능 고려**: 새로운 기능 클래스를 구현할 때는 디버깅 환경을 쉽게 구축하고 테스트할 수 있도록, 항상 Cheat 기능 연동(예: 디버그 태그 구독, 상태 시각화 등)을 고려하여 개발해야 합니다.
 - **디버깅/치트 로직의 독립성**: 개발에만 필요한 로직이나 디버깅, 치트 관련 로직 처리는 본래의 핵심 비즈니스 로직에 섞이지 않도록 **최대한 독립된 함수로 제작하여 호출하도록 구성**합니다 (추후 파악 및 배포 시 제거 용이).
 
-
-## 2. 문서 관리
-
-
-### 2.1 문서 폴더 구조 (Folder Structure)
-- **Architecture/**: 시스템 아키텍처, 분석 보고서, 설계 문서 등을 보관합니다.
-    - **ExCore/**: 핵심 프레임워크 관련 (장르 무관 범용 시스템)
-        - 예: `Mover_System_Analysis.md`, `DataDrivenCVars_Analysis.md`
-    - **ExRunnerPlay/**: 러너 게임 특화 기능 관련
-        - 예: `ExRunner_System_Architecture.md`, `Issue_Obstacle_Sync_Report.md`
-- **Guides/**: 사용 가이드, 튜토리얼, 셋업 가이드 등을 보관합니다.
-    - **ExCore/**: 핵심 프레임워크 가이드
-        - 예: `ExCore_GameplayTag_EventSystem_Guide.md`
-    - **ExRunnerPlay/**: 러너 게임 관련 가이드
-        - 예: `Climb_Sync_Guide.md`, `CurvedWorld_Runner_Setup_Guide.md`
-    - **Common/**: 엔진, 도구, 범용 설정 가이드 (특정 모듈에 종속되지 않음)
-        - 예: `MotionMatching_Guide_KR.md`, `PythonBridge_Documentation.md`
-- **Bug/**: 개발 중 발생한 크리티컬 이슈와 해결 방법을 기록합니다.
-    - 파일명: `[이슈키워드]_[원인].md` (예: `Constructor_Crash_NewObject.md`)
-    - 비슷한 이슈 발생 시 우선 검색하여 해결책을 찾습니다.
-- **Legacy/**: 오래된 보고서, 더 이상 유효하지 않지만 참고용으로 남겨둔 문서들을 보관합니다.
-    - 예: `Legacy_Spawner_Implementation_Report.md`
-- **Root**: `ExFrameWork_Guidelines.md`와 같은 프로젝트 전반에 걸친 핵심 기준 문서는 루트에 위치합니다.
-
-### 2.2 관리 규칙
-- 이 파일(`ExFrameWork_Guidelines.md`)은 프로젝트의 살아있는 규칙 문서로 관리됩니다.
-- 새로운 규칙이나 변경 사항이 발생하면 즉시 이 문서를 업데이트해야 합니다.
 
 ## 3. 아키텍처 및 모듈화 규칙 (Architecture & Modularization)
 

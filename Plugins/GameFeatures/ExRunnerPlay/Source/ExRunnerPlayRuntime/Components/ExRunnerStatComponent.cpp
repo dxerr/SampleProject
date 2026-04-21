@@ -9,6 +9,7 @@
 #include "Math/UnrealMathUtility.h"
 #include "Util/Actor/ExActorUtil.h"
 #include "MoverComponent.h"
+#include "../GameStates/ExRunnerGameState.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExRunnerStatComp, Log, All);
 
@@ -90,10 +91,24 @@ void UExRunnerStatComponent::UpdateStats()
 	}
 	SetCurrentRunningSpeed(Speed);
 
-	// ─── 추후 확장 예시 ─────────────────────────────────────────────────────────
-	// SetCurrentDistance(PathManager->GetPlayerDistance());
+	// ─── Distance ──────────────────────────────────────────────────────────────
+	if (AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>())
+	{
+		// 서버와 동기화된 RealPlayerPathDistance 또는 로컬 CurrentPathDistance 사용
+		SetCurrentDistance(GS->CurrentPathDistance);
+	}
 	
 	UpdateSprintTimer();
+}
+
+void UExRunnerStatComponent::SetCurrentDistance(float NewDistance)
+{
+	// 10cm 단위 의미 있는 갱신
+	if (!FMath::IsNearlyEqual(CurrentDistance, NewDistance, 10.0f))
+	{
+		CurrentDistance = NewDistance;
+		OnRunnerDistanceChanged.Broadcast(CurrentDistance);
+	}
 }
 
 void UExRunnerStatComponent::UpdateSprintTimer()

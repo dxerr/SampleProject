@@ -10,6 +10,7 @@
 #include "../Components/ExPathManager.h"
 #include "../Components/ExRunnerRuleManagerComponent.h"
 #include "../GameStates/ExRunnerGameState.h"
+#include "../Player/ExRunnerPlayerState.h"
 #include "../Data/ExRunnerConfig.h"
 #include "Subsystems/ExDataCenterSubsystem.h"
 #include "ExGameplayTags.h"
@@ -40,15 +41,13 @@ AExRunnerGameMode::AExRunnerGameMode()
 	// NOTE: 기본 TickGroup(TG_PrePhysics) 사용
 	// 오프셋 기반 보정이므로 X 리셋이 없어 Tick 순서에 민감하지 않음
 
-	ChunkSpawner = CreateDefaultSubobject<UExChunkSpawner>(TEXT("ChunkSpawner"));
-	ObstacleManager = CreateDefaultSubobject<UExObstacleManager>(TEXT("ObstacleManager"));
-	ItemManager = CreateDefaultSubobject<UExRunnerItemManager>(TEXT("ItemManager"));
 	BeatSyncComponent = CreateDefaultSubobject<UExBeatSyncComponent>(TEXT("BeatSyncComponent"));
 	RuleManagerComponent = CreateDefaultSubobject<UExRunnerRuleManagerComponent>(TEXT("RuleManagerComponent"));
 	
 	// PathManager는 AExRunnerGameState로 이관되었습니다.
 	// [Fix] 블루프린트 생성 시 부모의 게임스테이트가 상속되지 않도록 명시적 기본값 설정
 	GameStateClass = AExRunnerGameState::StaticClass();
+	PlayerStateClass = AExRunnerPlayerState::StaticClass();
 	
 	// 매치 준비 완료 시 자동 시작 켜기
 	bAutoStartOnReady = true;
@@ -92,6 +91,12 @@ void AExRunnerGameMode::StartRunnerGame()
 		GS->CurrentPathDistance = 0.f;
 		GS->RealPlayerPathDistance = 0.f;
 
+		// 랜덤 시드 생성 (데디/리슨 서버 공통)
+		GS->SharedTrackSeed = FMath::Rand();
+		GS->CurrentSegmentIndex = 0;
+		GS->SegmentStartDistance = 0.f;
+		GS->CleanupWatermark = 0.f;
+
 		// PathManager 초기화
 		if (GS->PathManager)
 		{
@@ -121,29 +126,29 @@ void AExRunnerGameMode::StartRunnerGame()
 		}
 	}
 
-	if (ChunkSpawner)
+	if (GS && GS->ChunkSpawner)
 	{
 		if (RunnerConfig.IsValid())
 		{
-			ChunkSpawner->RunnerConfig = RunnerConfig;
+			GS->ChunkSpawner->RunnerConfig = RunnerConfig;
 		}
-		ChunkSpawner->InitializeSpawner();
+		GS->ChunkSpawner->InitializeSpawner();
 	}
 
-	if (ObstacleManager && ItemManager && ChunkSpawner)
+	if (GS && GS->ObstacleManager && GS->ItemManager && GS->ChunkSpawner)
 	{
-		ChunkSpawner->SetManagers(ObstacleManager, ItemManager);
+		GS->ChunkSpawner->SetManagers(GS->ObstacleManager, GS->ItemManager);
 		
 		// 장애물 매니저의 내부 참조(BoundSpawner) 및 OnChunkDespawned 이벤트 연결을 위해 호출 필수
-		ObstacleManager->BindToSpawner(ChunkSpawner);
+		GS->ObstacleManager->BindToSpawner(GS->ChunkSpawner);
 
 		// 아이템 매니저도 OnChunkDespawned 이벤트를 받아 액터를 풀에 반환/파괴할 수 있도록 연결
-		ItemManager->BindToSpawner(ChunkSpawner);
+		GS->ItemManager->BindToSpawner(GS->ChunkSpawner);
 	}
 
-	if (BeatSyncComponent && ObstacleManager)
+	if (GS && BeatSyncComponent && GS->ObstacleManager)
 	{
-		BeatSyncComponent->BindToObstacleManager(ObstacleManager);
+		BeatSyncComponent->BindToObstacleManager(GS->ObstacleManager);
 	}
 
 	// BGM 시작 (Track Data 적용 시 내부에서 알아서 Phase 믹싱 데이터까지 동기화)

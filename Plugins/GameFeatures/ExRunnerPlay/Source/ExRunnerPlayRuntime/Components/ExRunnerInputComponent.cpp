@@ -13,27 +13,47 @@
 #include "InputStrategies/ExRunnerInputStrategy_AutoRun.h"
 #include "InputStrategies/ExRunnerInputStrategy_AutoButtonRun.h"
 #include "ExRunnerMovementComponent.h"
+#include "Engine/World.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogExRunnerPlay, Log, All);
 
 void UExRunnerInputComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	UGameInstance* GI = GetWorld()->GetGameInstance();
+	if (!GI) return;
+
+	UExDataCenterSubsystem* DC = GI->GetSubsystem<UExDataCenterSubsystem>();
+	if (!DC) return;
+
+	// Config가 이미 로드되어 있으면 즉시 초기화
+	if (UExRunnerConfig* Config = DC->GetConfig<UExRunnerConfig>())
+	{
+		CachedConfig = Config;
+		ApplyInputMode(CachedConfig->Input.DefaultInputMode);
+	}
+	else
+	{
+		// [수정] OnDataLoaded -> OnDataCenterUpdated (서브시스템 실제 멤버명)
+		DC->OnDataCenterUpdated.AddDynamic(this, &UExRunnerInputComponent::OnDataCenterUpdated);
+	}
+}
+
+void UExRunnerInputComponent::OnDataCenterUpdated()
+{
 	if (UGameInstance* GI = GetWorld()->GetGameInstance())
 	{
 		if (UExDataCenterSubsystem* DC = GI->GetSubsystem<UExDataCenterSubsystem>())
 		{
-			CachedConfig = DC->GetConfig<UExRunnerConfig>();
+			if (UExRunnerConfig* Config = DC->GetConfig<UExRunnerConfig>())
+			{
+				CachedConfig = Config;
+				ApplyInputMode(CachedConfig->Input.DefaultInputMode);
+				UE_LOG(LogExRunnerPlay, Log, TEXT("UExRunnerInputComponent: Config loaded/updated, applying DefaultInputMode"));
+			}
 		}
 	}
-
-	EExRunnerInputMode InitMode = EExRunnerInputMode::Manual;
-	if (CachedConfig)
-	{
-		InitMode = CachedConfig->Input.DefaultInputMode;
-	}
-
-	// DefaultInputMode에 설정된 모드로 Strategy 초기화
-	ApplyInputMode(InitMode);
 }
 
 void UExRunnerInputComponent::InitializeInputBindings(UEnhancedInputComponent* EnhancedInputComponent)

@@ -74,8 +74,10 @@ void UExRunnerMovementComponent::TryInitializeMover()
 			// UI 갱신을 위해 스탯 컴포넌트도 함께 캐싱 (부모 폰에 부착되어 있다고 가정)
 			CachedStatComponent = ParentPawn->FindComponentByClass<UExRunnerStatComponent>();
 			
-			// InputProducers 배열에 자신을 추가하여 Mover가 매 틱마다 ProduceInput을 호출하도록 합니다.
-			MoverComp->InputProducers.AddUnique(this);
+			// 기존 InputProducers를 제거하고 이 컴포넌트가 이동 입력을 전담하도록 강제합니다.
+			// DefaultCharacterInputProducer가 빈 입력으로 덮어쓰는 것을 방지합니다.
+			MoverComp->InputProducers.Empty();
+			MoverComp->InputProducers.Add(this);
 			
 			// Mover 시뮬레이션이 특정 모드에 고착되거나 대기 상태일 수 있으므로 Walking 모드 강제 진입을 요청합니다.
 			MoverComp->QueueNextMode(DefaultModeNames::Walking);
@@ -204,19 +206,23 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 	FVector MergedInput = GoalDirection;
 	MergedInput.Z = 0.0f; // 평면 이동 유지
 	
-	if (MergedInput.SizeSquared() > 1.0f)
+	if (MergedInput.SizeSquared() > 0.01f)
 	{
 		MergedInput.Normalize();
 	}
-
-	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, MergedInput);
-
-	// 3. 캐릭터의 고개가 쳐다볼 방향(OrientationIntent)에도 똑같이 타겟 방향을 꽂습니다.
-	// 이제 Mover 내부 시스템이 자기 자신의 보간(TurnGenerator 등)을 거쳐 부드럽게 캐릭터 캡슐을 회전시킵니다!
-	if (!MergedInput.IsNearlyZero())
+	else
 	{
-		Inputs.OrientationIntent = MergedInput.GetSafeNormal();
+		MergedInput = FVector::ForwardVector;
 	}
+
+	// [수정] 무조건적인 전진과 DefaultProducer 개입 덮어쓰기
+	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, MergedInput);
+	
+	// 캐릭터의 고개가 쳐다볼 방향(OrientationIntent)에도 똑같이 타겟 방향을 꽂습니다.
+	Inputs.OrientationIntent = MergedInput.GetSafeNormal();
+
+	// 물리 시뮬레이션이 아이들(대기) 상태로 빠지지 않고 항상 걷기/뛰기 모드를 유지하도록 유도
+	Inputs.SuggestedMovementMode = DefaultModeNames::Walking;
 }
 
 void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -225,14 +231,6 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 
 	// 아직 부모 폰에 안 붙었다면 위치 업데이트 로직 등은 스킵
 	if (!TargetPawn) return;
-
-	// 순서 보장: 기본 Mover Input Producer가 빈 가상 조이스틱 값(0,0)을 덮어쓰지 못하도록 이 컴포넌트를 항상 마지막에 위치시킴
-	UMoverComponent* MoverComp = TargetPawn->FindComponentByClass<UMoverComponent>();
-	if (MoverComp && MoverComp->InputProducers.Num() > 0 && MoverComp->InputProducers.Last() != this)
-	{
-		MoverComp->InputProducers.RemoveSingle(this);
-		MoverComp->InputProducers.Add(this);
-	}
 
 	// 속도 수집은 ExRunnerStatComponent의 자체 타이머(StatPollInterval)가 담당합니다.
 
@@ -344,33 +342,10 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
 	float SpeedToUse = CachedConfig ? CachedConfig->Movement.LaneChangeSpeed : 10.0f;
 	CurrentLaneYOffset = FMath::FInterpTo(CurrentLaneYOffset, TargetY, DeltaTime, SpeedToUse);
 	
-	// [개선] 점프 체공 상태나 마찰력 없는 슬라이딩 상태 파훼용 SetActorLocation 보정 처리 (bUseDirectLateralMovement 플래그 전용)
-	if (bUseDirectLateralMovement && TargetPawn)
-	{
-		AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
-		if (GS && GS->PathManager)
-		{
-			float PlayerPathDist = GS->RealPlayerPathDistance;
-			FVector PathPoint = GS->PathManager->GetPositionAtDistance(PlayerPathDist);
-			FVector PathRight = FRotationMatrix(GS->PathManager->GetDirectionAtDistance(PlayerPathDist)).GetScaledAxis(EAxis::Y);
-			
-			FVector CurrentLoc = TargetPawn->GetActorLocation();
-			
-			// [크리티컬 버그 수정] 앞으로 전진하지 못하는 문제 해결.
-			// PathPos 로 전체 X,Y를 덮어씌우면 플레이어의 현재 진행도(Mover에 의한 전진)가 무시되고 제자리에 갇힙니다.
-			// 따라서 오직 "레인 횡방향(PathRight)"에 대한 오차만 구해서 해당 축으로만 교정합니다!
-			
-			float CurrentLateralOffset = FVector::DotProduct(CurrentLoc - PathPoint, PathRight);
-			float LateralError = CurrentLaneYOffset - CurrentLateralOffset;
-			
-			if (FMath::Abs(LateralError) > 0.1f)
-			{
-				// 현재 위치에서 오차만큼 횡방향으로 이동 (전진 축과 Z 고도에는 아무 영향을 주지 않음)
-				FVector CorrectedLoc = CurrentLoc + (PathRight * LateralError);
-				TargetPawn->SetActorLocation(CorrectedLoc, false);
-			}
-		}
-	}
+	// [서버 동기화 리팩토링]
+	// 이전에는 점프 체공 상태나 마찰력 없는 슬라이딩 상태 파훼용으로 SetActorLocation(위치 강제 덮어쓰기)을 하였으나,
+	// 멀티플레이어 환경에서 Mover 컴포넌트와 위치 충돌 및 극심한 러버밴딩(고무줄 현상)을 유발하므로 삭제되었습니다.
+	// 이제 Mover의 의도된 입력(Orientation/Direction)을 통해 유기적으로 도달하도록 유도합니다.
 }
 
 void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)

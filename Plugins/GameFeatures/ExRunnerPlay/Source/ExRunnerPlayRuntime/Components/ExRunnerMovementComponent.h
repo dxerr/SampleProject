@@ -112,9 +112,9 @@ private:
 	bool bIsLaneWidthCalculated = false;
 
 	/** AutoRun 모드 플래그 — UpdateLanePosition 보간 연산 활성화 여부 제어 */
-	bool bIsAutoRunMode = false;
+	bool bIsAutoRunMode = true; // [수정] 기본값 true로 설정하여 딜레이 시에도 오토런 진행
 
-	/** [추가] 물리 이동 대신 위치 강제 보정(SetActorLocation)을 통해 레인 이동을 수행할지 여부 */
+	/** 물리 이동 대신 위치 강제 보정(SetActorLocation)을 통해 레인 이동을 수행할지 여부 */
 	bool bUseDirectLateralMovement = false;
 
 	// 조이스틱 좌우 입력으로 설정된 목표 Yaw 오프셋 (°) — 경로 기준 정면으로부터의 편차

@@ -92,6 +92,13 @@ float UExRunnerItemManager::CalculateItemZ(const FExObstacleContext& Context, fl
 
 void UExRunnerItemManager::SpawnItemsOnChunk(AExFloorChunk* TargetChunk, UExObstacleManager* ObstacleManager)
 {
+	// 아이템 역시 Replicated 속성을 지니므로 데디케이티드/리슨 호스트(서버)에서만 직접 스폰합니다.
+	// 클라이언트는 엔진 리플리케이션 시스템을 통하여 자동으로 생성받게 됩니다.
+	if (GetOwner() && !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
 	if (!TargetChunk)
 	{
 		UE_LOG(LogExItemSystem, Warning, TEXT("[ExRunnerItemManager] SpawnItemsOnChunk: TargetChunk가 null입니다!"));

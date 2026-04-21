@@ -116,12 +116,6 @@ void UExChunkSpawner::SetManagers(UExObstacleManager* InObstacleManager, UExRunn
 
 AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
 {
-	// 서버 권한 체크 (멀티플레이어 환경 고려)
-	if (GetOwner() && !GetOwner()->HasAuthority())
-	{
-		return nullptr;
-	}
-
 	AExFloorChunk* Chunk = GetChunkFromPool();
 	if (!Chunk)
 	{
@@ -271,12 +265,6 @@ void UExChunkSpawner::ReturnChunkToPool(AExFloorChunk* Chunk)
 		return;
 	}
 	
-	// 서버 권한 체크 (멀티플레이어 환경 고려)
-	if (GetOwner() && !GetOwner()->HasAuthority())
-	{
-		return;
-	}
-
 	// 비활성화 및 소멸 알림
 	Chunk->DeactivateChunk();
 	ActiveChunks.Remove(Chunk);
@@ -364,9 +352,15 @@ AExFloorChunk* UExChunkSpawner::GetChunkFromPool()
 
 AExFloorChunk* UExChunkSpawner::CreateNewChunk()
 {
-	if (!ChunkClass)
+	TSubclassOf<AExFloorChunk> TargetChunkClass = ChunkClass;
+	if (RunnerConfig.IsValid() && RunnerConfig->ChunkSpawn.ChunkClass)
 	{
-		UE_LOG(LogExChunkSpawner, Error, TEXT("ChunkClass is not set!"));
+		TargetChunkClass = RunnerConfig->ChunkSpawn.ChunkClass;
+	}
+
+	if (!TargetChunkClass)
+	{
+		UE_LOG(LogExChunkSpawner, Error, TEXT("ChunkClass is not set! (Check RunnerConfig or Spawner settings)"));
 		return nullptr;
 	}
 	
@@ -374,7 +368,7 @@ AExFloorChunk* UExChunkSpawner::CreateNewChunk()
 	SpawnParams.Owner = GetOwner();
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	
-	AExFloorChunk* NewChunk = GetWorld()->SpawnActor<AExFloorChunk>(ChunkClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+	AExFloorChunk* NewChunk = GetWorld()->SpawnActor<AExFloorChunk>(TargetChunkClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
 	if (NewChunk)
 	{
 		// KillZ 도달 델리게이트 바인딩

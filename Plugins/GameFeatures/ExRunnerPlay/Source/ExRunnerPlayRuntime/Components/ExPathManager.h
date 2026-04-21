@@ -139,6 +139,9 @@ private:
 	/** 연속 직선 청크 카운터 (빈도 공식용) */
 	int32 ConsecutiveStraightCount = 0;
 
+	/** 경로 및 맵 생성 일관성을 위한 독립적 난수 생성기 */
+	FRandomStream PathRandomStream;
+
 	// ========== Quadrant Logic State ==========
 
 	/** 마지막 세그먼트의 회전 방향 (직선/좌/우) */

@@ -47,33 +47,56 @@ void AExPlayerControllerBase::ReceivedPlayer()
 	if (IsLocalController())
 	{
 		UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] IsLocalController = True."));
-		if (AGameStateBase* GameState = GetWorld()->GetGameState())
+		TryBindExperienceManager();
+	}
+}
+
+void AExPlayerControllerBase::PlayerTick(float DeltaTime)
+{
+	Super::PlayerTick(DeltaTime);
+
+	if (bWaitingForGameState && IsLocalController())
+	{
+		if (GetWorld()->GetGameState())
 		{
-			UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] GameState is valid."));
-			if (UExExperienceManagerComponent* ExpManager = GameState->GetComponentByClass<UExExperienceManagerComponent>())
+			UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] GameState arrived. Retrying ExperienceManager Bind."));
+			bWaitingForGameState = false;
+			TryBindExperienceManager();
+		}
+	}
+}
+
+void AExPlayerControllerBase::TryBindExperienceManager()
+{
+	if (AGameStateBase* GameState = GetWorld()->GetGameState())
+	{
+		UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] GameState is valid."));
+		if (UExExperienceManagerComponent* ExpManager = GameState->GetComponentByClass<UExExperienceManagerComponent>())
+		{
+			UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] ExpManager found."));
+			if (ExpManager->IsExperienceLoaded())
 			{
-				UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] ExpManager found."));
-				if (ExpManager->IsExperienceLoaded())
-				{
-					UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] Experience already loaded. Firing immediately."));
-					OnExperienceLoadComplete();
-				}
-				else
-				{
-					UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] Experience NOT loaded yet. Binding callback."));
-					ExpManager->OnExperienceLoadCompleteEvent.RemoveAll(this);
-					ExpManager->OnExperienceLoadCompleteEvent.AddUObject(this, &ThisClass::OnExperienceLoadComplete);
-				}
+				UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] Experience already loaded. Firing immediately."));
+				OnExperienceLoadComplete();
 			}
 			else
 			{
-				UE_LOG(LogExCorePC, Error, TEXT("[ExPlayerControllerBase] ExpManager is NULL on GameState!"));
+				UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] Experience NOT loaded yet. Binding callback."));
+				ExpManager->OnExperienceLoadCompleteEvent.RemoveAll(this);
+				ExpManager->OnExperienceLoadCompleteEvent.AddUObject(this, &ThisClass::OnExperienceLoadComplete);
 			}
 		}
 		else
 		{
-			UE_LOG(LogExCorePC, Error, TEXT("[ExPlayerControllerBase] GameState is NULL during ReceivedPlayer!"));
+			// 혹시 컴포넌트 생성이 지연되었을 수 있으므로 다음을 기약 (드물지만 안전장치)
+			UE_LOG(LogExCorePC, Error, TEXT("[ExPlayerControllerBase] ExpManager is NULL on GameState! Waiting..."));
+			bWaitingForGameState = true;
 		}
+	}
+	else
+	{
+		UE_LOG(LogExCorePC, Error, TEXT("[ExPlayerControllerBase] GameState is NULL! Entering Wait mode."));
+		bWaitingForGameState = true;
 	}
 }
 
@@ -86,24 +109,7 @@ void AExPlayerControllerBase::PostSeamlessTravel()
 	if (IsLocalController())
 	{
 		UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] Re-evaluating ExperienceManager after Seamless Travel."));
-		if (AGameStateBase* GameState = GetWorld()->GetGameState())
-		{
-			if (UExExperienceManagerComponent* ExpManager = GameState->GetComponentByClass<UExExperienceManagerComponent>())
-			{
-				if (ExpManager->IsExperienceLoaded())
-				{
-					UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] Experience already loaded on Travel. Firing immediately."));
-					OnExperienceLoadComplete();
-				}
-				else
-				{
-					UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] Experience NOT loaded yet on Travel. Binding callback."));
-					// 중복 바인드 방지를 위해 제거 후 등록
-					ExpManager->OnExperienceLoadCompleteEvent.RemoveAll(this);
-					ExpManager->OnExperienceLoadCompleteEvent.AddUObject(this, &ThisClass::OnExperienceLoadComplete);
-				}
-			}
-		}
+		TryBindExperienceManager();
 	}
 }
 
