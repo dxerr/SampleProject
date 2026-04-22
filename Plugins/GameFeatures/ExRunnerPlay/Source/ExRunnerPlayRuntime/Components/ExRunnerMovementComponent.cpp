@@ -534,7 +534,7 @@ void UExRunnerMovementComponent::ApplyPreJumpRotation()
 	AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
 	if (!GS || !GS->PathManager) return;
 
-	float PlayerDist = GS->RealPlayerPathDistance;
+	float PlayerDist = CurrentPathDistance; 
 	
 	// 점프 예상 체공 거리 (예: 점프 속도 * 점프 시간) -> 대략 600 유닛 앞
 	float LookAheadDist = PlayerDist + 600.0f; 
@@ -549,19 +549,10 @@ void UExRunnerMovementComponent::ApplyPreJumpRotation()
 	float Weight = CachedConfig ? CachedConfig->Gameplay.JumpYawPredictionWeight : 1.0f;
 	float FinalYaw = CurrentPathRot.Yaw + (DeltaYaw * Weight);
 
-	// 액터 본체 회전 적용 (점프 개시 시 이 정면 각을 기준으로 날아감)
-	FRotator NewRot = TargetPawn->GetActorRotation();
-	NewRot.Yaw = FinalYaw;
-	TargetPawn->SetActorRotation(NewRot);
-
-	// 탑승된 컨트롤러(카메라) 화면 회전도 동기화 지연 방지
-	if (AController* PC = TargetPawn->GetController())
-	{
-		FRotator ControlRot = PC->GetControlRotation();
-		ControlRot.Yaw = FinalYaw;
-		PC->SetControlRotation(ControlRot);
-	}
-
-	// UE_LOG(LogTemp, Log, TEXT("[PreJump] DeltaYaw: %.1f -> Multiplied FinalYaw Offset: %.1f"), DeltaYaw, DeltaYaw * Weight);
+	// [수정] 강제 회전 보정 (SetActorRotation 및 SetControlRotation) 제거
+	// Mover 컴포넌트의 ProduceInput 에서 bIsFalling 상태일 때
+	// 곡면 각도(DeltaYaw)를 계산해 OrientationIntent에 주입하므로 물리적 회전이 유기적으로 이루어집니다.
+	// 카메라 역시 UpdateCharacterRotation의 RInterpTo를 통해 부드럽게 타겟을 쫓습니다.
+	// 여기서 강제로 각도를 쑤셔넣으면(Snap) 점프 키를 누르는 순간 화면이 '튀는(Jitter/Twitch)' 현상이 발생합니다.
 }
 
