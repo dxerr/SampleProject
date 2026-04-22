@@ -111,6 +111,9 @@ private:
 	float CurrentLaneYOffset = 0.0f;
 	bool bIsLaneWidthCalculated = false;
 
+	/** [추가] 물리적 진행 경로(Path) 거리 계산용 (서버/클라이언트 로컬) */
+	float CurrentPathDistance = 0.0f;
+
 	/** AutoRun 모드 플래그 — UpdateLanePosition 보간 연산 활성화 여부 제어 */
 	bool bIsAutoRunMode = true; // [수정] 기본값 true로 설정하여 딜레이 시에도 오토런 진행
 

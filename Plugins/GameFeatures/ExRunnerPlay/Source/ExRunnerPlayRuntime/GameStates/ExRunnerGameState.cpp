@@ -77,6 +77,10 @@ void AExRunnerGameState::Tick(float DeltaSeconds)
 		{
 			LeadDistance = MaxDist;
 			TailDistance = MinDist;
+			
+			// [수정] 맵의 스폰/디스폰 기준이 되는 거리를 리더 플레이어 거리로 동기화합니다.
+			// (기존에는 싱글플레이용으로 GameMode가 0번 로컬 플레이어만 강제로 갱신하여 롤백 유발)
+			CurrentPathDistance = MaxDist;
 		}
 		else
 		{

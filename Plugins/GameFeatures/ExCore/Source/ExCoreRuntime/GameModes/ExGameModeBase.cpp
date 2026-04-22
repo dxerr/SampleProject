@@ -12,6 +12,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
+#include "Components/ExVisualOverrideComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExCoreGM, Log, All);
 
@@ -230,13 +231,40 @@ APawn* AExGameModeBase::SpawnDefaultPawnAtTransform_Implementation(AController* 
 		return nullptr;
 	}
 
-	// 3. Visual Override 적용
+	// 3. Visual Override 적용 (컴포넌트로 위임)
 	if (SpawnDataAsset)
 	{
 		TSubclassOf<AActor> VisualClass = SpawnDataAsset->GetSelectedVisualOverride();
 		if (VisualClass)
 		{
-			ApplyVisualOverride(SpawnedPawn, VisualClass);
+			UExVisualOverrideComponent* VisualComp = SpawnedPawn->FindComponentByClass<UExVisualOverrideComponent>();
+			if (!VisualComp)
+			{
+				UE_LOG(LogExCoreGM, Warning, TEXT("[ExGameModeBase] SpawnedPawn %s lacks UExVisualOverrideComponent! Dynamically adding it."), *SpawnedPawn->GetName());
+				VisualComp = NewObject<UExVisualOverrideComponent>(SpawnedPawn, TEXT("ExVisualOverrideDynComp"));
+				if (VisualComp)
+				{
+					VisualComp->SetIsReplicated(true);
+					VisualComp->RegisterComponent();
+					SpawnedPawn->AddInstanceComponent(VisualComp);
+					
+					// Force Net Update on the owner so the new component replicates immediately
+					SpawnedPawn->ForceNetUpdate();
+				}
+			}
+
+			if (VisualComp)
+			{
+				VisualComp->SetVisualOverride(
+					VisualClass,
+					SpawnDataAsset->bHideContainerMesh,
+					SpawnDataAsset->bCopyAnimationFromVisual
+				);
+			}
+			else
+			{
+				UE_LOG(LogExCoreGM, Error, TEXT("[ExGameModeBase] Failed to dynamically create UExVisualOverrideComponent on %s!"), *SpawnedPawn->GetName());
+			}
 		}
 	}
 
@@ -244,134 +272,7 @@ APawn* AExGameModeBase::SpawnDefaultPawnAtTransform_Implementation(AController* 
 	return SpawnedPawn;
 }
 
-AActor* AExGameModeBase::ApplyVisualOverride(APawn* ContainerPawn, TSubclassOf<AActor> VisualClass)
-{
-	if (!ContainerPawn || !VisualClass)
-	{
-		return nullptr;
-	}
 
-	UWorld* World = GetWorld();
-	if (!World)
-	{
-		return nullptr;
-	}
-
-	UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] Applying VisualOverride: %s to %s"), 
-		*VisualClass->GetName(), *ContainerPawn->GetName());
-
-	// 기존 Visual Actor가 있다면 제거
-	if (AActor** ExistingVisual = SpawnedVisualActors.Find(ContainerPawn))
-	{
-		if (*ExistingVisual)
-		{
-			(*ExistingVisual)->Destroy();
-		}
-		SpawnedVisualActors.Remove(ContainerPawn);
-	}
-
-	// Visual Actor 스폰
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	SpawnParams.Owner = ContainerPawn;
-
-	AActor* VisualActor = World->SpawnActor<AActor>(
-		VisualClass, 
-		ContainerPawn->GetActorLocation(), 
-		ContainerPawn->GetActorRotation(), 
-		SpawnParams
-	);
-
-	if (!VisualActor)
-	{
-		UE_LOG(LogExCoreGM, Error, TEXT("[ExGameModeBase] Failed to spawn VisualActor"));
-		return nullptr;
-	}
-
-	// 컨테이너 폰의 SkeletalMeshComponent 찾기 (ACharacter, APawn 모두 지원)
-	USkeletalMeshComponent* ContainerMesh = nullptr;
-	
-	// 1. ACharacter인 경우 GetMesh() 사용
-	ACharacter* ContainerCharacter = Cast<ACharacter>(ContainerPawn);
-	if (ContainerCharacter)
-	{
-		ContainerMesh = ContainerCharacter->GetMesh();
-	}
-	
-	// 2. 일반 APawn인 경우 동적으로 SkeletalMeshComponent 검색
-	if (!ContainerMesh)
-	{
-		ContainerMesh = ContainerPawn->FindComponentByClass<USkeletalMeshComponent>();
-	}
-
-	// Visual Actor의 SkeletalMeshComponent 찾기 (Animation 설정 복사용)
-	USkeletalMeshComponent* VisualMesh = VisualActor->FindComponentByClass<USkeletalMeshComponent>();
-
-	// Visual Actor를 컨테이너 폰에 부착
-	if (ContainerMesh)
-	{
-		// SkeletalMeshComponent가 있는 경우 해당 컴포넌트에 부착
-		VisualActor->AttachToComponent(
-			ContainerMesh, 
-			FAttachmentTransformRules::SnapToTargetIncludingScale
-		);
-
-		// 컨테이너 메시 숨기기 (옵션)
-		if (SpawnDataAsset && SpawnDataAsset->bHideContainerMesh)
-		{
-			ContainerMesh->SetHiddenInGame(true);
-			ContainerMesh->SetVisibility(false);
-		}
-
-		// Visual Actor에서 Animation 설정을 ContainerMesh에 적용
-		// 이렇게 하면 ContainerPawn이 VisualActor의 Animation으로 구동됨
-		if (VisualMesh && SpawnDataAsset && SpawnDataAsset->bCopyAnimationFromVisual)
-		{
-			// Visual의 SkeletalMesh를 컨테이너에 적용
-			USkeletalMesh* VisualSkeletalMesh = VisualMesh->GetSkeletalMeshAsset();
-			if (VisualSkeletalMesh)
-			{
-				ContainerMesh->SetSkeletalMesh(VisualSkeletalMesh, false);
-			}
-
-			// Visual의 AnimClass를 컨테이너에 적용
-			TSubclassOf<UAnimInstance> VisualAnimClass = VisualMesh->GetAnimClass();
-			// Apply Animation
-			if (VisualAnimClass)
-			{
-				ContainerMesh->SetAnimInstanceClass(VisualAnimClass);
-			}
-
-			UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] Animation copied from Visual: Mesh=%s, AnimClass=%s"),
-				VisualSkeletalMesh ? *VisualSkeletalMesh->GetName() : TEXT("None"),
-				VisualAnimClass ? *VisualAnimClass->GetName() : TEXT("None"));
-
-			// Visual Actor의 메시는 숨기기 (ContainerMesh가 대신 렌더링)
-			VisualMesh->SetHiddenInGame(true);
-			VisualMesh->SetVisibility(false);
-			
-			// 컨테이너 메시 다시 표시 (Visual의 외형을 보여줌)
-			ContainerMesh->SetHiddenInGame(false);
-			ContainerMesh->SetVisibility(true);
-		}
-	}
-	else if (ContainerPawn->GetRootComponent())
-	{
-		// SkeletalMeshComponent가 없는 경우 RootComponent에 부착
-		VisualActor->AttachToComponent(
-			ContainerPawn->GetRootComponent(), 
-			FAttachmentTransformRules::SnapToTargetIncludingScale
-		);
-		
-		UE_LOG(LogExCoreGM, Warning, TEXT("[ExGameModeBase] ContainerPawn has no SkeletalMeshComponent, attached to RootComponent"));
-	}
-
-	// 추적 맵에 등록
-	SpawnedVisualActors.Add(ContainerPawn, VisualActor);
-
-	UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] VisualOverride applied successfully: %s"), *VisualActor->GetName());
-	return VisualActor;
-}
 
 
 void AExGameModeBase::ChangeVisualOverride(APawn* TargetPawn, int32 NewVisualIndex)
@@ -391,7 +292,15 @@ void AExGameModeBase::ChangeVisualOverride(APawn* TargetPawn, int32 NewVisualInd
 	SpawnDataAsset->SelectedVisualIndex = NewVisualIndex;
 	TSubclassOf<AActor> NewVisualClass = SpawnDataAsset->VisualOverrides[NewVisualIndex];
 	
-	ApplyVisualOverride(TargetPawn, NewVisualClass);
+	UExVisualOverrideComponent* VisualComp = TargetPawn->FindComponentByClass<UExVisualOverrideComponent>();
+	if (VisualComp)
+	{
+		VisualComp->SetVisualOverride(
+			NewVisualClass,
+			SpawnDataAsset->bHideContainerMesh,
+			SpawnDataAsset->bCopyAnimationFromVisual
+		);
+	}
 }
 
 void AExGameModeBase::OnMatchStarted_Implementation()

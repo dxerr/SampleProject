@@ -19,6 +19,7 @@
 #include "ExDebugStateSubsystem.h"
 #include "ExDebugStateSubsystem.h"
 #include "ExGameplayTags.h"
+#include "../Player/ExRunnerPlayerState.h"
 
 // 디버깅용 로그 카테고리 정의
 DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
@@ -74,9 +75,7 @@ void UExRunnerMovementComponent::TryInitializeMover()
 			// UI 갱신을 위해 스탯 컴포넌트도 함께 캐싱 (부모 폰에 부착되어 있다고 가정)
 			CachedStatComponent = ParentPawn->FindComponentByClass<UExRunnerStatComponent>();
 			
-			// 기존 InputProducers를 제거하고 이 컴포넌트가 이동 입력을 전담하도록 강제합니다.
-			// DefaultCharacterInputProducer가 빈 입력으로 덮어쓰는 것을 방지합니다.
-			MoverComp->InputProducers.Empty();
+			// 기본 CharacterInputProducer를 살리기 위해 Empty() 호출 제거
 			MoverComp->InputProducers.Add(this);
 			
 			// Mover 시뮬레이션이 특정 모드에 고착되거나 대기 상태일 수 있으므로 Walking 모드 강제 진입을 요청합니다.
@@ -125,12 +124,16 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 	AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
 	if (GS && GS->PathManager && TargetPawn)
 	{
+		// [개선] 게임스테이트 전역 거리 대신 캐릭터 단위 로컬 거리를 사용 (롤백 방지)
+		float PlayerPathDist = GS->PathManager->GetClosestDistanceAtLocation(TargetPawn->GetActorLocation(), CurrentPathDistance, 2000.f);
+		CurrentPathDistance = PlayerPathDist;
+
 		if (bIsAutoRunMode)
 		{
 			// Pure Pursuit (경유점 추적): 현재 속도에 기반해 일정 거리(LookAhead) 앞을 목표로 잡습니다.
 			float Speed = FMath::Max(TargetPawn->GetVelocity().Size(), 600.f);
 			float LookAheadDist = FMath::Clamp(Speed * 0.2f, 200.f, 1000.f); // 약 0.2초 앞 (최소 2m ~ 최대 10m)
-			float TargetDist = GS->RealPlayerPathDistance + LookAheadDist;
+			float TargetDist = PlayerPathDist + LookAheadDist;
 
 			// 목표 지점의 경로 위 좌표 및 우측 벡터
 			FVector PathPoint = GS->PathManager->GetPositionAtDistance(TargetDist);
@@ -164,8 +167,8 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 
 			if (bIsFalling && CachedConfig)
 			{
-				float LookAheadLimit = GS->RealPlayerPathDistance + 600.0f;
-				FRotator CurrentRot = GS->PathManager->GetDirectionAtDistance(GS->RealPlayerPathDistance);
+				float LookAheadLimit = PlayerPathDist + 600.0f;
+				FRotator CurrentRot = GS->PathManager->GetDirectionAtDistance(PlayerPathDist);
 				FRotator FutureRot = GS->PathManager->GetDirectionAtDistance(LookAheadLimit);
 				
 				float DeltaYaw = FRotator::NormalizeAxis(FutureRot.Yaw - CurrentRot.Yaw);
@@ -179,7 +182,6 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 		else
 		{
 			// 수동 모드의 경우 기존처럼 바로 발밑/가까운 경로의 방향을 바라봄
-			float PlayerPathDist = GS->RealPlayerPathDistance;
 			FRotator PathRot = GS->PathManager->GetDirectionAtDistance(PlayerPathDist);
 			ForwardDir = PathRot.Vector();
 		}
@@ -221,8 +223,9 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 	// 캐릭터의 고개가 쳐다볼 방향(OrientationIntent)에도 똑같이 타겟 방향을 꽂습니다.
 	Inputs.OrientationIntent = MergedInput.GetSafeNormal();
 
-	// 물리 시뮬레이션이 아이들(대기) 상태로 빠지지 않고 항상 걷기/뛰기 모드를 유지하도록 유도
-	Inputs.SuggestedMovementMode = DefaultModeNames::Walking;
+	Inputs.OrientationIntent = MergedInput.GetSafeNormal();
+
+	// [복구] 기존 뛰기 등 상태 전환을 위해 SuggestedMovementMode 강제 할당 제거
 }
 
 void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -248,6 +251,15 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 
 	// 2. 레인 변경 처리 (보간)
 	UpdateLanePosition(DeltaTime);
+
+	// [추가] 서버 권한 시 PlayerState에 거리 동기화 (Multiplayer)
+	if (TargetPawn->HasAuthority())
+	{
+		if (AExRunnerPlayerState* PS = TargetPawn->GetPlayerState<AExRunnerPlayerState>())
+		{
+			PS->UpdatePathDistance(CurrentPathDistance);
+		}
+	}
 }
 
 bool UExRunnerMovementComponent::IsLaneTransitionComplete() const
@@ -337,15 +349,29 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
 	// 목표 레인 오프셋 계산 (가운데: 0, 왼쪽: -LaneWidth, 오른쪽: +LaneWidth)
 	float TargetY = CurrentLaneIndex * CurrentLaneWidth;
 
-	// 보간 속도: "기존처럼 자연스러운 전환"을 원하시므로 초고속(50.0f) 대신 기존 LaneChangeSpeed를 그대로 사용합니다.
-	// bUseDirectLateralMovement 는 속도의 차이가 아니라, "물리 마찰력 상실 시 궤도 이탈 방지(강제 스냅)" 여부만을 결정합니다.
 	float SpeedToUse = CachedConfig ? CachedConfig->Movement.LaneChangeSpeed : 10.0f;
 	CurrentLaneYOffset = FMath::FInterpTo(CurrentLaneYOffset, TargetY, DeltaTime, SpeedToUse);
 	
-	// [서버 동기화 리팩토링]
-	// 이전에는 점프 체공 상태나 마찰력 없는 슬라이딩 상태 파훼용으로 SetActorLocation(위치 강제 덮어쓰기)을 하였으나,
-	// 멀티플레이어 환경에서 Mover 컴포넌트와 위치 충돌 및 극심한 러버밴딩(고무줄 현상)을 유발하므로 삭제되었습니다.
-	// 이제 Mover의 의도된 입력(Orientation/Direction)을 통해 유기적으로 도달하도록 유도합니다.
+	if (bUseDirectLateralMovement)
+	{
+		// [복구] 패드 터치 모드 시 물리량 무시하고 즉각적인 측면 강제 이동 수행
+		FVector CurrentLoc = TargetPawn->GetActorLocation();
+		AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
+		if (GS && GS->PathManager)
+		{
+			FVector PathPoint = GS->PathManager->GetPositionAtDistance(CurrentPathDistance);
+			FVector PathRight = FRotationMatrix(GS->PathManager->GetDirectionAtDistance(CurrentPathDistance)).GetScaledAxis(EAxis::Y);
+			
+			float CurrentLateralOffset = FVector::DotProduct(CurrentLoc - PathPoint, PathRight);
+			float LateralError = CurrentLaneYOffset - CurrentLateralOffset;
+
+			if (FMath::Abs(LateralError) > 0.1f)
+			{
+				FVector CorrectedLoc = CurrentLoc + (PathRight * LateralError);
+				TargetPawn->SetActorLocation(CorrectedLoc, false);
+			}
+		}
+	}
 }
 
 void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
@@ -384,8 +410,8 @@ void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 		}
 	}
 
-	// 플레이어 위치 기반 현재 경로 거리
-	float PlayerPathDist = GS->RealPlayerPathDistance; 
+	// 플레이어 위치 기반 현재 경로 거리 (로컬 캐시를 이용)
+	float PlayerPathDist = CurrentPathDistance; 
 	
 	// 개선: 트레드밀 속도 대신 실제 캐릭터의 Velocity 사용
 	float PlayerSpeed = TargetPawn->GetVelocity().Size();

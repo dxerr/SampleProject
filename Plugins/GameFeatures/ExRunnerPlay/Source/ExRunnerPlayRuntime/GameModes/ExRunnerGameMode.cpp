@@ -185,24 +185,9 @@ void AExRunnerGameMode::Tick(float DeltaTime)
 		return;
 	}
 
-	// 핵심 갱신: 플레이어 폰 가져오기
-	APawn* PlayerPawn = GetCachedPlayerPawn();
-	if (!PlayerPawn)
-	{
-		return;
-	}
-
-	// 실제 이동한 거리를 RealPlayerPathDistance에 갱신
-	// 플레이어 위치를 기준으로 가장 가까운 경로 상의 거리(투영)를 계산하여 추적합니다.
-	AExRunnerGameState* GS = GetGameState<AExRunnerGameState>();
-	if (GS && GS->PathManager)
-	{
-		FVector PlayerLocation = PlayerPawn->GetActorLocation();
-		GS->RealPlayerPathDistance = GS->PathManager->GetClosestDistanceAtLocation(PlayerLocation, GS->RealPlayerPathDistance, 2000.f);
-		
-		// 가상 경로 거리도 동기화 (트레드밀/LookAhead 참조 등에 사용)
-		GS->CurrentPathDistance = GS->RealPlayerPathDistance;
-	}
+	// [수정] 멀티플레이어 환경에서 싱글 플레이어 0번 기준의 위치 동기화(Rubber-Banding 버그 원인) 제거 완료.
+	// 이제 각 캐릭터의 ExRunnerMovementComponent가 자신의 거리를 계산하고 PlayerState에 동기화하며,
+	// GameState가 이를 취합해 LeadDistance/CurrentPathDistance를 관리합니다.
 
 	// 캐릭터 위치/방향 조향 로직은 클라이언트 보간을 위해 MovementComponent로 이관되었습니다.
 }

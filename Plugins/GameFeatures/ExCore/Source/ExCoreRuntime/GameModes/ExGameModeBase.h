@@ -44,20 +44,14 @@ public:
 	TObjectPtr<const class UExExperienceDefinition> DefaultExperience;
 
 	/**
-	 * 컨테이너 폰에 Visual Override를 적용
-	 * @param ContainerPawn 대상 컨테이너 폰
-	 * @param VisualClass 적용할 Visual Override 클래스
-	 * @return 생성된 Visual Actor
-	 */
-	UFUNCTION(BlueprintCallable, Category = "ExMatch|Spawn")
-	AActor* ApplyVisualOverride(APawn* ContainerPawn, TSubclassOf<AActor> VisualClass);
-
-	/**
-	 * 런타임에 Visual Override 변경
+	 * 서버 권한으로 런타임에 Visual Override 변경
 	 * @param TargetPawn 대상 폰
 	 * @param NewVisualIndex 새 Visual 인덱스
 	 */
+	UFUNCTION(BlueprintCallable, Category = "ExMatch|Spawn")
 	void ChangeVisualOverride(APawn* TargetPawn, int32 NewVisualIndex);
+
+
 
 	// ========== 매치 흐름 관리 ==========
 
@@ -113,11 +107,4 @@ protected:
 	void OnMatchEnded();
 	virtual void OnMatchEnded_Implementation();
 
-private:
-	/**
-	 * 현재 스폰된 Visual Actor들 추적
-	 * Key: 컨테이너 폰, Value: 부착된 Visual Actor
-	 */
-	UPROPERTY()
-	TMap<APawn*, AActor*> SpawnedVisualActors;
 };
