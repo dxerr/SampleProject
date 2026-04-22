@@ -218,6 +218,9 @@ Duration:   -            Duration:   2.0s         Duration:   1.5s
 
 ## 4. MetaSound 연동 전략
 
+> **DataCenter 3-Base 체계 편입 검토 결과 (2026-04-22):**  
+> `UExMusicPhaseDataAsset`은 `UDataAsset`을 직접 상속하여 DataCenter 외부에 존재한다. 그러나 이 에셋은 `UExBGMTrackDataAsset`의 멤버로 직접 참조되며(곡별 1:1 관계), DataCenter의 태그 기반 조회 패턴이 필요하지 않다. **현재 구조를 유지하며, DataCenter에 편입하지 않는다.**
+
 ### 4.1 MetaSound Source ↔ C++ 파라미터 매핑
 
 MetaSound Source의 **Graph Input**(노출 파라미터)과 C++의 `SetFloatParameter`가 **이름 기반**으로 연결됩니다.

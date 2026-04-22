@@ -1,6 +1,9 @@
 # ExCore 공통 팝업 UI 시스템 개발 계획서
 
-ExCore 플러그인에 **Descriptor 데이터 드리븐 기반**의 공통 팝업 UI 시스템을 구축한다. 모든 하위 GameFeature 플러그인(ExRunnerPlay 등)에서 일관된 인터페이스로 팝업을 호출하고, 필요에 따라 확장할 수 있는 구조를 제공한다.
+ExCore 플러그인에 **CommonUI 기반 + Descriptor 데이터 드리븐**의 공통 팝업 UI 시스템을 구축한다. 기존 `UExModalWidget`(CommonUI `UCommonActivatableWidget` 기반)을 상속하여 구현하므로, CommonUI의 입력 라우팅/스택 관리/게임패드 지원이 모두 자동 적용된다. 모든 하위 GameFeature 플러그인(ExRunnerPlay 등)에서 일관된 인터페이스로 팝업을 호출하고, 필요에 따라 확장할 수 있는 구조를 제공한다.
+
+> **셀업 가이드:** `Guides/ExCore/ExCore_Common_Popup_UI_Setup_Guide.md`  
+> **UI 기반 아키텍처:** `Architecture/ExCore/ExFrameWork_UI_System_Architecture.md` (v2.1) — CommonUI + MVVM
 
 ---
 

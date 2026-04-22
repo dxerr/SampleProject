@@ -95,7 +95,7 @@ void AMyGameMode::BeginPlay()
 void AMyGameMode::OnClimbStart(FGameplayTag EventTag, const FExGameplayEventPayload& Payload)
 {
     // 이벤트 처리
-    UE_LOG(LogTemp, Log, TEXT("Climb Started by: %s"), 
+    UE_LOG(LogExFrameWork, Log, TEXT("Climb Started by: %s"), 
         Payload.Instigator ? *Payload.Instigator->GetName() : TEXT("Unknown"));
 }
 ```

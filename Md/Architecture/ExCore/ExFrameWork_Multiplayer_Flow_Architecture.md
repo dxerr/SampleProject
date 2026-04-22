@@ -394,7 +394,7 @@ namespace ExMatchTags
 - [ ] 클라이언트에서 `OnRep_MatchPhase`가 호출되고, `OnMatchPhaseChanged` 델리게이트가 브로드캐스트된다.
 - [ ] 클라이언트 코드에서 `GetAuthGameMode()`를 호출하는 곳이 없다.
 - [ ] `OnRequestTravel` 구독이 `BeginPlay`에서 바인딩되고 `EndPlay`에서 해제된다.
-- [ ] 유효하지 않은 매치 페이즈 전이를 시도하면 로그 경고가 출력된다.
+- [ ] `AExGameModeBase::SetMatchPhase()`가 호출될 때 전환 발생 로그(이전 → 이후 상태)가 출력된다.
 
 ---
 

@@ -4,7 +4,7 @@
 > **대상 엔진:** Unreal Engine 5  
 > **모듈:** ExCore (`ExCoreRuntime`)  
 > **작성일:** 2026-04-20  
-> **관련 설계 문서:** `Md/Plans/ExFrameWork_DataCenter_System_Plan.md`
+> **최종 수정:** 2026-04-22 (통합: `Plans/ExFrameWork_DataCenter_System_Plan.md` 내용 통합, 원본 삭제)
 
 ---
 
@@ -226,30 +226,18 @@ Phase 1~5 마이그레이션 완료 후에도 ExRunnerPlay 컴포넌트들의 �
 
 ---
 
-### 11.1 발견된 이슈: UExGameModeDataSet 이중 문제
+### 11.1 해결 완료: UExGameModeDataSet 이중 문제
 
 **파일:** `Source/ExFrameWork/Data/Modes/ExGameModeDataSet.h` (ExCore 모듈)
 
-`UExGameModeDataSet`는 두 가지 문제를 동시에 가진다.
+`UExGameModeDataSet`는 이전에 두 가지 문제를 가지고 있었으나, **DataCenter 마이그레이션 과정에서 모두 해결되었다**.
 
-| 문제 | 내용 |
-|---|---|
-| **위치 위반** | ExCore 모듈에 있으나 Runner 전용 설정값(`MaxRunnerYawAngle`, `RunnerLookSensitivity`, `LookInterpSpeed`, `SwipeActivationPercentage`, `AutoRunActionCooldown`, `JumpYawPredictionWeight`)을 포함 → Core/Feature 분리 원칙 위반 |
-| **DataCenter 외부** | `UDataAsset`을 직접 상속하여 DataCenter 3-Base 시스템 밖에 존재 |
+| 문제 | 상태 | 해결 내용 |
+|---|---|---|
+| **위치 위반** | ✅ 해결 | Runner 전용 멤버(`RunnerLookSensitivity`, `SwipeActivationPercentage`, `AutoRunActionCooldown` 등)가 `UExRunnerConfig`의 USTRUCT(`FExInputSettings`, `FExGameplaySettings`)로 이전 완료. 현재 `UExGameModeDataSet`에는 범용 멤버(`MaxScore`, `NumRounds`, `ContainerPawnClass`, `LocalPlayerClass`)만 존재 |
+| **DataCenter 외부** | ⚠️ 미완 | `UDataAsset`을 직접 상속하여 DataCenter 3-Base 시스템 밖에 존재. 향후 `UExConfigDataAsset`으로 베이스 변경 검토 대상 |
 
-현재 `UExRunnerInputComponent`와 `UExRunnerMovementComponent`가 이 클래스를 폴백 참조로 직접 포인터로 들고 있다.
-
-```cpp
-// ExRunnerInputComponent.h — 현재 상태 (개선 대상)
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="ExInput|Runner|Settings")
-class UExGameModeDataSet* GameModeDataSet;  // DataCenter 외부 직접 참조
-
-// ExRunnerMovementComponent.h — 현재 상태 (개선 대상)
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Runner|Look")
-class UExGameModeDataSet* GameModeDataSet;  // DataCenter 외부 직접 참조
-```
-
-`UExGameModeDataSet`의 멤버 중 범용적인 것(`MaxScore`, `NumRounds`, `ContainerPawnClass`, `LocalPlayerClass`)은 ExCore 수준 Config로, Runner 특화 항목들은 `UExRunnerConfig`로 통합하는 것이 바람직하다.
+`UExRunnerInputComponent`와 `UExRunnerMovementComponent`는 더 이상 `GameModeDataSet`을 직접 참조하지 않으며, DataCenter의 `UExRunnerConfig`를 `TWeakObjectPtr`로 캐싱하여 사용한다.
 
 ---
 
@@ -300,11 +288,10 @@ class UExGameModeDataSet* GameModeDataSet;  // DataCenter 외부 직접 참조
 
 | 멤버 변수 | 타입 | 기본값 | 제안 구조체 | 비고 |
 |---|---|---|---|---|
-| `RunnerLookSensitivity` | `float` | `0.5f` | `FExInputSettings` | `UExGameModeDataSet::RunnerLookSensitivity`와 중복 |
-| `DefaultInputMode` | `EExRunnerInputMode` | `Manual` | `FExInputSettings` | |
+| `DefaultInputMode` | `EExRunnerInputMode` | `None` | `FExInputSettings` | |
 
-> 참고: `JumpAction`, `SlideAction` 등 `UInputAction*` 참조는 에디터 바인딩 데이터이므로 제외.  
-> `GameModeDataSet` 포인터는 11.1 항목으로 별도 검토.
+> 참고: `RunnerLookSensitivity`는 이미 `FExInputSettings`로 마이그레이션 완료. `GameModeDataSet` 직접 참조도 제거되어 DataCenter 기반 `CachedConfig`로 대체됨.  
+> `JumpAction`, `SlideAction` 등 `UInputAction*` 참조는 에디터 바인딩 데이터이므로 제외.
 
 ---
 
@@ -333,7 +320,7 @@ UExRunnerConfig (UExConfigDataAsset)
 └── FExInputSettings          Input          [신규]
 ```
 
-`UExGameModeDataSet`의 Runner 전용 멤버들(`MaxRunnerYawAngle`, `LookInterpSpeed`, `SwipeActivationPercentage`, `AutoRunActionCooldown`, `JumpYawPredictionWeight`)도 `FExInputSettings` 또는 별도 `FExGameplaySettings`로 통합을 검토한다.
+`UExGameModeDataSet`의 Runner 전용 멤버들은 이미 `FExInputSettings` 및 `FExGameplaySettings`로 마이그레이션 완료된 상태이다. `UExGameModeDataSet` 자체의 DataCenter 3-Base 통합(범용 멤버들의 `UExConfigDataAsset` 베이스 변경)은 향후 검토 대상이다.
 
 ---
 

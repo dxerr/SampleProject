@@ -84,24 +84,27 @@ AExRunnerGameMode
                 │
                 │ 조건 충족 시 OnRuleTriggered.Broadcast(FGameplayTag)
                 ▼
-       UExRunnerRuleManagerComponent::OnRuleTriggered()
+       UExRunnerRuleManagerComponent::OnRuleTriggered(Payload)
                 │
-                ├─ [1] HasAuthority() 확인 + 중복 방지 플래그
-                ├─ [2] GameState->SetGameOverReason(Reason)  ── Replicated ──▶
-                └─ [3] EventSubsystem->BroadcastTag(Tag) → GameMode::EndMatch()
+                ├─ [1] Global Scope 이거나 Global GameOver로 승격된 경우:
+                │      GameState->SetGameOverReason(Reason) ── Replicated ──▶
+                │
+                └─ [2] GameState->NetMulticast_BroadcastRuleEvent(Payload) ──▶ (모든 클라)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 클라이언트 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-AExRunnerGameState::OnRep_GameOverReason()
-  └─ OnGameOverReasonChanged.Broadcast(Reason)
-       └─ UExRunnerMatchViewModel::OnGameOverReasonUpdated(Reason)
+AExRunnerGameState::NetMulticast_BroadcastRuleEvent_Implementation(Payload)
+  └─ EventSubsystem->BroadcastEvent(Payload.RuleTag, EventPayload)
+       └─ UExRunnerMatchViewModel::OnRuleEventReceived(Payload)
             │
             ├─ [FallDeath]
-            │     UIManagerSubsystem->PushGameOverlay(FadeOverlayWidget)
-            │       └─ FadeIn 완료 → ShowConfirm("재시작?")  ← ExPopupWidget 재사용
+            │     ├─ (내가 죽은 경우) UIManagerSubsystem->PushGameOverlay(FadeOverlayWidget)
+            │     │    └─ FadeIn 완료 → ShowConfirm("재시작?")
+            │     └─ (남이 죽은 경우) 공용 UI Toast 피드에 "OOO 낙사!" 알림만 띄움
             │
-            └─ [TimeUp / GoalReached]
-                  ActiveWidgetIndex = 2 (PostMatch)  ← 기존 매핑 재사용
+            └─ [GlobalGameOver == true (TimeUp / AllDead)]
+                  ActiveWidgetIndex = 2 (PostMatch) 
+                    └─ CommonAnimatedSwitcher → 결과 화면 표시
                     └─ CommonAnimatedSwitcher → 결과 화면 표시
                          └─ 위젯이 GameOverReason FieldNotify로 내용 분기
 
@@ -151,11 +154,12 @@ virtual void DeactivateRule();                                 // 게임오버/�
 virtual void TickRule(float DeltaTime);                        // bTickEnabled=true만 호출
 
 // ── 설정 (에디터 노출) ──────────────────────────────────────────
+UPROPERTY(EditAnywhere) EExRuleScope RuleScope = EExRuleScope::Global; // 전역 룰 vs 개인 룰
 UPROPERTY(EditAnywhere) FGameplayTag TriggerTag;               // 발동 시 브로드캐스트
 UPROPERTY(EditAnywhere) bool bTickEnabled = false;
 
 // ── 발동 알림 (RuleManager가 구독) ─────────────────────────────
-FOnRuleTriggered OnRuleTriggered;   // Broadcast(TriggerTag) 호출
+FOnRuleTriggered OnRuleTriggered;   // Broadcast(Payload) 호출
 ```
 
 > ⚠️ **구현 주의**: `UExRunnerRuleBase`는 `UObject` 기반이므로 `GetWorld()` 직접 호출 불가.  
@@ -272,14 +276,20 @@ void ActivateAllRules();    // 매치 시작 시 GameMode가 호출
 void DeactivateAllRules();  // EndMatch 시 GameMode가 호출
 
 // ── 내부 룰 발동 수신 ──────────────────────────────────────────
-void OnRuleTriggered(FGameplayTag ResultTag)
+void OnRuleTriggered(const FExRuleTriggerPayload& Payload)
 {
     if (!GetOwner()->HasAuthority()) return;
     if (bGameOverHandled) return;   // 복수 룰 동시 발동 방지
-    bGameOverHandled = true;
 
-    GameState->SetGameOverReason(TagToReason(ResultTag));        // Replicated
-    EventSubsystem->BroadcastTag(ResultTag);                     // GameMode::EndMatch
+    // Global 로 승격될 경우 전체 게임오버
+    if (Payload.Scope == EExRuleScope::Global || Payload.bIsGlobalGameOver)
+    {
+        bGameOverHandled = true;
+        GameState->SetGameOverReason(TagToReason(Payload.RuleTag));        // Replicated
+    }
+
+    // 대상자 구분을 위해 로컬 이벤트 전파 (멀티캐스트)
+    GameState->NetMulticast_BroadcastRuleEvent(Payload);
 }
 ```
 

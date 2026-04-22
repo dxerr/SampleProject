@@ -1,9 +1,10 @@
-# ExRunnerPlay 멀티플레이어 네트워크 대응 분석 보고서
+# ExRunnerPlay 멀티플레이어 네트워크 대응 분석 및 개편 계획
 
 > **작성일**: 2026-04-21  
-> **최종 수정**: 2026-04-21 (리뷰 피드백 7건 반영, Rev.2)  
-> **분석 대상**: `Multiplayer_Runner_Architecture.md` 계획서 vs 현재 코드베이스  
-> **목적**: 데디케이티드 서버 / 리슨 서버 환경에서 정상 동작하기 위한 현재 구조의 문제점 식별 및 해결 방안 도출
+> **최종 수정**: 2026-04-22 (통합: `Plans/Multiplayer_Runner_Architecture.md` 내용 통합, 원본 삭제)  
+> **분석 대상**: 기존 계획서 vs 현재 코드베이스  
+> **목적**: 데디케이티드 서버 / 리슨 서버 환경에서 정상 동작하기 위한 현재 구조의 문제점 식별 및 해결 방안 도출  
+> **관련 문서**: `Architecture/ExCore/ExFrameWork_Multiplayer_Flow_Architecture.md` (ExCore 멀티플레이 베이스 클래스)
 
 ---
 
@@ -239,7 +240,7 @@ GameState::Tick에서는 PlayerState 목록을 순회하여 Max/Min을 산출하
 | `AExRunnerGameState` 리플리케이션 | ✅ 정상 | `CurrentPathDistance`, `RealPlayerPathDistance`, `RemainingTimeSeconds`, `GameOverReason` 모두 Replicated |
 | `UExPathManager`가 GameState에 부착 | ✅ 정상 | 이미 `GameMode`에서 `GameState`로 이관 완료, `SetIsReplicated(true)` |
 | 매치 페이즈 흐름 | ✅ 정상 | `ExGameStateBase::CurrentMatchPhase` Replicated, `OnRep_MatchPhase` 구현 |
-| 룰 시스템 서버 권한 | ✅ 정상 | `OnRuleEndGameEvent`, `OnRuleTriggered` 모두 `HasAuthority()` 체크 |
+| 룰 시스템 서버 권한 및 분기 | ✅ 정상 | 기존 `HasAuthority()` 체크에 더해, **V2 업데이트**를 통해 `RuleManager`가 이벤트를 전 클라이언트로 뿌리는 `GameState::NetMulticast_BroadcastRuleEvent(Payload)`를 도입하여 서버/로컬 분리 완비 |
 | `ExRunnerMovementComponent` | ✅ 부분 | Mover 2.0 기반 클라이언트 예측 프레임워크 사용 중 |
 | `AExFloorChunk::bReplicates` | ✅ 정상 | 기본값 `false` — 계획서와 일치 |
 | `ExGameModeBase::bUseSeamlessTravel` | ✅ 정상 | Seamless Travel 활성화 |
