@@ -27,6 +27,7 @@
    - 단일 전역 변수 대신 **각 MovementComponent (`CurrentPathDistance`)가 자신의 독립적 위치를 기준으로 경로 진행 거리를 측정**하게 함.
    - `HasAuthority()`가 참인 상황일 때 각 폰은 자신의 진행 거리를 `AExRunnerPlayerState::UpdatePathDistance()`를 호출하여 서버에 반영.
    - 불필요하고 충돌을 유발했던 `GameMode::Tick`의 전역 0번 플레이어 강제 동기화 소스는 전면 제거.
+   - [중요] **Mover 시스템의 서버 미실행 이슈 대응**: `ProduceInput_Implementation`은 서버에서 실행되지 않으므로, 거리 계산(`CurrentPathDistance`) 로직을 서버/클라 모두 실행되는 `TickComponent`로 이동하여 서버가 클라이언트의 진행 거리를 유실하지 않도록 보장.
    - `ExRunnerGameState::Tick`은 접속한 모든 `PlayerState` 중에서 가장 높은 점수(가장 멀리간 유저)를 `CurrentPathDistance (LeadDistance)`로 정하여 월드 맵(청크)를 스폰/디스트로이 하도록 아키텍처 개편.
 
 ## Date
