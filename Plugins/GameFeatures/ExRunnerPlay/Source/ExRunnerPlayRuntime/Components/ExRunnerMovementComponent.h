@@ -35,6 +35,8 @@ public:
 	// 레인 변경(UpdateLanePosition) 처리를 위해 Tick을 유지합니다.
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 	/** 왼쪽 레인으로 이동 요청 (BP에서 호출) */
 	UFUNCTION(BlueprintCallable, Category = "Runner|Movement")
 	void MoveLeft();
@@ -79,6 +81,11 @@ public:
 	void OnLaneChangeRequestedCallback(int32 LaneDirection);
 
 protected:
+	/** 서버로 레인 변경 인덱스를 전달하는 RPC */
+	UFUNCTION(Server, Reliable)
+	void Server_SetLaneIndex(int32 NewLaneIndex);
+
+protected:
 	/** 제어 대상 폰 (Mover) - Pawn 기반 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner")
 	TObjectPtr<APawn> TargetPawn;
@@ -107,7 +114,9 @@ private:
 	TWeakObjectPtr<class UExRunnerStatComponent> CachedStatComponent;
 
 	// 내부 상태 변수
+	UPROPERTY(Replicated)
 	int32 CurrentLaneIndex = 0;
+	
 	float CurrentLaneYOffset = 0.0f;
 	bool bIsLaneWidthCalculated = false;
 

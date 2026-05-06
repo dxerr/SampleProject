@@ -1,0 +1,18 @@
+[
+  {
+    "Path": "/ExRunnerPlay/BluePrint/ExRunnerCharacter_Mover_Child",
+    "Error": "'BlueprintGeneratedClass' object has no attribute 'get_super_class'",
+    "Class": "ExRunnerCharacter_Mover_Child_C",
+    "Parent": null,
+    "Components": [],
+    "Functions": []
+  },
+  {
+    "Path": "/ExCore/BluePrint/ExSandboxCharacter_Mover",
+    "Error": "'BlueprintGeneratedClass' object has no attribute 'get_super_class'",
+    "Class": "ExSandboxCharacter_Mover_C",
+    "Parent": null,
+    "Components": [],
+    "Functions": []
+  }
+]

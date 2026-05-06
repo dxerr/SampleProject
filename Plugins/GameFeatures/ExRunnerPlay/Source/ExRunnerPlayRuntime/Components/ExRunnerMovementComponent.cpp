@@ -20,6 +20,7 @@
 #include "ExDebugStateSubsystem.h"
 #include "ExGameplayTags.h"
 #include "../Player/ExRunnerPlayerState.h"
+#include "Net/UnrealNetwork.h"
 
 // 디버깅용 로그 카테고리 정의
 DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
@@ -30,6 +31,13 @@ UExRunnerMovementComponent::UExRunnerMovementComponent()
 	// (Tick에서 처리하던 레인 변경 로직은 별도 틱을 켜두거나, 타이머/기타 방식으로 처리해야 하지만 
 	// 레인 변경 보간 로직(UpdateLanePosition) 자체는 프레임레이트 의존적이므로 기본 틱은 켜둡니다.)
 	PrimaryComponentTick.bCanEverTick = true;
+	SetIsReplicatedByDefault(true);
+}
+
+void UExRunnerMovementComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(UExRunnerMovementComponent, CurrentLaneIndex);
 }
 
 // BeginPlay에서 상위 Pawn의 MoverComponent에 파트너 등록을 시도합니다.
@@ -125,8 +133,8 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 	if (GS && GS->PathManager && TargetPawn)
 	{
 		// [개선] 게임스테이트 전역 거리 대신 캐릭터 단위 로컬 거리를 사용 (롤백 방지)
-		float PlayerPathDist = GS->PathManager->GetClosestDistanceAtLocation(TargetPawn->GetActorLocation(), CurrentPathDistance, 2000.f);
-		CurrentPathDistance = PlayerPathDist;
+		// 서버와 클라이언트 모두 정확한 거리를 알 수 있도록 계산은 TickComponent로 이동되었습니다.
+		float PlayerPathDist = CurrentPathDistance;
 
 		if (bIsAutoRunMode)
 		{
@@ -246,6 +254,13 @@ void UExRunnerMovementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 		}
 	}
 
+	// 0. 경로 기반 거리 업데이트 (모든 클라이언트/서버에서 공통으로 정확한 커브 방향/위치를 알기 위함)
+	AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
+	if (GS && GS->PathManager)
+	{
+		CurrentPathDistance = GS->PathManager->GetClosestDistanceAtLocation(TargetPawn->GetActorLocation(), CurrentPathDistance, 2000.f);
+	}
+
 	// 1. 캐릭터 조향 업데이트 (경로 추적)
 	UpdateCharacterRotation(DeltaTime);
 
@@ -277,11 +292,26 @@ bool UExRunnerMovementComponent::IsLaneTransitionComplete() const
 void UExRunnerMovementComponent::MoveLeft()
 {
 	CurrentLaneIndex = FMath::Clamp(CurrentLaneIndex - 1, -1, 1);
+	
+	if (TargetPawn && TargetPawn->IsLocallyControlled() && !TargetPawn->HasAuthority())
+	{
+		Server_SetLaneIndex(CurrentLaneIndex);
+	}
 }
 
 void UExRunnerMovementComponent::MoveRight()
 {
 	CurrentLaneIndex = FMath::Clamp(CurrentLaneIndex + 1, -1, 1);
+	
+	if (TargetPawn && TargetPawn->IsLocallyControlled() && !TargetPawn->HasAuthority())
+	{
+		Server_SetLaneIndex(CurrentLaneIndex);
+	}
+}
+
+void UExRunnerMovementComponent::Server_SetLaneIndex_Implementation(int32 NewLaneIndex)
+{
+	CurrentLaneIndex = FMath::Clamp(NewLaneIndex, -1, 1);
 }
 
 void UExRunnerMovementComponent::SetTargetRunningSpeed(float NewSpeed)

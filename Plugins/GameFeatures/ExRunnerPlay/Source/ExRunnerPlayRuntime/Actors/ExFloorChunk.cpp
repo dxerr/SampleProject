@@ -347,6 +347,7 @@ void AExFloorChunk::ApplyGap(float GapStartDist, float GapWidth)
 			for (int32 i = 0; i < FloorMesh->GetNumMaterials(); ++i) { LeftFloor->SetMaterial(i, FloorMesh->GetMaterial(i)); }
 
 			LeftFloor->SetCollisionProfileName(TEXT("BlockAll"));
+			LeftFloor->SetMobility(EComponentMobility::Stationary);
 			LeftFloor->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
 			LeftFloor->RegisterComponent();
 
@@ -371,6 +372,7 @@ void AExFloorChunk::ApplyGap(float GapStartDist, float GapWidth)
 			for (int32 i = 0; i < FloorMesh->GetNumMaterials(); ++i) { RightFloor->SetMaterial(i, FloorMesh->GetMaterial(i)); }
 
 			RightFloor->SetCollisionProfileName(TEXT("BlockAll"));
+			RightFloor->SetMobility(EComponentMobility::Stationary);
 			RightFloor->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
 			RightFloor->RegisterComponent();
 
@@ -644,7 +646,7 @@ void AExFloorChunk::ApplyCurve(float Angle, float Radius, int32 SegmentCount, bo
 
 		SplineMesh->SetCollisionProfileName(TEXT("BlockAll"));
 		SplineMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-		SplineMesh->SetMobility(EComponentMobility::Movable);
+		SplineMesh->SetMobility(EComponentMobility::Stationary);
 
 		SplineMesh->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
 		SplineMesh->RegisterComponent();
@@ -859,7 +861,7 @@ USplineMeshComponent* AExFloorChunk::SpawnGapSplineMesh(float StartDist, float E
 	
 	SplineMesh->SetCollisionProfileName(TEXT("BlockAll"));
 	SplineMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	SplineMesh->SetMobility(EComponentMobility::Movable); // 어태치 에러 대응
+	SplineMesh->SetMobility(EComponentMobility::Stationary); // 어태치 에러 대응
 
 	SplineMesh->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
 	SplineMesh->RegisterComponent();
