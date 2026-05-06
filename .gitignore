@@ -46,3 +46,6 @@ Config/User/
 .sentry-native/
 sentry.properties
 
+# Test Scripts & Text outputs
+*.py
+*.txt
