@@ -1,6 +1,7 @@
 // Copyright ExFrameWork. All Rights Reserved.
 
 #include "ExRunnerRuleManagerComponent.h"
+#include "../Player/ExRunnerPlayerState.h"
 #include "../Rules/ExRunnerRuleBase.h"
 #include "../Data/ExRunnerRuleConfig.h"
 #include "../GameModes/ExRunnerGameMode.h"
@@ -140,27 +141,64 @@ UShapeComponent* UExRunnerRuleManagerComponent::SpawnKillVolume(float KillVolume
 	return KillVolume;
 }
 
-void UExRunnerRuleManagerComponent::OnRuleTriggered(FGameplayTag ResultTag)
+void UExRunnerRuleManagerComponent::OnRuleTriggered(FGameplayTag ResultTag, AActor* Instigator, UExRunnerRuleBase* TriggeredRule)
 {
 	if (!GetOwner()->HasAuthority()) return;
-	if (bGameOverHandled) return; // 복수 룰 동시 발동 방지
-
-	bGameOverHandled = true;
-
-	UE_LOG(LogExRuleManager, Log, TEXT("[RuleManager] 룰 발동: %s"), *ResultTag.ToString());
-
-	// [1] GameState에 게임오버 원인 설정 → 클라이언트 리플리케이션
-	if (CachedGameState)
+	
+	// 룰 스코프 확인 (기본값 Global)
+	bool bIsGlobalRule = true;
+	if (TriggeredRule)
 	{
-		CachedGameState->SetGameOverReason(TagToReason(ResultTag));
+		bIsGlobalRule = (TriggeredRule->RuleScope == EExRunnerRuleScope::Global);
 	}
 
-	// [2] EventSubsystem으로 브로드캐스트 → GameMode가 EndMatch 처리
-	if (CachedEventSubsystem)
+	if (bIsGlobalRule)
 	{
-		FExGameplayEventPayload Payload;
-		Payload.Instigator = this;
-		CachedEventSubsystem->BroadcastEvent(ResultTag, Payload);
+		if (bGameOverHandled) return; // 복수 룰 동시 발동 방지
+		bGameOverHandled = true;
+
+		UE_LOG(LogExRuleManager, Log, TEXT("[RuleManager] 공통 룰 발동(Global): %s"), *ResultTag.ToString());
+
+		// [1] GameState에 게임오버 원인 설정 → 클라이언트 리플리케이션
+		if (CachedGameState)
+		{
+			CachedGameState->SetGameOverReason(TagToReason(ResultTag));
+		}
+
+		// [2] EventSubsystem으로 브로드캐스트 → GameMode가 EndMatch 처리
+		if (CachedEventSubsystem)
+		{
+			FExGameplayEventPayload Payload;
+			Payload.Instigator = this;
+			CachedEventSubsystem->BroadcastEvent(ResultTag, Payload);
+		}
+	}
+	else
+	{
+		// Individual Rule (개별 탈락 룰)
+		UE_LOG(LogExRuleManager, Log, TEXT("[RuleManager] 개별 룰 발동(Individual): %s (Instigator: %s)"), 
+			*ResultTag.ToString(), Instigator ? *Instigator->GetName() : TEXT("None"));
+
+		if (Instigator)
+		{
+			if (APawn* TargetPawn = Cast<APawn>(Instigator))
+			{
+				// 개별 탈락 상태 기록 (클라이언트에게 전파)
+				if (AExRunnerPlayerState* PS = TargetPawn->GetPlayerState<AExRunnerPlayerState>())
+				{
+					PS->SetEliminationReason(TagToReason(ResultTag));
+				}
+
+				// 개별 탈락 처리 (우선 Pawn을 파괴하거나 탈락 이벤트를 쏘아 생존자 목록에서 제외)
+				TargetPawn->Destroy(); 
+			}
+		}
+
+		// 전멸 여부 검사 (GameMode에 위임)
+		if (AExRunnerGameMode* GM = Cast<AExRunnerGameMode>(GetOwner()))
+		{
+			GM->CheckAlivePlayers();
+		}
 	}
 }
 

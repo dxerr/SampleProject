@@ -16,6 +16,7 @@ UExRunnerRule_FallDeath::UExRunnerRule_FallDeath()
 	bTickEnabled = false;
 	TriggerTag   = TAG_Rule_FallDeath;
 	DeathVolumeTag = TAG_Player_DeathVolume;
+	RuleScope = EExRunnerRuleScope::Individual; // 개별 탈락 룰
 }
 
 void UExRunnerRule_FallDeath::ActivateRule()
@@ -65,5 +66,5 @@ void UExRunnerRule_FallDeath::OnKillVolumeOverlap(UPrimitiveComponent* Overlappe
 	}
 
 	// 직접 룰 발동 (EventSubsystem 없을 경우 폴백 포함)
-	OnRuleTriggered.Broadcast(TriggerTag);
+	OnRuleTriggered.Broadcast(TriggerTag, OtherActor, this);
 }

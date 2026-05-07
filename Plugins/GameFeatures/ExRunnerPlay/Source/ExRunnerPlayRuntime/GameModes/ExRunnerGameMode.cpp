@@ -300,3 +300,37 @@ void AExRunnerGameMode::OnRuleEndGameEvent(FGameplayTag EventTag, const FExGamep
 	// Match_PostMatch로 전환 → ExGameModeBase::SetMatchPhase가 OnMatchEnded() 호출
 	SetMatchPhase(ExMatchTags::Match_PostMatch);
 }
+
+void AExRunnerGameMode::CheckAlivePlayers()
+{
+	if (!HasAuthority()) return;
+
+	int32 AliveCount = 0;
+	if (UWorld* World = GetWorld())
+	{
+		for (FConstPlayerControllerIterator Iterator = World->GetPlayerControllerIterator(); Iterator; ++Iterator)
+		{
+			APlayerController* PC = Iterator->Get();
+			if (PC && PC->GetPawn())
+			{
+				AliveCount++;
+			}
+		}
+	}
+
+	UE_LOG(LogExRunnerPlay, Log, TEXT("[ExRunnerGameMode] CheckAlivePlayers: 남은 생존자 %d 명"), AliveCount);
+
+	if (AliveCount == 0)
+	{
+		UE_LOG(LogExRunnerPlay, Log, TEXT("[ExRunnerGameMode] 전멸! 매치 종료 처리"));
+		
+		// 게임 상태를 FallDeath(또는 전멸 이유)로 세팅 (여기서는 우선 FallDeath로 취급)
+		if (AExRunnerGameState* GS = GetGameState<AExRunnerGameState>())
+		{
+			// 개별 룰로 다 죽은 거라면 보통 FallDeath가 마지막 원인
+			GS->SetGameOverReason(EExRunnerGameOverReason::FallDeath); 
+		}
+		
+		SetMatchPhase(ExMatchTags::Match_PostMatch);
+	}
+}

@@ -4,7 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "Player/ExPlayerStateBase.h"
+#include "Struct/EExRunnerGameOverReason.h"
 #include "ExRunnerPlayerState.generated.h"
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnLocalPlayerEliminated, EExRunnerGameOverReason /*Reason*/);
 
 /**
  * AExRunnerPlayerState
@@ -32,4 +35,18 @@ public:
 	/** 서버에서 이 플레이어의 거리를 갱신할 때 호출 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "ExRunner|PlayerState")
 	void UpdatePathDistance(float NewDistance);
+
+	/** 개별 룰(예: FallDeath) 발동으로 인한 탈락 사유 */
+	UPROPERTY(ReplicatedUsing = OnRep_EliminationReason, Transient, VisibleAnywhere, BlueprintReadOnly, Category = "ExRunner|PlayerState")
+	EExRunnerGameOverReason EliminationReason = EExRunnerGameOverReason::None;
+
+	UFUNCTION()
+	void OnRep_EliminationReason();
+
+	/** 서버에서 개별 탈락 처리 시 호출 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "ExRunner|PlayerState")
+	void SetEliminationReason(EExRunnerGameOverReason NewReason);
+
+	/** 로컬 플레이어 전용 탈락 이벤트 델리게이트 (뷰모델에서 구독) */
+	FOnLocalPlayerEliminated OnLocalPlayerEliminated;
 };

@@ -55,8 +55,8 @@ protected:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
-	/** 룰 발동 시 콜백 — GameState에 이유 설정 후 EndMatch 브로드캐스트 */
-	void OnRuleTriggered(FGameplayTag ResultTag);
+	/** 룰 발동 시 콜백 — 스코프에 따라 개별/공통 처리 */
+	void OnRuleTriggered(FGameplayTag ResultTag, AActor* Instigator, UExRunnerRuleBase* TriggeredRule);
 
 	/** ResultTag → EExRunnerGameOverReason 변환 */
 	EExRunnerGameOverReason TagToReason(const FGameplayTag& ResultTag) const;

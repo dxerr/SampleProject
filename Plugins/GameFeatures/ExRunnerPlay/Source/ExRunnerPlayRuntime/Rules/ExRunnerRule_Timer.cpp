@@ -73,7 +73,7 @@ void UExRunnerRule_Timer::TickRule(float DeltaTime)
 	// 시간 초과
 	if (ServerRemainingTime <= 0.f)
 	{
-		UE_LOG(LogRuleTimer, Log, TEXT("[Rule_Timer] 시간 초과 — TimeUp 발동"));
-		OnRuleTriggered.Broadcast(TriggerTag);
+		UE_LOG(LogRuleTimer, Log, TEXT("[Rule_Timer] 타임오버!"));
+		OnRuleTriggered.Broadcast(TriggerTag, nullptr, this);
 	}
 }

@@ -88,6 +88,12 @@ private:
 	UFUNCTION()
 	void OnGameOverReasonUpdated(EExRunnerGameOverReason Reason);
 
+	/** 개별 플레이어 탈락 시 호출 (FallDeath 등) */
+	UFUNCTION()
+	void OnLocalPlayerEliminated(EExRunnerGameOverReason Reason);
+
+	void BindLocalPlayerState();
+
 	void SetRemainingTime(float NewTime);
 	void SetIsTimerWarning(bool bNewWarning);
 	void SetGameOverReasonValue(EExRunnerGameOverReason NewReason);

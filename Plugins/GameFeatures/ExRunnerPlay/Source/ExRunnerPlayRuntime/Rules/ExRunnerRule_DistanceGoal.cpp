@@ -31,6 +31,6 @@ void UExRunnerRule_DistanceGoal::TickRule(float DeltaTime)
 	{
 		UE_LOG(LogRuleDistanceGoal, Log, TEXT("[Rule_DistanceGoal] 목표 달성! (%.1f / %.1f cm)"),
 			GS->CurrentPathDistance, GoalDistance);
-		OnRuleTriggered.Broadcast(TriggerTag);
+		OnRuleTriggered.Broadcast(TriggerTag, nullptr, this);
 	}
 }

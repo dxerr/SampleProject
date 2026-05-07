@@ -88,6 +88,12 @@ protected:
 	/** TimeUp/GoalReached 룰 발동 시 EventSubsystem 콜백 → SetMatchPhase(PostMatch) */
 	UFUNCTION()
 	void OnRuleEndGameEvent(FGameplayTag EventTag, const FExGameplayEventPayload& Payload);
+
+public:
+	/** 전멸 검사 - Individual 룰 발동 후 생존자가 없으면 매치 종료 처리 */
+	UFUNCTION(BlueprintCallable, Category = "Runner|Rule")
+	void CheckAlivePlayers();
+
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UExBeatSyncComponent> BeatSyncComponent;

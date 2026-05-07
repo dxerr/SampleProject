@@ -7,12 +7,24 @@
 #include "GameplayTagContainer.h"
 #include "ExRunnerRuleBase.generated.h"
 
+/** 룰의 적용 범위 지정 */
+UENUM(BlueprintType)
+enum class EExRunnerRuleScope : uint8
+{
+	Global		UMETA(DisplayName = "Global (Game Over)"),
+	Individual	UMETA(DisplayName = "Individual (Elimination)")
+};
+
 class AExRunnerGameMode;
 class UExGameplayEventSubsystem;
 struct FGameplayTag;
 
-/** RuleManagerComponent가 룰 발동 시 수신하는 델리게이트 */
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnRuleTriggered, FGameplayTag /*ResultTag*/);
+/** RuleManagerComponent가 룰 발동 시 수신하는 델리게이트 
+ * @param ResultTag 발동된 룰 태그
+ * @param Instigator 룰 발동의 대상자 (낙사자 등)
+ * @param TriggeredRule 발동된 룰의 포인터
+ */
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnRuleTriggered, FGameplayTag /*ResultTag*/, AActor* /*Instigator*/, class UExRunnerRuleBase* /*TriggeredRule*/);
 
 /**
  * UExRunnerRuleBase
@@ -57,6 +69,10 @@ public:
 	/** true면 RuleManagerComponent가 매 프레임 TickRule()을 호출 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule")
 	bool bTickEnabled = false;
+
+	/** 이 룰이 공통 게임오버인지, 개별 탈락인지 지정 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule")
+	EExRunnerRuleScope RuleScope = EExRunnerRuleScope::Global;
 
 	// ── 발동 알림 (RuleManagerComponent가 구독) ──────────────────
 

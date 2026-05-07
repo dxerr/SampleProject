@@ -15,6 +15,7 @@
 #include "UI/Widgets/ExRunnerFadeOverlayWidget.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/LocalPlayer.h"
+#include "Player/ExRunnerPlayerState.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMatchVM, Log, All);
 
@@ -58,7 +59,31 @@ void UExRunnerMatchViewModel::AutoInitialize(UObject* WorldContextObject)
 		UE_LOG(LogExRunnerMatchVM, Log, TEXT("[ExRunnerMatchViewModel] 룰 시스템 델리게이트 바인딩 완료."));
 	}
 
+	// ── 로컬 플레이어 탈락 바인딩 (지연 바인딩) ───────────────────
+	BindLocalPlayerState();
+
 	UE_LOG(LogExRunnerMatchVM, Log, TEXT("[ExRunnerMatchViewModel] AutoInitialize: 성공적으로 바인딩되었습니다. 초기 MatchPhase: %s"), *BoundGameState->GetCurrentMatchPhase().ToString());
+}
+
+void UExRunnerMatchViewModel::BindLocalPlayerState()
+{
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	APlayerController* PC = World->GetFirstPlayerController();
+	if (PC)
+	{
+		if (AExRunnerPlayerState* PS = PC->GetPlayerState<AExRunnerPlayerState>())
+		{
+			PS->OnLocalPlayerEliminated.AddUObject(this, &UExRunnerMatchViewModel::OnLocalPlayerEliminated);
+			UE_LOG(LogExRunnerMatchVM, Log, TEXT("[ExRunnerMatchViewModel] 로컬 플레이어 탈락 이벤트 바인딩 완료."));
+			return; // 성공 시 종료
+		}
+	}
+
+	// 실패 시 0.5초 뒤 재시도
+	FTimerHandle RetryHandle;
+	World->GetTimerManager().SetTimer(RetryHandle, this, &UExRunnerMatchViewModel::BindLocalPlayerState, 0.5f, false);
 }
 
 void UExRunnerMatchViewModel::BindSwitcher(UCommonAnimatedSwitcher* InSwitcher)
@@ -157,11 +182,19 @@ void UExRunnerMatchViewModel::OnGameOverReasonUpdated(EExRunnerGameOverReason Re
 {
 	SetGameOverReasonValue(Reason);
 
+	// 전체 생존자가 사망하거나 시간이 종료되어 전역 게임 오버가 된 경우
+	if (Reason != EExRunnerGameOverReason::None)
+	{
+		// 결과 화면 (PostMatch, index=2) 전환
+		SetActiveWidgetIndex(2);
+	}
+}
+
+void UExRunnerMatchViewModel::OnLocalPlayerEliminated(EExRunnerGameOverReason Reason)
+{
+	// 내(로컬)가 개별 탈락했을 때만 팝업 표시
 	if (Reason == EExRunnerGameOverReason::FallDeath)
 	{
-		// 페이드아웃 오버레이 → 재시작 팝업 흐름
-		// ViewModel은 "Presentation Logic 포함" 방식 (기존 BoundSwitcher->SetActiveWidgetIndex 패턴과 일관)
-		// UIManagerSubsystem 접근: WorldContextObject를 통해 LocalPlayer Subsystem 획득
 		if (UWorld* World = GetWorld())
 		{
 			if (APlayerController* PC = World->GetFirstPlayerController())
@@ -172,14 +205,12 @@ void UExRunnerMatchViewModel::OnGameOverReasonUpdated(EExRunnerGameOverReason Re
 					{
 						if (FadeOverlayWidgetClass)
 						{
-							// Game Stack에 FadeOverlay 위젯 Push
 							UCommonActivatableWidget* Widget = UIMgr->PushGameOverlay(FadeOverlayWidgetClass);
 							if (UExRunnerFadeOverlayWidget* FadeWidget = Cast<UExRunnerFadeOverlayWidget>(Widget))
 							{
-								// 페이드인 시작 (BP에서 애니메이션 구현, 완료 시 OnFadeComplete 호출)
 								FadeWidget->PlayFadeIn(1.5f);
 							}
-							UE_LOG(LogExRunnerMatchVM, Log, TEXT("[ExRunnerMatchVM] FallDeath — FadeOverlay 표시 완료"));
+							UE_LOG(LogExRunnerMatchVM, Log, TEXT("[ExRunnerMatchVM] Local FallDeath — FadeOverlay 표시 완료"));
 						}
 						else
 						{
@@ -189,11 +220,6 @@ void UExRunnerMatchViewModel::OnGameOverReasonUpdated(EExRunnerGameOverReason Re
 				}
 			}
 		}
-	}
-	else if (Reason != EExRunnerGameOverReason::None)
-	{
-		// TimeUp / GoalReached → 결과 화면 (PostMatch, index=2)
-		SetActiveWidgetIndex(2);
 	}
 }
 
