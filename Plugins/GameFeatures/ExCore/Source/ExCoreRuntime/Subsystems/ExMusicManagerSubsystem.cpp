@@ -41,6 +41,12 @@ void UExMusicManagerSubsystem::Deinitialize()
 
 void UExMusicManagerSubsystem::StartBGM(const UExBGMTrackDataAsset* TrackData)
 {
+	// 데디케이티드 서버는 오디오 디바이스가 없으므로 재생을 시도하지 않음
+	if (GetWorld()->IsNetMode(NM_DedicatedServer))
+	{
+		return;
+	}
+
 	if (!ensure(TrackData && TrackData->BGMAsset))
 	{
 		UE_LOG(LogExMusic, Error, TEXT("[ExMusicManager] StartBGM 실패: BGM 트랙 데이터 에셋 또는 BGM 오디오 에셋이 유효하지 않습니다."));

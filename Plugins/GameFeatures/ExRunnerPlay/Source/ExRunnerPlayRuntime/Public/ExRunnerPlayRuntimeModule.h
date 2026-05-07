@@ -13,3 +13,5 @@ public:
 	virtual void ShutdownModule() override;
 	//~End of IModuleInterface
 };
+
+DECLARE_LOG_CATEGORY_EXTERN(LogExRunnerPlay, Log, All);

@@ -11,6 +11,7 @@ class UExPathManager;
 class UExChunkSpawner;
 class UExObstacleManager;
 class UExRunnerItemManager;
+class UExBGMTrackDataAsset;
 
 /** Timer 룰 — 잔여 시간(초) 변경 알림 */
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnRemainingTimeChanged, int32 /*NewSeconds*/);
@@ -75,6 +76,16 @@ public:
 	/** 청크 정리가 완료된 플로어 거리 기준점 (이 거리 이전의 청크는 JIP가 생성 스킵) */
 	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "ExRunner|Multiplayer")
 	float CleanupWatermark = 0.f;
+
+	/** 현재 재생 중인 스테이지 BGM 정보 (클라이언트 동기화용) */
+	UPROPERTY(ReplicatedUsing = OnRep_StageBGM, VisibleAnywhere, BlueprintReadOnly, Category = "ExRunner|Music")
+	TObjectPtr<const UExBGMTrackDataAsset> StageBGM;
+
+	UFUNCTION()
+	void OnRep_StageBGM();
+
+	/** 서버에서 BGM을 설정 (Standalone/ListenServer 포함 공용) */
+	void SetStageBGM(const UExBGMTrackDataAsset* InTrackData);
 
 	// ── 룰 시스템 — Replicated 프로퍼티 ──────────────────────────────
 

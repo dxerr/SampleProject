@@ -9,6 +9,8 @@
 #include "../Player/ExRunnerPlayerState.h"
 #include "../Data/ExRunnerConfig.h"
 #include "Subsystems/ExDataCenterSubsystem.h"
+#include "Subsystems/ExMusicManagerSubsystem.h"
+#include "Data/ExBGMTrackDataAsset.h"
 #include "Engine/GameInstance.h"
 
 AExRunnerGameState::AExRunnerGameState()
@@ -49,6 +51,7 @@ void AExRunnerGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AExRunnerGameState, CurrentSegmentIndex);
 	DOREPLIFETIME(AExRunnerGameState, SegmentStartDistance);
 	DOREPLIFETIME(AExRunnerGameState, CleanupWatermark);
+	DOREPLIFETIME(AExRunnerGameState, StageBGM);
 }
 
 void AExRunnerGameState::Tick(float DeltaSeconds)
@@ -144,6 +147,28 @@ void AExRunnerGameState::OnRep_SharedTrackSeed()
 			ChunkSpawner->SetManagers(ObstacleManager, ItemManager);
 			ObstacleManager->BindToSpawner(ChunkSpawner);
 			ItemManager->BindToSpawner(ChunkSpawner);
+		}
+	}
+}
+
+void AExRunnerGameState::SetStageBGM(const UExBGMTrackDataAsset* InTrackData)
+{
+	if (HasAuthority())
+	{
+		StageBGM = InTrackData;
+		
+		// Standalone 또는 ListenServer의 경우 OnRep이 자동으로 불리지 않으므로 수동 호출
+		OnRep_StageBGM();
+	}
+}
+
+void AExRunnerGameState::OnRep_StageBGM()
+{
+	if (StageBGM)
+	{
+		if (UExMusicManagerSubsystem* MusicMgr = GetWorld()->GetSubsystem<UExMusicManagerSubsystem>())
+		{
+			MusicMgr->StartBGM(StageBGM);
 		}
 	}
 }

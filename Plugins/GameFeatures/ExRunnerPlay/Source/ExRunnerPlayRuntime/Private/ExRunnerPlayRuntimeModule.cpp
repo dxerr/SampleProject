@@ -2,6 +2,8 @@
 
 #include "ExRunnerPlayRuntimeModule.h"
 
+DEFINE_LOG_CATEGORY(LogExRunnerPlay);
+
 #define LOCTEXT_NAMESPACE "FExRunnerPlayRuntimeModule"
 
 void FExRunnerPlayRuntimeModule::StartupModule()

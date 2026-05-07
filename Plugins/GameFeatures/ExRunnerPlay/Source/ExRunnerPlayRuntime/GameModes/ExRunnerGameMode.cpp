@@ -21,12 +21,13 @@
 #include "Subsystems/ExMusicManagerSubsystem.h"
 #include "Data/ExBGMTrackDataAsset.h"
 #include "Components/BoxComponent.h"
+#include "ExRunnerPlayRuntimeModule.h"
 
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "DrawDebugHelpers.h" // 디버그 드로잉용
 
-DEFINE_LOG_CATEGORY_STATIC(LogExRunnerPlay, Log, All);
+
 
 // ... (Existing Include)
 
@@ -154,9 +155,9 @@ void AExRunnerGameMode::StartRunnerGame()
 	// BGM 시작 (Track Data 적용 시 내부에서 알아서 Phase 믹싱 데이터까지 동기화)
 	if (CurrentStageBGM && CurrentStageBGM->BGMAsset)
 	{
-		if (UExMusicManagerSubsystem* MusicMgr = GetWorld()->GetSubsystem<UExMusicManagerSubsystem>())
+		if (AExRunnerGameState* RunnerGS = GetGameState<AExRunnerGameState>())
 		{
-			MusicMgr->StartBGM(CurrentStageBGM);
+			RunnerGS->SetStageBGM(CurrentStageBGM);
 		}
 	}
 

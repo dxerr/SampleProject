@@ -14,8 +14,9 @@
 #include "InputStrategies/ExRunnerInputStrategy_AutoButtonRun.h"
 #include "ExRunnerMovementComponent.h"
 #include "Engine/World.h"
+#include "ExRunnerPlayRuntimeModule.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogExRunnerPlay, Log, All);
+
 
 void UExRunnerInputComponent::BeginPlay()
 {
