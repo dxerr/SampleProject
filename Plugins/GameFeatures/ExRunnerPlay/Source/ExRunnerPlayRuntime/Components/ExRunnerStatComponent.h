@@ -32,6 +32,8 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 public:
 	// -- 스탯 폴링 설정 --
 
@@ -146,6 +148,16 @@ private:
 	int32 CoinCount = 0;
 
 	/** 현재 남은 스프린트 활성화 시간 (초) */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runner|Stats", meta=(AllowPrivateAccess))
+	UPROPERTY(ReplicatedUsing = OnRep_SprintRemainingTime, VisibleAnywhere, BlueprintReadOnly, Category = "Runner|Stats", meta=(AllowPrivateAccess="true"))
 	float SprintRemainingTime = 0.0f;
+
+	UFUNCTION()
+	void OnRep_SprintRemainingTime();
+
+	/** 스프린트 버프 활성화 여부 (서버 -> 클라이언트 동기화) */
+	UPROPERTY(ReplicatedUsing = OnRep_IsSprintBuffActive, VisibleAnywhere, BlueprintReadOnly, Category = "Runner|Stats", meta=(AllowPrivateAccess="true"))
+	bool bIsSprintBuffActive = false;
+
+	UFUNCTION()
+	void OnRep_IsSprintBuffActive();
 };
