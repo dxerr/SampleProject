@@ -25,10 +25,20 @@ AExRunnerGameState::AExRunnerGameState()
 		PathManager->SetIsReplicated(true);
 	}
 
-	// 로컬 기반으로 각 클라이언트에서 구동될 스포너들
+	// 로컬 기반으로 각 클라이언트에서 구동될 스포너 및 매니저들
 	ChunkSpawner = CreateDefaultSubobject<UExChunkSpawner>(TEXT("ChunkSpawner"));
+	
 	ObstacleManager = CreateDefaultSubobject<UExObstacleManager>(TEXT("ObstacleManager"));
+	if (ObstacleManager)
+	{
+		ObstacleManager->SetIsReplicated(true);
+	}
+
 	ItemManager = CreateDefaultSubobject<UExRunnerItemManager>(TEXT("ItemManager"));
+	if (ItemManager)
+	{
+		ItemManager->SetIsReplicated(true);
+	}
 	
 	// GameState 자체가 Tick을 통해 Lead/Tail 거리를 갱신하도록 설정
 	PrimaryActorTick.bCanEverTick = true;
@@ -138,18 +148,31 @@ void AExRunnerGameState::OnRep_SharedTrackSeed()
 		PathManager->InitializePath(FVector::ZeroVector, FRotator::ZeroRotator);
 	}
 
+	// ── §3.1.1 초기화 계약 (클라이언트) ──
+	// 순서 계약: PathManager → RandomStream 초기화 → 매니저 바인딩
+	// 이 순서가 깨지면 GenerateObstaclePlan/GenerateItemPlan의 ensure가 즉시 감지한다.
+	if (ObstacleManager)
+	{
+		ObstacleManager->InitializeRandomStream(SharedTrackSeed);
+	}
+	if (ItemManager)
+	{
+		ItemManager->InitializeRandomStream(SharedTrackSeed);
+	}
+
 	if (ChunkSpawner)
 	{
-		ChunkSpawner->InitializeSpawner();
-
 		if (ObstacleManager && ItemManager)
 		{
 			ChunkSpawner->SetManagers(ObstacleManager, ItemManager);
 			ObstacleManager->BindToSpawner(ChunkSpawner);
 			ItemManager->BindToSpawner(ChunkSpawner);
 		}
+
+		ChunkSpawner->InitializeSpawner();
 	}
 }
+
 
 void AExRunnerGameState::SetStageBGM(const UExBGMTrackDataAsset* InTrackData)
 {

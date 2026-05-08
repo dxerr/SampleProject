@@ -127,13 +127,16 @@ void AExRunnerGameMode::StartRunnerGame()
 		}
 	}
 
-	if (GS && GS->ChunkSpawner)
+	// ── §3.1.1 초기화 계약 (서버) ──
+	// 순서 계약: PathManager → RandomStream 초기화 → 매니저 바인딩 → ChunkSpawner 초기화
+	// SharedTrackSeed가 이미 위에서 설정되었으므로 여기서 스트림을 초기화한다.
+	if (GS && GS->ObstacleManager)
 	{
-		if (RunnerConfig.IsValid())
-		{
-			GS->ChunkSpawner->RunnerConfig = RunnerConfig;
-		}
-		GS->ChunkSpawner->InitializeSpawner();
+		GS->ObstacleManager->InitializeRandomStream(GS->SharedTrackSeed);
+	}
+	if (GS && GS->ItemManager)
+	{
+		GS->ItemManager->InitializeRandomStream(GS->SharedTrackSeed);
 	}
 
 	if (GS && GS->ObstacleManager && GS->ItemManager && GS->ChunkSpawner)
@@ -145,6 +148,16 @@ void AExRunnerGameMode::StartRunnerGame()
 
 		// 아이템 매니저도 OnChunkDespawned 이벤트를 받아 액터를 풀에 반환/파괴할 수 있도록 연결
 		GS->ItemManager->BindToSpawner(GS->ChunkSpawner);
+	}
+
+	// 매니저와 시드 초기화가 완료된 후 스포너를 초기화해야 GenerateItemPlan 호출 시 랜덤 스트림 미초기화 오류가 발생하지 않습니다.
+	if (GS && GS->ChunkSpawner)
+	{
+		if (RunnerConfig.IsValid())
+		{
+			GS->ChunkSpawner->RunnerConfig = RunnerConfig;
+		}
+		GS->ChunkSpawner->InitializeSpawner();
 	}
 
 	if (GS && BeatSyncComponent && GS->ObstacleManager)

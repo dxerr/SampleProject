@@ -6,7 +6,9 @@
 #include "../Data/ExRunnerConfig.h"
 #include "../Data/ExObstacleDefinition.h"
 #include "../Data/ExObstacleSpawnStrategy.h"
-
+#include "../Interfaces/ExObstacleInterface.h"
+#include "Net/UnrealNetwork.h"
+#include "Net/Core/PushModel/PushModel.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/BoxComponent.h"
 #include "../GameModes/ExRunnerGameMode.h"
@@ -17,7 +19,129 @@ DEFINE_LOG_CATEGORY_STATIC(LogExObstacleManager, Log, All);
 
 UExObstacleManager::UExObstacleManager()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = true;
+	SetIsReplicatedByDefault(true);
+}
+
+void UExObstacleManager::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	// 클라이언트 전용: OnRep_ReplicatedObstacles Race Condition 폴링 해결
+	if (GetOwner() && !GetOwner()->HasAuthority())
+	{
+		// 리플리케이트된 배열의 크기가 줄어들면, 게임 재시작/초기화 상황일 수 있으므로 Set 정리
+		if (ClientAttachedObstacles.Num() > ReplicatedObstacles.Num())
+		{
+			ClientAttachedObstacles.Empty();
+		}
+
+		for (const FExObstacleSyncInfo& Info : ReplicatedObstacles)
+		{
+			// 장애물이 도착했고, 아직 클라이언트 측에서 동기화 처리를 완료하지 않았다면
+			if (!Info.Obstacle)
+			{
+				UE_LOG(LogExObstacleManager, Log, TEXT("[Client Sync] Info.Obstacle이 아직 유효하지 않음. (SegmentIndex: %d)"), Info.SegmentIndex);
+				continue;
+			}
+
+			if (ClientAttachedObstacles.Contains(Info.Obstacle))
+			{
+				continue;
+			}
+
+			if (BoundSpawner)
+			{
+				AExFloorChunk* TargetChunk = nullptr;
+				for (AExFloorChunk* Chunk : BoundSpawner->GetActiveChunks())
+				{
+					if (Chunk && Chunk->SegmentIndex == Info.SegmentIndex)
+					{
+						TargetChunk = Chunk;
+						break;
+					}
+				}
+
+				if (TargetChunk)
+				{
+					UE_LOG(LogExObstacleManager, Log, TEXT("[Client Sync] 장애물 %s 수동 부착 및 동기화 적용. (SegmentIndex: %d)"), *Info.Obstacle->GetName(), Info.SegmentIndex);
+
+					Info.Obstacle->AttachToActor(TargetChunk, FAttachmentTransformRules::KeepWorldTransform);
+					ActivateObstacle(Info.Obstacle);
+
+					// 서버가 CalculateSpawnPosition에서 계산한 최종 World Transform을 강제 적용.
+					// AttachToActor(KeepWorldTransform)만으로는 ReplicatedMovement 기반 위치가 사용되며,
+					// 커브 청크 이후 방향이 바뀐 구간에서 회전이 틀어지는 현상이 발생한다.
+					// 서버 권위 데이터를 명시적으로 덮어써 클라이언트 시각 정합성을 보장한다.
+					if (!Info.WorldLocation.IsZero() || !Info.WorldRotation.IsZero())
+					{
+						Info.Obstacle->SetActorLocationAndRotation(
+							Info.WorldLocation,
+							Info.WorldRotation,
+							false,
+							nullptr,
+							ETeleportType::TeleportPhysics
+						);
+						UE_LOG(LogExObstacleManager, Log, TEXT("[Client Sync] 커브 구간 Transform 강제 적용: %s Loc=(%.1f,%.1f,%.1f) Rot=(P%.1f,Y%.1f,R%.1f)"),
+							*Info.Obstacle->GetName(),
+							Info.WorldLocation.X, Info.WorldLocation.Y, Info.WorldLocation.Z,
+							Info.WorldRotation.Pitch, Info.WorldRotation.Yaw, Info.WorldRotation.Roll);
+					}
+
+					// 서버가 보내준 동기화 데이터 강제 적용
+					Info.Obstacle->SetActorScale3D(Info.ActorScale);
+
+					// 메쉬 스케일 보정 적용
+					if (Info.MeshRelativeScaleY > 0.f)
+					{
+						TArray<UStaticMeshComponent*> MeshComps;
+						Info.Obstacle->GetComponents<UStaticMeshComponent>(MeshComps);
+						for (UStaticMeshComponent* Mesh : MeshComps)
+						{
+							if (Mesh)
+							{
+								FVector Scale = Mesh->GetRelativeScale3D();
+								Mesh->SetRelativeScale3D(FVector(Scale.X, Info.MeshRelativeScaleY, Scale.Z));
+							}
+						}
+					}
+
+					// Gap 적용
+					if (Info.GapLocalStartDist >= 0.f)
+					{
+						UE_LOG(LogExObstacleManager, Log, TEXT("[Client Sync] Gap 구멍 생성 요청. GapStart=%.1f, GapWidth=%.1f"), Info.GapLocalStartDist, Info.InfoValue);
+						TargetChunk->ApplyGap(Info.GapLocalStartDist, Info.InfoValue);
+					}
+
+					// Interface를 통한 UI 정보 적용
+					if (Info.Obstacle->GetClass()->ImplementsInterface(UExObstacleInterface::StaticClass()))
+					{
+						FExObstacleInfo ObsInfo;
+						ObsInfo.Type = static_cast<EExObstacleType>(Info.InfoType);
+						ObsInfo.Value = Info.InfoValue;
+
+						// 단위 변환: cm -> m, 소수점 2자리 반올림 (ApplyObstacleInfo와 동일하게 처리)
+						float MeterValue = ObsInfo.Value * 0.01f;
+						ObsInfo.Value = FMath::RoundToFloat(MeterValue * 100.0f) / 100.0f;
+						
+						UE_LOG(LogExObstacleManager, Log, TEXT("[Client Sync] 장애물 %s 에 수치 정보 적용: Type=%d, Value=%.2f"), *Info.Obstacle->GetName(), Info.InfoType, ObsInfo.Value);
+						IExObstacleInterface::Execute_SetupObstacleInfo(Info.Obstacle, ObsInfo);
+					}
+					
+					TArray<TWeakObjectPtr<AActor>>& SegArray = SpawnedBySegment.FindOrAdd(Info.SegmentIndex);
+					SegArray.AddUnique(Info.Obstacle);
+
+					// 처리 완료 기록
+					ClientAttachedObstacles.Add(Info.Obstacle);
+				}
+				else
+				{
+					UE_LOG(LogExObstacleManager, Log, TEXT("[Client Sync] 장애물 %s (SegIdx: %d)의 TargetChunk를 아직 찾지 못함. 대기 중..."), *Info.Obstacle->GetName(), Info.SegmentIndex);
+				}
+			}
+		}
+	}
 }
 
 void UExObstacleManager::BeginPlay()
@@ -53,32 +177,58 @@ void UExObstacleManager::BindToSpawner(UExChunkSpawner* Spawner)
 void UExObstacleManager::OnChunkSpawned(AExFloorChunk* Chunk)
 {
 	// [레거시] 기존 델리게이트 바인딩 기반 스폰 로직은 중앙 제어 방식으로 대체됨.
-	// 이제 ExChunkSpawner::SpawnNextChunk 마지막에 명시적으로 SpawnObstaclesOnChunk를 호출함.
+	// 이제 ExChunkSpawner::SpawnNextChunk 마지막에 명시적으로 GenerateObstaclePlan + RealizeObstaclePlan을 호출함.
 }
 
 void UExObstacleManager::OnChunkDespawned(AExFloorChunk* Chunk)
 {
 	if (!Chunk) return;
 
-	// Cleanup Logic
-	TArray<AActor*> AttachedActors;
-	Chunk->GetAttachedActors(AttachedActors);
-	for (AActor* Attached : AttachedActors)
+	// Phase 4: SpawnedBySegment 인덱스 기반 회수
+	if (const TArray<TWeakObjectPtr<AActor>>* SegActors = SpawnedBySegment.Find(Chunk->SegmentIndex))
 	{
-		// 이 매니저가 관리하는 장애물인 경우에만 풀로 반환 (코인 등 다른 액터가 오염되는 것 방지)
-		bool bIsObstacle = false;
-		for (const UExObstacleDefinition* Def : CachedObstacleDefinitions)
+		for (const TWeakObjectPtr<AActor>& WeakObstacle : *SegActors)
 		{
-			if (Def && Attached->IsA(Def->ObstacleClass))
+			if (AActor* Obstacle = WeakObstacle.Get())
 			{
-				bIsObstacle = true;
-				break;
+				ReturnObstacleToPool(Obstacle);
 			}
 		}
-
-		if (bIsObstacle)
+		SpawnedBySegment.Remove(Chunk->SegmentIndex);
+	}
+	else
+	{
+		// 레거시 폴백: SpawnedBySegment에 없으면 Attach 기반 회수 시도 (이전 청크 대응)
+		TArray<AActor*> AttachedActors;
+		Chunk->GetAttachedActors(AttachedActors);
+		for (AActor* Attached : AttachedActors)
 		{
-			ReturnObstacleToPool(Attached);
+			bool bIsObstacle = false;
+			for (const UExObstacleDefinition* Def : CachedObstacleDefinitions)
+			{
+				if (Def && Attached->IsA(Def->ObstacleClass))
+				{
+					bIsObstacle = true;
+					break;
+				}
+			}
+			if (bIsObstacle)
+			{
+				ReturnObstacleToPool(Attached);
+			}
+		}
+	}
+
+	// ── Phase 4: 리플리케이트 데이터 정리 (서버 전용) ──
+	if (GetOwner() && GetOwner()->HasAuthority())
+	{
+		int32 RemovedCount = ReplicatedObstacles.RemoveAll([TargetIndex = Chunk->SegmentIndex](const FExObstacleSyncInfo& Info) {
+			return Info.SegmentIndex == TargetIndex || !IsValid(Info.Obstacle);
+		});
+		
+		if (RemovedCount > 0)
+		{
+			MARK_PROPERTY_DIRTY_FROM_NAME(UExObstacleManager, ReplicatedObstacles, this);
 		}
 	}
 }
@@ -97,6 +247,308 @@ void UExObstacleManager::RequestBeatSpawn()
 		SpawnObstaclesOnChunk(TargetChunk, 0.f, TargetChunk->ChunkLength, true);
 	}
 }
+
+// ── Phase 1: 결정론 RandomStream 초기화 ──
+
+void UExObstacleManager::InitializeRandomStream(int32 SharedSeed)
+{
+	// Hash(SharedSeed, 1)로 Obstacle 전용 스트림 파생
+	const int32 ObstacleSeed = HashCombine(SharedSeed, 1);
+	ObstacleRandomStream.Initialize(ObstacleSeed);
+	bRandomStreamInitialized = true;
+	LastObstacleSafeEndDistance = -99999.f; // 시드 변경 시 반드시 리셋
+
+	UE_LOG(LogExObstacleManager, Log, TEXT("[ExObstacleManager] RandomStream 초기화 완료 (SharedSeed=%d, ObstacleSeed=%d)"),
+		SharedSeed, ObstacleSeed);
+}
+
+// ── Phase 2: Plan 기반 2단계 스폰 ──
+
+TArray<FExSpawnPlan> UExObstacleManager::GenerateObstaclePlan(AExFloorChunk* Chunk)
+{
+	// 초기화 계약 위반 감지
+	ensureMsgf(bRandomStreamInitialized,
+		TEXT("[ExObstacleManager] GenerateObstaclePlan 호출 시점에 RandomStream이 초기화되지 않았습니다! InitializeRandomStream을 먼저 호출해야 합니다."));
+
+	TArray<FExSpawnPlan> ResultPlan;
+
+	if (!Chunk) return ResultPlan;
+	if (CachedObstacleDefinitions.Num() == 0) return ResultPlan;
+	if (!BoundSpawner || !BoundSpawner->RunnerConfig.IsValid()) return ResultPlan;
+
+	// 최대 장애물 갯수 제한 확인
+	if (BoundSpawner->RunnerConfig->ObstacleSpawn.MaxActiveObstacles > 0)
+	{
+		int32 ActiveObstacleCount = 0;
+		for (const auto& Pair : ObstaclePool)
+		{
+			for (AActor* Actor : Pair.Value)
+			{
+				if (Actor && !Actor->IsHidden())
+				{
+					ActiveObstacleCount++;
+				}
+			}
+		}
+		if (ActiveObstacleCount >= BoundSpawner->RunnerConfig->ObstacleSpawn.MaxActiveObstacles)
+		{
+			return ResultPlan;
+		}
+	}
+
+	// 스포너 설정 기반 스폰 확률 판정 (결정론 스트림 사용)
+	if (ObstacleRandomStream.FRand() > BoundSpawner->RunnerConfig->ObstacleSpawn.SpawnProbability)
+	{
+		return ResultPlan;
+	}
+
+	// 랜덤 장애물 선택 (결정론 스트림 사용)
+	if (CachedObstacleDefinitions.Num() == 0) return ResultPlan;
+	const int32 DefIndex = ObstacleRandomStream.RandRange(0, CachedObstacleDefinitions.Num() - 1);
+	UExObstacleDefinition* SelectedDef = CachedObstacleDefinitions[DefIndex];
+	if (!SelectedDef || !SelectedDef->ObstacleClass) return ResultPlan;
+
+	// 타입별 전략 찾기
+	UExObstacleSpawnStrategy* Strategy = nullptr;
+	if (TObjectPtr<UExObstacleSpawnStrategy>* Found = SpawnStrategies.Find(SelectedDef->Type))
+	{
+		Strategy = *Found;
+	}
+	if (!Strategy)
+	{
+		UE_LOG(LogExObstacleManager, Warning,
+			TEXT("Type [%d]에 대한 SpawnStrategy가 설정되지 않았습니다. 장애물 Plan 생략."),
+			(int32)SelectedDef->Type);
+		return ResultPlan;
+	}
+
+	// 배치 가능성 검사
+	const float ChunkHalfLen = Chunk->ChunkLength * 0.5f;
+	const float ChunkStartDist = Chunk->PathDistance - ChunkHalfLen;
+	const float ChunkEndDist = Chunk->PathDistance + ChunkHalfLen;
+
+	float TargetSpawnDist = LastObstacleSafeEndDistance + BoundSpawner->RunnerConfig->ObstacleSpawn.MinSafeDistance;
+	if (TargetSpawnDist < ChunkStartDist)
+	{
+		TargetSpawnDist = ChunkStartDist;
+	}
+
+	const float ObsLen = SelectedDef->MaxSize.X;
+	if (TargetSpawnDist + ObsLen > ChunkEndDist)
+	{
+		return ResultPlan;
+	}
+
+	// Strategy 위임: 스폰 위치 계산
+	const float ActualSpawnDist = TargetSpawnDist;
+	FTransform SpawnTrans = Strategy->CalculateSpawnPosition(SelectedDef, Chunk, ActualSpawnDist);
+
+	// Plan 생성 (정렬 불변식: PathDistance 오름차순으로 산출됨)
+	FExSpawnPlan Plan;
+	Plan.OwnerSegmentIndex = Chunk->SegmentIndex;
+	Plan.LocalPathOffset = ActualSpawnDist - ChunkStartDist;
+	Plan.WorldLocation = SpawnTrans.GetLocation();
+	Plan.WorldRotation = SpawnTrans.Rotator();
+	Plan.ActorClass = SelectedDef->ObstacleClass;
+	Plan.ObstacleTypeRaw = (uint8)SelectedDef->Type;
+	Plan.ScaleHint = FVector::OneVector; // ConfigureObstacle에서 설정됨
+
+	// 안전 거리 갱신 (Generate 단계에서 상태값 갱신)
+	float RunSpeed = BoundSpawner->RunnerConfig->ObstacleSpawn.DefaultRunSpeed;
+	const float RecoveryDist = Strategy->GetRecoveryDistance(SelectedDef, RunSpeed);
+	LastObstacleSafeEndDistance = ActualSpawnDist + (ObsLen * 0.5f) + RecoveryDist;
+
+	ResultPlan.Add(Plan);
+
+	UE_LOG(LogExObstacleManager, Verbose,
+		TEXT("[GenerateObstaclePlan] Type=%d, Dist=%.1f, SegIdx=%d"),
+		(int32)SelectedDef->Type, ActualSpawnDist, Chunk->SegmentIndex);
+
+	return ResultPlan;
+}
+
+void UExObstacleManager::RealizeObstaclePlan(const TArray<FExSpawnPlan>& Plan, AExFloorChunk* Chunk)
+{
+	// §3.4 서버 권한 이중 가드: 차단 + 알림
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		ensureMsgf(false, TEXT("[ExObstacleManager] RealizeObstaclePlan이 클라이언트에서 호출됨. 서버 전용 함수입니다."));
+		return;
+	}
+
+	if (!Chunk) return;
+
+	for (const FExSpawnPlan& SpawnPlan : Plan)
+	{
+		if (!SpawnPlan.ActorClass) continue;
+
+		// 풀에서 액터 가져오기
+		AActor* Obstacle = GetObstacleFromPool(SpawnPlan.ActorClass);
+		if (!Obstacle) continue;
+
+		// Strategy 위임: 장애물 설정 (스케일, 크기 등)
+		UExObstacleDefinition* MatchedDef = nullptr;
+		for (UExObstacleDefinition* Def : CachedObstacleDefinitions)
+		{
+			if (Def && Obstacle->IsA(Def->ObstacleClass))
+			{
+				MatchedDef = Def;
+				break;
+			}
+		}
+
+		if (MatchedDef)
+		{
+			if (UExObstacleSpawnStrategy* Strategy = SpawnStrategies.FindRef(MatchedDef->Type))
+			{
+				Strategy->ConfigureObstacle(Obstacle, MatchedDef, Chunk);
+			}
+		}
+
+		// Phase 4: World Space 스폰 (Attach 호출하지 않음)
+		// Manual Re-Attach 모드: OwnerSegmentIndex를 Replicated 변수로 설정하여 클라이언트가 OnRep에서 수동 Attach
+		FTransform SpawnTrans(SpawnPlan.WorldRotation, SpawnPlan.WorldLocation, Obstacle->GetActorScale3D());
+		Obstacle->SetActorTransform(SpawnTrans);
+		Obstacle->SetActorHiddenInGame(false);
+
+		// SpawnedBySegment 인덱스에 등록 (양측 동일하게 유지)
+		TArray<TWeakObjectPtr<AActor>>& SegArray = SpawnedBySegment.FindOrAdd(SpawnPlan.OwnerSegmentIndex);
+		SegArray.Add(Obstacle);
+
+		// ── Phase 4: 리플리케이션 상태 업데이트 ──
+		FExObstacleSyncInfo SyncInfo;
+		SyncInfo.Obstacle = Obstacle;
+		SyncInfo.SegmentIndex = SpawnPlan.OwnerSegmentIndex;
+		SyncInfo.ActorScale = Obstacle->GetActorScale3D();
+		// 서버가 계산한 최종 월드 Transform을 저장하여 클라이언트에서 강제 적용할 수 있도록 함.
+		// 커브 청크 이후 방향이 바뀌는 구간에서 ReplicatedMovement 만으로는 정확한 회전이 보장되지 않으므로,
+		// 서버 권위 데이터를 직접 전달하여 클라이언트가 명시적으로 덮어쓴다.
+		SyncInfo.WorldLocation = SpawnPlan.WorldLocation;
+		SyncInfo.WorldRotation = SpawnPlan.WorldRotation;
+
+		if (MatchedDef)
+		{
+			SyncInfo.InfoType = (uint8)MatchedDef->Type;
+			if (UExObstacleSpawnStrategy* Strategy = SpawnStrategies.FindRef(MatchedDef->Type))
+			{
+				SyncInfo.InfoValue = Strategy->LastGeneratedInfoValue;
+				SyncInfo.GapLocalStartDist = Strategy->LastGeneratedGapLocalStartDist;
+				SyncInfo.MeshRelativeScaleY = Strategy->LastGeneratedMeshRelativeScaleY;
+			}
+		}
+
+		ReplicatedObstacles.Add(SyncInfo);
+		MARK_PROPERTY_DIRTY_FROM_NAME(UExObstacleManager, ReplicatedObstacles, this);
+
+		UE_LOG(LogExObstacleManager, Verbose,
+			TEXT("[RealizeObstaclePlan] Spawned %s at (%.1f, %.1f, %.1f), SegIdx=%d"),
+			*Obstacle->GetName(),
+			SpawnPlan.WorldLocation.X, SpawnPlan.WorldLocation.Y, SpawnPlan.WorldLocation.Z,
+			SpawnPlan.OwnerSegmentIndex);
+	}
+}
+
+bool UExObstacleManager::QueryObstaclePlanAtDistance(const TArray<FExSpawnPlan>& Plan, float PathDist, float QueryRadius, FExObstacleContext& OutContext) const
+{
+	OutContext = FExObstacleContext();
+
+	for (const FExSpawnPlan& SpawnPlan : Plan)
+	{
+		// Plan의 글로벌 PathDistance는 ChunkStartDist + LocalPathOffset으로 계산됨
+		// 그러나 Plan.WorldLocation.X를 PathDistance 근사로 활용
+		// (트레드밀 구조에서 X좌표 ≈ PathDistance)
+		const float PlanPathDist = SpawnPlan.WorldLocation.X;
+
+		if (FMath::Abs(PathDist - PlanPathDist) > QueryRadius)
+		{
+			continue;
+		}
+
+		// Definition에서 장애물 정보 역참조
+		const EExObstacleType ObstacleType = (EExObstacleType)SpawnPlan.ObstacleTypeRaw;
+
+		// 바운드 근사 (Plan에는 정확한 Bounds가 없으므로 WorldLocation 기반 추정)
+		OutContext.bHasObstacle = true;
+		OutContext.ObstacleType = ObstacleType;
+		OutContext.ObstacleBounds = FBox(
+			SpawnPlan.WorldLocation - FVector(QueryRadius),
+			SpawnPlan.WorldLocation + FVector(QueryRadius));
+		OutContext.ObstacleTopZ = SpawnPlan.WorldLocation.Z + SpawnPlan.PlacedZ;
+		OutContext.ObstacleBottomZ = SpawnPlan.WorldLocation.Z;
+		OutContext.bCanClimbOver = (ObstacleType == EExObstacleType::Slide);
+
+		return true;
+	}
+
+	return false;
+}
+
+void UExObstacleManager::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	FDoRepLifetimeParams Params;
+	Params.bIsPushBased = true;
+	DOREPLIFETIME_WITH_PARAMS_FAST(UExObstacleManager, ReplicatedObstacles, Params);
+}
+
+void UExObstacleManager::OnRep_ReplicatedObstacles()
+{
+	// 클라이언트에서 리플리케이트된 배열이 변경될 때 호출됨
+	if (!GetOwner() || GetOwner()->HasAuthority()) return;
+
+	UExChunkSpawner* Spawner = GetOwner()->FindComponentByClass<UExChunkSpawner>();
+	if (!Spawner) return;
+
+	for (const FExObstacleSyncInfo& Info : ReplicatedObstacles)
+	{
+		if (Info.Obstacle && Info.SegmentIndex >= 0)
+		{
+			// 아직 어떤 청크에도 Attach 되지 않은 장애물만 처리
+			if (Info.Obstacle->GetAttachParentActor() == nullptr)
+			{
+				AExFloorChunk* TargetChunk = nullptr;
+				for (AExFloorChunk* Chunk : Spawner->GetActiveChunks())
+				{
+					if (Chunk && Chunk->SegmentIndex == Info.SegmentIndex)
+					{
+						TargetChunk = Chunk;
+						break;
+					}
+				}
+
+				if (TargetChunk)
+				{
+					Info.Obstacle->AttachToActor(TargetChunk, FAttachmentTransformRules::KeepWorldTransform);
+					TArray<TWeakObjectPtr<AActor>>& SegArray = SpawnedBySegment.FindOrAdd(Info.SegmentIndex);
+					SegArray.AddUnique(Info.Obstacle);
+				}
+			}
+		}
+	}
+}
+
+void UExObstacleManager::OnLocalChunkSpawned(AExFloorChunk* SpawnedChunk)
+{
+	if (!SpawnedChunk) return;
+
+	// 클라이언트가 방금 새 청크를 스폰했으므로, 리플리케이트 되어있으나 아직 Attach를 못한 장애물 확인
+	for (const FExObstacleSyncInfo& Info : ReplicatedObstacles)
+	{
+		if (Info.Obstacle && Info.SegmentIndex == SpawnedChunk->SegmentIndex)
+		{
+			if (Info.Obstacle->GetAttachParentActor() == nullptr)
+			{
+				Info.Obstacle->AttachToActor(SpawnedChunk, FAttachmentTransformRules::KeepWorldTransform);
+				TArray<TWeakObjectPtr<AActor>>& SegArray = SpawnedBySegment.FindOrAdd(Info.SegmentIndex);
+				SegArray.AddUnique(Info.Obstacle);
+			}
+		}
+	}
+}
+
+
+// ── 기존 SpawnObstaclesOnChunk (래퍼로 변경) ──
 
 // --- Migrated Logic ---
 
@@ -325,7 +777,13 @@ AActor* UExObstacleManager::GetObstacleFromPool(UClass* ObstacleClass)
 		FActorSpawnParameters SpawnParams;
 		SpawnParams.Owner = GetOwner();
 		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		return GetWorld()->SpawnActor<AActor>(ObstacleClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+		AActor* Spawned = GetWorld()->SpawnActor<AActor>(ObstacleClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+		if (Spawned)
+		{
+			Spawned->SetReplicates(true);
+			Spawned->SetReplicatingMovement(true);
+		}
+		return Spawned;
 	}
 
 	if (ObstaclePool.Contains(ObstacleClass))
@@ -341,6 +799,7 @@ AActor* UExObstacleManager::GetObstacleFromPool(UClass* ObstacleClass)
 
 			if (IsValid(PooledActor))
 			{
+				PooledActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 				ActivateObstacle(PooledActor);
 				return PooledActor;
 			}
@@ -352,6 +811,11 @@ AActor* UExObstacleManager::GetObstacleFromPool(UClass* ObstacleClass)
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 	AActor* NewActor = GetWorld()->SpawnActor<AActor>(ObstacleClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+	if (NewActor)
+	{
+		NewActor->SetReplicates(true);
+		NewActor->SetReplicatingMovement(true);
+	}
 	return NewActor;
 }
 

@@ -40,6 +40,34 @@ public:
 	UFUNCTION()
 	void OnRep_ItemDefinition();
 
+	// ── Phase 4: 수동 Attach 동기화용 인덱스 ──
+	
+	/**
+	 * 서버에서 이 아이템을 스폰할 때 지정한 FloorChunk의 SegmentIndex.
+	 * 클라이언트는 OnRep 시점에 자신의 로컬에서 일치하는 SegmentIndex를 가진 Chunk를 찾아 Attach한다.
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_OwnerSegmentIndex, BlueprintReadOnly, Category = "Item|Sync")
+	int32 OwnerSegmentIndex = -1;
+
+	UFUNCTION()
+	void OnRep_OwnerSegmentIndex();
+
+	/**
+	 * 서버가 RealizeItemPlan에서 계산한 최종 월드 위치.
+	 * 클라이언트는 OnRep_OwnerSegmentIndex 시점에 AttachToActor 후 이 값을 사용하여
+	 * ReplicatedMovement로 인한 커브 구간 위치 오차를 보정한다.
+	 */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Item|Sync")
+	FVector ReplicatedServerWorldLocation = FVector::ZeroVector;
+
+	/**
+	 * 서버가 RealizeItemPlan에서 계산한 최종 월드 회전.
+	 * 클라이언트는 OnRep_OwnerSegmentIndex 시점에 AttachToActor 후 이 값을 사용하여
+	 * ReplicatedMovement로 보정되지 않는 커브 구간 회전 오차를 제거한다.
+	 */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Item|Sync")
+	FRotator ReplicatedServerWorldRotation = FRotator::ZeroRotator;
+
 	// ── 획득 방식 ──
 
 	/** 현재 획득 방식 (기본: 오버랩 즉시 획득) */

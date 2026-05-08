@@ -136,6 +136,15 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Floor|Path")
 	float PathDistance = 0.f;
 
+	/**
+	 * PathManager의 세그먼트 인덱스 (Manual Re-Attach 모드 핵심 키).
+	 * 장애물·아이템 액터의 OwnerSegmentIndex와 매핑하여
+	 * 클라이언트가 OnRep에서 올바른 청크를 찾아 수동 Attach할 수 있게 한다.
+	 * 부동소수 비교 회피를 위해 int32 정수 키 사용.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Floor|Path")
+	int32 SegmentIndex = -1;
+
 	/** 이 청크의 세그먼트 타입 */
 	UPROPERTY(BlueprintReadOnly, Category = "Floor|Path")
 	EExPathSegmentType SegmentType = EExPathSegmentType::Straight;

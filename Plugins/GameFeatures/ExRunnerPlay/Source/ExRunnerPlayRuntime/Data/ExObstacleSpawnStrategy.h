@@ -44,6 +44,16 @@ class EXRUNNERPLAYRUNTIME_API UExObstacleSpawnStrategy : public UObject
 	GENERATED_BODY()
 
 public:
+	// 클라이언트 시각 동기화를 위해 최근 ConfigureObstacle 실행 시 생성된 난수/데이터를 임시 저장 (서버 전용 캐시)
+	UPROPERTY(Transient)
+	float LastGeneratedInfoValue = 0.f;
+
+	UPROPERTY(Transient)
+	float LastGeneratedGapLocalStartDist = -1.f;
+
+	UPROPERTY(Transient)
+	float LastGeneratedMeshRelativeScaleY = -1.f;
+
 	/**
 	 * 장애물 액터의 스케일/크기/모양을 설정합니다.
 	 * 타입별로 완전히 다른 설정이 가능합니다.

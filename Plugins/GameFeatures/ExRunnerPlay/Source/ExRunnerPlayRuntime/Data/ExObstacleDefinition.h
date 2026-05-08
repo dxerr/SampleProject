@@ -30,7 +30,7 @@ class EXRUNNERPLAYRUNTIME_API UExObstacleDefinition : public UExDefinitionDataAs
 	GENERATED_BODY()
 
 public:
-	// 스폰할 실제 액터 클래스 (예: BP_LevelBlock_Traversable 등)
+	// 스폰할 실제 액터 클래스
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Obstacle")
 	TSubclassOf<AActor> ObstacleClass;
 

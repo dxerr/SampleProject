@@ -13,6 +13,7 @@
 #include "../Data/ExRunnerConfig.h"
 #include "../Components/ExObstacleManager.h"
 #include "../Components/ExRunnerItemManager.h"
+#include "FExSpawnPlan.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -231,13 +232,22 @@ AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
 	// 활성 목록에 추가
 	ActiveChunks.Add(Chunk);
 
+	// ── SegmentIndex 기록 (Manual Re-Attach 모드 핵심) ──
+	// PathManager의 세그먼트 인덱스를 청크에 기록하여 장애물·아이템 매니저가 식별할 수 있게 한다.
+	if (PM && PM->GetSegments().Num() > 0)
+	{
+		// 현재 청크에 대응하는 세그먼트 인덱스: GetSegments() 내 마지막으로 배치된 세그먼트
+		// OverrideSegmentIndex가 있으면 그 값, 없으면 현재 세그먼트 총 수 - 1
+		Chunk->SegmentIndex = (OverrideSegmentIndex >= 0) ? OverrideSegmentIndex : (PM->GetSegments().Num() - 1);
+	}
+
 	// 델리게이트를 통해 청크 생성 알림
 	if (OnChunkSpawned.IsBound())
 	{
 		OnChunkSpawned.Broadcast(Chunk);
 	}
 
-	// [중앙 제어] 명시적인 순서로 매니저 호출 (장애물 먼저, 그 이후 아이템)
+	// ── §3.5 중앙 제어: Generate(양측) → Realize(서버 전용) 순서 호출 ──
 	// ★ 개발 중 Hot Reload(Re-instancing)로 인해 포인터가 stale해지는 경우를 대비해 유효성 체크 강화
 	if (!CachedObstacleManager || !CachedItemManager)
 	{
@@ -245,14 +255,46 @@ AExFloorChunk* UExChunkSpawner::SpawnNextChunk(int32 OverrideSegmentIndex)
 		CachedItemManager = GetOwner()->FindComponentByClass<UExRunnerItemManager>();
 	}
 
+	TArray<FExSpawnPlan> ObstaclePlan;
+	TArray<FExSpawnPlan> ItemPlan;
+
+	// Step 1: 결정론적 레이아웃 산출 (양측 모두 실행)
 	if (CachedObstacleManager)
 	{
-		CachedObstacleManager->SpawnObstaclesOnChunk(Chunk, 0.f, Chunk->ChunkLength, false);
+		ObstaclePlan = CachedObstacleManager->GenerateObstaclePlan(Chunk);
 	}
 
+	// Step 2: ItemPlan 산출 — ObstaclePlan을 직접 전달하여 Plan 기반 질의 사용 (§3.4 규칙)
 	if (CachedItemManager)
 	{
-		CachedItemManager->SpawnItemsOnChunk(Chunk, CachedObstacleManager);
+		ItemPlan = CachedItemManager->GenerateItemPlan(Chunk, ObstaclePlan);
+	}
+
+	// Step 3: 서버에서만 실체화 (액터 실제 스폰)
+	if (GetOwner() && GetOwner()->HasAuthority())
+	{
+		if (CachedObstacleManager)
+		{
+			CachedObstacleManager->RealizeObstaclePlan(ObstaclePlan, Chunk);
+		}
+
+		if (CachedItemManager)
+		{
+			CachedItemManager->RealizeItemPlan(ItemPlan, Chunk);
+		}
+	}
+	else
+	{
+		// 클라이언트 전용: 큐에 대기 중인 액터들을 새로 생성된 청크에 수동 Attach 시도
+		if (CachedObstacleManager)
+		{
+			CachedObstacleManager->OnLocalChunkSpawned(Chunk);
+		}
+
+		if (CachedItemManager)
+		{
+			CachedItemManager->OnLocalChunkSpawned(Chunk);
+		}
 	}
 
 	return Chunk;

@@ -57,6 +57,7 @@ public class ExRunnerPlayRuntime : ModuleRules
 				"Slate",
 				"SlateCore",
 				"GameplayDebugger", // ExRunnerDebuggerCategory용
+				"NetCore", // UEPushModelPrivate용
 			}
 			);
 		

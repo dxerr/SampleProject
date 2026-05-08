@@ -68,5 +68,6 @@ void UExObstacleStrategy_Climb::ConfigureObstacle_Implementation(
 	FExObstacleInfo Info;
 	Info.Type = EExObstacleType::Climb;
 	Info.Value = TargetHeight; // Z축 높이
+	LastGeneratedInfoValue = TargetHeight;
 	ApplyObstacleInfo(Obstacle, Info);
 }

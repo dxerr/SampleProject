@@ -32,5 +32,6 @@ void UExObstacleStrategy_WallRun::ConfigureObstacle_Implementation(
 	FExObstacleInfo Info;
 	Info.Type = EExObstacleType::WallRun;
 	Info.Value = TargetLength; // X축 길이(벽 길이)
+	LastGeneratedInfoValue = TargetLength;
 	ApplyObstacleInfo(Obstacle, Info);
 }

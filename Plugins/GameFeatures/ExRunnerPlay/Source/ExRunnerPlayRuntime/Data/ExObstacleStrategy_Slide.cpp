@@ -89,6 +89,7 @@ void UExObstacleStrategy_Slide::ConfigureObstacle_Implementation(
 	FExObstacleInfo Info;
 	Info.Type = EExObstacleType::Slide;
 	Info.Value = TargetDepth; // X축 길이(두께)
+	LastGeneratedInfoValue = TargetDepth;
 	ApplyObstacleInfo(Obstacle, Info);
 }
 

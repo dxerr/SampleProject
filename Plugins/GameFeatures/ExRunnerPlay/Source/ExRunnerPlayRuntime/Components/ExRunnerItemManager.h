@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "ExItemSpawnManagerBase.h"
 #include "Struct/FExObstacleContext.h"
+#include "FExSpawnPlan.h"
+#include "Math/RandomStream.h"
 #include "GameplayTagContainer.h"
 #include "ExRunnerItemManager.generated.h"
 
@@ -125,6 +127,20 @@ private:
 	/** 청크 내 버프 아이템 스폰 (단독 또는 코인 라인 중 삽입) */
 	void SpawnBuffItem(AExFloorChunk* Chunk, UExObstacleManager* ObstacleManager, float AtDistance, float LateralOffset = 0.f);
 
+	/**
+	 * GenerateItemPlan 내부 헬퍼 — 코인 라인 Plan 산출.
+	 * §3.4 규칙: ObstaclePlan 기반 질의로 Z축 결정. 결과를 OutPlan에 추가한다.
+	 */
+	void GenerateCoinLinePlan(AExFloorChunk* Chunk, const TArray<FExSpawnPlan>& ObstaclePlan,
+		float StartDistance, float EndDistance, TArray<FExSpawnPlan>& OutPlan);
+
+	/**
+	 * GenerateItemPlan 내부 헬퍼 — 버프 아이템 Plan 산출.
+	 * 결과를 OutPlan에 추가한다.
+	 */
+	void GenerateBuffItemPlan(AExFloorChunk* Chunk, const TArray<FExSpawnPlan>& ObstaclePlan,
+		float AtDistance, float LateralOffset, TArray<FExSpawnPlan>& OutPlan);
+
 protected:
 	/** 코인 획득 반경 캐싱 (여백 계산용) */
 	UPROPERTY(Transient)
@@ -142,4 +158,69 @@ protected:
 	/** 청크 범위를 넘어갈 때, 다음 청크에서 코인이 시작해야 할 오프셋 이월값 */
 	UPROPERTY(Transient)
 	float PersistentNextCoinDistance = 0.f;
+
+	// ── Phase 1: 결정론 RandomStream ──
+
+	/**
+	 * SharedTrackSeed 기반 파생 스트림 (Hash(Seed, 2)).
+	 * 서버·클라 양측에서 동일한 아이템 레이아웃을 산출하는 핵심.
+	 */
+	FRandomStream ItemRandomStream;
+
+	/** ItemRandomStream 초기화 완료 여부. GenerateItemPlan 호출 전 반드시 true여야 함. */
+	bool bRandomStreamInitialized = false;
+
+public:
+	/**
+	 * §3.1.1 초기화 계약 — SharedTrackSeed 수신 직후 호출.
+	 * Hash(SharedSeed, 2)로 ItemRandomStream을 초기화한다.
+	 * @param SharedSeed AExRunnerGameState::SharedTrackSeed 값
+	 */
+	void InitializeRandomStream(int32 SharedSeed);
+
+	// ── Phase 3: Plan 기반 2단계 스폰 ──
+
+	/**
+	 * 결정론적 아이템 배치 산출 (양측 호출 가능, Authority 가드 없음).
+	 * ObstaclePlan을 직접 입력받아 Plan 기반 장애물 질의 사용 (§3.4 규칙).
+	 * @param TargetChunk 대상 청크
+	 * @param ObstaclePlan 동일 청크에 대한 GenerateObstaclePlan 결과
+	 * @return PathDistance 오름차순으로 정렬된 아이템 배치 계획 배열
+	 */
+	TArray<FExSpawnPlan> GenerateItemPlan(AExFloorChunk* TargetChunk, const TArray<FExSpawnPlan>& ObstaclePlan);
+
+	/**
+	 * 서버 전용 실체화 — GenerateItemPlan의 결과로 실제 액터를 SpawnActor.
+	 * 반드시 HasAuthority() == true인 컨텍스트에서만 호출해야 한다.
+	 * @param Plan GenerateItemPlan이 반환한 배치 계획
+	 * @param TargetChunk 대상 청크
+	 */
+	void RealizeItemPlan(const TArray<FExSpawnPlan>& Plan, AExFloorChunk* TargetChunk);
+
+	// ── Phase 4: 세그먼트 인덱스 기반 액터 추적 ──
+
+	/**
+	 * SegmentIndex별 스폰된 아이템 액터 인덱스 (양측 유지).
+	 * 청크 Despawn 시 이 인덱스로 일괄 회수한다.
+	 */
+	TMap<int32, TArray<TWeakObjectPtr<AExItemPickupBase>>> SpawnedBySegment;
+
+	/**
+	 * 클라이언트 전용 대기 큐.
+	 * OnRep 시점에 로컬 청크가 아직 도착하지 않은 경우 여기에 등록.
+	 */
+	TArray<TWeakObjectPtr<AExItemPickupBase>> PendingAttachQueue;
+
+	/** Phase 4: 수동 Attach 요청 처리 */
+	void RequestManualAttach(AExItemPickupBase* Item, int32 SegmentIndex);
+
+	/** ExGameplayEventSubsystem 콜백 */
+	UFUNCTION()
+	void HandleItemReAttachEvent(FGameplayTag EventTag, const FExGameplayEventPayload& Payload);
+
+	/**
+	 * 로컬 청크 스폰 시 호출하여 PendingAttachQueue 처리를 재시도한다.
+	 * @param SpawnedChunk 새로 스폰된 청크
+	 */
+	void OnLocalChunkSpawned(AExFloorChunk* SpawnedChunk);
 };

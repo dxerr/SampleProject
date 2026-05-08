@@ -136,6 +136,9 @@ void UExObstacleStrategy_Gap::ConfigureObstacle_Implementation(
 	// ★ 핵심: ChunkFloor에 Gap 적용 (바닥 구멍 내기) - 여기엔 논리적 거리를 전달!
 	Chunk->ApplyGap(GapLocalStartDist, LogicalGapWidth);
 
+	LastGeneratedGapLocalStartDist = GapLocalStartDist;
+	LastGeneratedInfoValue = GapWidth;
+
 	float TargetHeight = FMath::RandRange(Def->MinSize.Z, Def->MaxSize.Z);
 	if (TargetHeight < 1.f) TargetHeight = BaseSize.Z; // Z 미설정 시 기본 유지
 
@@ -188,6 +191,7 @@ void UExObstacleStrategy_Gap::ConfigureObstacle_Implementation(
 			{
 				float DesiredRelativeScaleY = (TargetWidth / BaseSize.Y) / ActorScale.Y;
 				Mesh->SetRelativeScale3D(FVector(CurrentScale.X, DesiredRelativeScaleY, CurrentScale.Z));
+				LastGeneratedMeshRelativeScaleY = DesiredRelativeScaleY;
 			}
 		}
 	}

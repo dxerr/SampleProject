@@ -247,9 +247,15 @@ void AExFloorChunk::ReturnToPool()
 // ──────────────────────────────────────────────
 void AExFloorChunk::ApplyGap(float GapStartDist, float GapWidth)
 {
+	UE_LOG(LogTemp, Log, TEXT("[ExFloorChunk] ApplyGap 호출됨! Chunk: %s, bHasCurve: %d, GapStart: %.1f, Width: %.1f"), *GetName(), bHasCurve, GapStartDist, GapWidth);
+
 	// 이미 Gap 적용 중이면 먼저 해제
 	if (bHasGap) ClearGap();
-	if (!FloorMesh || !FloorMesh->GetStaticMesh()) return;
+	if (!FloorMesh || !FloorMesh->GetStaticMesh()) 
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ExFloorChunk] ApplyGap 실패: FloorMesh가 없거나 StaticMesh가 할당되지 않음."));
+		return;
+	}
 
 	const float GapStart = GapStartDist;
 	const float GapEnd   = GapStartDist + GapWidth;

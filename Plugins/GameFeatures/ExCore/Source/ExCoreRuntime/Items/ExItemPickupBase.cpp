@@ -9,7 +9,7 @@
 #include "Components/SphereComponent.h"
 #include "GameFramework/Pawn.h"
 #include "Net/UnrealNetwork.h"
-
+#include "ExGameplayEventSubsystem.h"
 AExItemPickupBase::AExItemPickupBase()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -17,6 +17,7 @@ AExItemPickupBase::AExItemPickupBase()
 	// 네트워크 복제 활성화
 	bReplicates = true;
 	bAlwaysRelevant = true;
+	SetReplicatingMovement(true);
 
 	// 루트 씬 컴포넌트
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
@@ -34,6 +35,9 @@ void AExItemPickupBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AExItemPickupBase, ItemDefinition);
+	DOREPLIFETIME(AExItemPickupBase, OwnerSegmentIndex);
+	DOREPLIFETIME(AExItemPickupBase, ReplicatedServerWorldLocation);
+	DOREPLIFETIME(AExItemPickupBase, ReplicatedServerWorldRotation);
 }
 
 // ── 오버랩 처리 (클라이언트 예측 + 서버 권한) ──
@@ -141,6 +145,29 @@ void AExItemPickupBase::OnRep_ItemDefinition()
 	if (ItemDefinition)
 	{
 		BP_OnActivated();
+	}
+}
+
+// ── OwnerSegmentIndex 복제 수신 (Phase 4 클라이언트 수동 Attach) ──
+
+void AExItemPickupBase::OnRep_OwnerSegmentIndex()
+{
+	if (HasAuthority()) return;
+
+	if (UWorld* World = GetWorld())
+	{
+		if (UExGameplayEventSubsystem* EventSub = World->GetSubsystem<UExGameplayEventSubsystem>())
+		{
+			// ExCore 모듈은 ExRunnerPlay 모듈에 의존할 수 없으므로, 이벤트를 통해 매니저에게 Attach를 요청한다.
+			FGameplayTag AttachTag = FGameplayTag::RequestGameplayTag(FName("Event.Sync.ItemReAttach"), false);
+			if (AttachTag.IsValid())
+			{
+				FExGameplayEventPayload Payload;
+				Payload.Instigator = this;
+				Payload.OptionalValue = (float)OwnerSegmentIndex;
+				EventSub->BroadcastEvent(AttachTag, Payload);
+			}
+		}
 	}
 }
 

@@ -8,9 +8,11 @@
 #include "ExObstacleManager.h"
 #include "ExFloorChunk.h"
 #include "ExChunkSpawner.h"
+#include "FExSpawnPlan.h"
 #include "Curves/CurveFloat.h"
 #include "Components/SphereComponent.h"
 #include "Subsystems/ExDataCenterSubsystem.h"
+#include "ExGameplayEventSubsystem.h"
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
 
@@ -29,6 +31,19 @@ void UExRunnerItemManager::BeginPlay()
 
 	UE_LOG(LogExItemSystem, Log, TEXT("[ExRunnerItemManager] BeginPlay — SpawnTableTag: %s / Load: %s"),
 		*SpawnTableTag.ToString(), CachedSpawnTable ? TEXT("Success") : TEXT("Fail"));
+
+	// 클라이언트 측 수동 Attach 이벤트 수신 대기 (AExItemPickupBase에서 발송)
+	if (UWorld* World = GetWorld())
+	{
+		if (UExGameplayEventSubsystem* EventSub = World->GetSubsystem<UExGameplayEventSubsystem>())
+		{
+			FGameplayTag AttachTag = FGameplayTag::RequestGameplayTag(FName("Event.Sync.ItemReAttach"), false);
+			if (AttachTag.IsValid())
+			{
+				EventSub->GetEventDelegate(AttachTag).AddDynamic(this, &UExRunnerItemManager::HandleItemReAttachEvent);
+			}
+		}
+	}
 }
 
 void UExRunnerItemManager::EnsureSpawnTableLoaded()
@@ -62,7 +77,9 @@ float UExRunnerItemManager::CalculateItemZ(const FExObstacleContext& Context, fl
 		return Context.ObstacleTopZ + ItemTopPlacementOffset + ItemBaseZOffset;
 
 	case EExObstacleType::Slide:
-		if (Context.bCanClimbOver && FMath::FRand() < SlideTopPlacementRatio)
+		// §3.4: FMath::FRand() → ItemRandomStream.FRand()로 교체 (결정론 보장)
+		// 주의: CalculateItemZ는 GenerateItemPlan 내에서만 호출해야 스트림 소비 순서가 보장됩니다.
+		if (Context.bCanClimbOver && const_cast<UExRunnerItemManager*>(this)->ItemRandomStream.FRand() < SlideTopPlacementRatio)
 		{
 			// 올라갈 수 있는 Slide: 확률적으로 꼭대기 배치
 			return Context.ObstacleTopZ + ItemTopPlacementOffset + ItemBaseZOffset;
@@ -129,8 +146,8 @@ void UExRunnerItemManager::SpawnItemsOnChunk(AExFloorChunk* TargetChunk, UExObst
 
 	bool bCoinLineSpawned = false;
 
-	// 코인 라인 스폰 확률 판정
-	if (FMath::FRand() < CachedSpawnTable->CoinLineSpawnProbability)
+	// 코인 라인 스폰 확률 판정 (결정론 스트림 사용)
+	if (ItemRandomStream.FRand() < CachedSpawnTable->CoinLineSpawnProbability)
 	{
 		SpawnCoinLine(TargetChunk, ObstacleManager, SafeStart, SafeEnd);
 		bCoinLineSpawned = true;
@@ -178,11 +195,11 @@ void UExRunnerItemManager::SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManage
 	int32 EstimatedSpawns = FMath::Max(1, FMath::CeilToInt((EndDistance - StartDistance) / Spacing));
 	int32 MaxIterCount = 100; // 절대 무한루프 방지
 	
-	// 라인 중 버프 교체 삽입 (확률 판정 후 임의의 슬롯 인덱스 지정)
+	// 라인 중 버프 교체 삽입 (결정론 스트림 사용)
 	int32 BuffReplaceIndex = -1;
-	if (FMath::FRand() < CachedSpawnTable->BuffSpawnProbability)
+	if (ItemRandomStream.FRand() < CachedSpawnTable->BuffSpawnProbability)
 	{
-		BuffReplaceIndex = FMath::RandRange(0, EstimatedSpawns - 1);
+		BuffReplaceIndex = ItemRandomStream.RandRange(0, EstimatedSpawns - 1);
 	}
 
 	for (int32 i = 0; i < MaxIterCount && CurrentDistance < EndDistance; ++i)
@@ -199,8 +216,8 @@ void UExRunnerItemManager::SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManage
 			RemainingCoinsInCurrentLane = FMath::RandRange(CachedSpawnTable->MinCoinsPerLine, CachedSpawnTable->MaxCoinsPerLine);
 		}
 
-		// 코인 라인 중간 끊김 판정
-		if (i > 0 && FMath::FRand() < CachedSpawnTable->CoinLineBreakProbability)
+		// 코인 라인 중간 끊김 판정 (결정론 스트림 사용)
+		if (i > 0 && ItemRandomStream.FRand() < CachedSpawnTable->CoinLineBreakProbability)
 		{
 			CurrentDistance += Spacing * 2.f; // 끊김 시 간격 2배
 			
@@ -416,13 +433,432 @@ void UExRunnerItemManager::OnChunkDespawned(AExFloorChunk* Chunk)
 {
 	if (!Chunk) return;
 
-	TArray<AActor*> AttachedActors;
-	Chunk->GetAttachedActors(AttachedActors);
-	for (AActor* Attached : AttachedActors)
+	// Phase 4: SpawnedBySegment 인덱스 기반 회수
+	if (const TArray<TWeakObjectPtr<AExItemPickupBase>>* SegItems = SpawnedBySegment.Find(Chunk->SegmentIndex))
 	{
-		if (AExItemPickupBase* Item = Cast<AExItemPickupBase>(Attached))
+		for (const TWeakObjectPtr<AExItemPickupBase>& WeakItem : *SegItems)
 		{
-			ReturnItemToPool(Item);
+			if (AExItemPickupBase* Item = WeakItem.Get())
+			{
+				ReturnItemToPool(Item);
+			}
+		}
+		SpawnedBySegment.Remove(Chunk->SegmentIndex);
+	}
+	else
+	{
+		// 레거시 폴백: Attach 기반 회수
+		TArray<AActor*> AttachedActors;
+		Chunk->GetAttachedActors(AttachedActors);
+		for (AActor* Attached : AttachedActors)
+		{
+			if (AExItemPickupBase* Item = Cast<AExItemPickupBase>(Attached))
+			{
+				ReturnItemToPool(Item);
+			}
 		}
 	}
+}
+
+// ── Phase 1: 결정론 RandomStream 초기화 ──
+
+void UExRunnerItemManager::InitializeRandomStream(int32 SharedSeed)
+{
+	// Hash(SharedSeed, 2)로 Item 전용 스트림 파생
+	const int32 ItemSeed = HashCombine(SharedSeed, 2);
+	ItemRandomStream.Initialize(ItemSeed);
+	bRandomStreamInitialized = true;
+
+	// 뱀 패턴 상태값 리셋 (시드 변경 시 반드시 초기화)
+	PersistentNextCoinDistance = 0.f;
+	CurrentLaneYOffset = 0.f;
+	RemainingCoinsInCurrentLane = 0;
+	PersistentTargetLane = 0;
+	LastItemSafeEndDistance = -99999.f;
+
+	UE_LOG(LogExItemSystem, Log, TEXT("[ExRunnerItemManager] RandomStream 초기화 완료 (SharedSeed=%d, ItemSeed=%d)"),
+		SharedSeed, ItemSeed);
+}
+
+// ── Phase 3: GenerateItemPlan ──
+
+TArray<FExSpawnPlan> UExRunnerItemManager::GenerateItemPlan(AExFloorChunk* TargetChunk, const TArray<FExSpawnPlan>& ObstaclePlan)
+{
+	// 초기화 계약 위반 감지
+	ensureMsgf(bRandomStreamInitialized,
+		TEXT("[ExRunnerItemManager] GenerateItemPlan 호출 시 RandomStream이 미초기화. InitializeRandomStream을 먼저 호출하세요."));
+
+	TArray<FExSpawnPlan> ResultPlan;
+
+	if (!TargetChunk) return ResultPlan;
+
+	EnsureSpawnTableLoaded();
+	if (!CachedSpawnTable) return ResultPlan;
+
+	const float ChunkLength = TargetChunk->ChunkLength;
+	const float SafeStart = PersistentNextCoinDistance;
+	const float SafeEnd = ChunkLength;
+
+	if (SafeStart >= SafeEnd)
+	{
+		PersistentNextCoinDistance -= ChunkLength;
+		return ResultPlan;
+	}
+
+	// 코인 라인 스폰 확률 판정 (결정론 스트림)
+	bool bCoinLineSpawned = false;
+	if (ItemRandomStream.FRand() < CachedSpawnTable->CoinLineSpawnProbability)
+	{
+		GenerateCoinLinePlan(TargetChunk, ObstaclePlan, SafeStart, SafeEnd, ResultPlan);
+		bCoinLineSpawned = true;
+	}
+	else
+	{
+		PersistentNextCoinDistance = 0.f;
+		CurrentLaneYOffset = 0.f;
+		RemainingCoinsInCurrentLane = 0;
+	}
+
+	// 단독 버프 배치 (결정론 스트림)
+	if (!bCoinLineSpawned && ItemRandomStream.FRand() < CachedSpawnTable->BuffSoloSpawnProbability)
+	{
+		const float BuffDist = ItemRandomStream.FRandRange(SafeStart, SafeEnd);
+		const float SnakeOffset = CachedSpawnTable->bUseSnakePattern ? CurrentLaneYOffset : 0.f;
+		GenerateBuffItemPlan(TargetChunk, ObstaclePlan, BuffDist, SnakeOffset, ResultPlan);
+	}
+
+	return ResultPlan;
+}
+
+void UExRunnerItemManager::RealizeItemPlan(const TArray<FExSpawnPlan>& Plan, AExFloorChunk* TargetChunk)
+{
+	// §3.4 서버 권한 이중 가드: 차단 + 알림
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		ensureMsgf(false, TEXT("[ExRunnerItemManager] RealizeItemPlan이 클라이언트에서 호출됨. 서버 전용 함수입니다."));
+		return;
+	}
+
+	if (!TargetChunk) return;
+
+	for (const FExSpawnPlan& SpawnPlan : Plan)
+	{
+		if (!SpawnPlan.ActorClass) continue;
+
+		// ItemDefinition 역참조
+		EnsureSpawnTableLoaded();
+		const UExItemDefinition* ItemDef = nullptr;
+		if (CachedSpawnTable)
+		{
+			// ActorClass로 매칭되는 Definition 탐색
+			for (const FExItemSpawnEntry& Entry : CachedSpawnTable->CoinEntries)
+			{
+				if (Entry.ItemDefinition && Entry.ItemDefinition->PickupActorClass == SpawnPlan.ActorClass)
+				{
+					ItemDef = Entry.ItemDefinition;
+					break;
+				}
+			}
+			if (!ItemDef)
+			{
+				for (const FExItemSpawnEntry& Entry : CachedSpawnTable->BuffEntries)
+				{
+					if (Entry.ItemDefinition && Entry.ItemDefinition->PickupActorClass == SpawnPlan.ActorClass)
+					{
+						ItemDef = Entry.ItemDefinition;
+						break;
+					}
+				}
+			}
+		}
+
+		if (!ItemDef) continue;
+
+		// Phase 4: World Space 스폰 (Attach 호출하지 않음)
+		AExItemPickupBase* SpawnedItem = SpawnItem(ItemDef,
+			FTransform(SpawnPlan.WorldRotation, FVector(SpawnPlan.WorldLocation.X, SpawnPlan.WorldLocation.Y, SpawnPlan.PlacedZ)));
+
+		if (SpawnedItem)
+		{
+			SpawnedItem->OwnerSegmentIndex = SpawnPlan.OwnerSegmentIndex;
+
+			// 서버가 계산한 최종 월드 Transform을 복제 필드에 저장.
+			// 클라이언트가 Attach 시점에 이 값을 강제 적용하여 커브 구간 위치/회전 오차를 제거한다.
+			SpawnedItem->ReplicatedServerWorldLocation = SpawnPlan.WorldLocation;
+			SpawnedItem->ReplicatedServerWorldRotation = SpawnPlan.WorldRotation;
+
+			// SpawnedBySegment 인덱스 등록
+			TArray<TWeakObjectPtr<AExItemPickupBase>>& SegArray = SpawnedBySegment.FindOrAdd(SpawnPlan.OwnerSegmentIndex);
+			SegArray.Add(SpawnedItem);
+		}
+	}
+}
+
+void UExRunnerItemManager::OnLocalChunkSpawned(AExFloorChunk* SpawnedChunk)
+{
+	if (!SpawnedChunk) return;
+
+	for (int32 i = PendingAttachQueue.Num() - 1; i >= 0; --i)
+	{
+		AExItemPickupBase* PendingItem = PendingAttachQueue[i].Get();
+		if (!PendingItem)
+		{
+			PendingAttachQueue.RemoveAt(i);
+			continue;
+		}
+
+		if (PendingItem->OwnerSegmentIndex == SpawnedChunk->SegmentIndex)
+		{
+			PendingItem->AttachToActor(SpawnedChunk, FAttachmentTransformRules::KeepWorldTransform);
+			PendingItem->SetActorHiddenInGame(false); // 가시성 강제 활성화
+			
+			TArray<TWeakObjectPtr<AExItemPickupBase>>& SegArray = SpawnedBySegment.FindOrAdd(SpawnedChunk->SegmentIndex);
+			SegArray.AddUnique(PendingItem);
+			
+			PendingAttachQueue.RemoveAt(i);
+		}
+	}
+}
+
+void UExRunnerItemManager::RequestManualAttach(AExItemPickupBase* Item, int32 SegmentIndex)
+{
+	if (!Item || (GetOwner() && GetOwner()->HasAuthority())) return;
+
+	AExFloorChunk* TargetChunk = nullptr;
+	if (UExChunkSpawner* Spawner = GetOwner() ? GetOwner()->FindComponentByClass<UExChunkSpawner>() : nullptr)
+	{
+		for (AExFloorChunk* Chunk : Spawner->GetActiveChunks())
+		{
+			if (Chunk && Chunk->SegmentIndex == SegmentIndex)
+			{
+				TargetChunk = Chunk;
+				break;
+			}
+		}
+	}
+
+	if (TargetChunk)
+	{
+		Item->AttachToActor(TargetChunk, FAttachmentTransformRules::KeepWorldTransform);
+
+		// 서버가 RealizeItemPlan에서 계산한 최종 World Transform을 강제 적용.
+		// ReplicatedMovement 기반 위치는 커브 청크 이후 방향이 바뀐 구간에서 부정확할 수 있으므로,
+		// 서버 권위 데이터를 명시적으로 덮어써 클라이언트 시각 정합성을 보장한다.
+		if (!Item->ReplicatedServerWorldLocation.IsZero() || !Item->ReplicatedServerWorldRotation.IsZero())
+		{
+			Item->SetActorLocationAndRotation(
+				Item->ReplicatedServerWorldLocation,
+				Item->ReplicatedServerWorldRotation,
+				false,
+				nullptr,
+				ETeleportType::TeleportPhysics
+			);
+		}
+
+		Item->SetActorHiddenInGame(false); // 가시성 강제 활성화
+		TArray<TWeakObjectPtr<AExItemPickupBase>>& SegArray = SpawnedBySegment.FindOrAdd(SegmentIndex);
+		SegArray.AddUnique(Item);
+	}
+	else
+	{
+		PendingAttachQueue.AddUnique(Item);
+	}
+}
+
+void UExRunnerItemManager::HandleItemReAttachEvent(FGameplayTag EventTag, const FExGameplayEventPayload& Payload)
+{
+	if (AExItemPickupBase* Item = Cast<AExItemPickupBase>(Payload.Instigator))
+	{
+		int32 SegIdx = FMath::RoundToInt(Payload.OptionalValue);
+		RequestManualAttach(Item, SegIdx);
+	}
+}
+
+// ── Phase 3 헬퍼: Plan 기반 코인 라인 산출 ──
+
+void UExRunnerItemManager::GenerateCoinLinePlan(AExFloorChunk* Chunk, const TArray<FExSpawnPlan>& ObstaclePlan,
+	float StartDistance, float EndDistance, TArray<FExSpawnPlan>& OutPlan)
+{
+	if (!Chunk || !CachedSpawnTable) return;
+
+	// 코인 Entry 조회
+	TSubclassOf<AActor> CoinClass = nullptr;
+	for (const FExItemSpawnEntry& Entry : CachedSpawnTable->CoinEntries)
+	{
+		if (Entry.ItemDefinition && Entry.ItemDefinition->PickupActorClass)
+		{
+			CoinClass = Entry.ItemDefinition->PickupActorClass;
+			break;
+		}
+	}
+	if (!CoinClass) return;
+
+	const float Spacing = FMath::Max(CachedSpawnTable->CoinSpacing, 50.f);
+	float CurrentDistance = StartDistance;
+	const int32 MaxIter = 100;
+
+	// 버프 교체 인덱스 결정 (결정론 스트림)
+	int32 EstimatedSpawns = FMath::Max(1, FMath::CeilToInt((EndDistance - StartDistance) / Spacing));
+	int32 BuffReplaceIndex = -1;
+	if (ItemRandomStream.FRand() < CachedSpawnTable->BuffSpawnProbability)
+	{
+		BuffReplaceIndex = ItemRandomStream.RandRange(0, EstimatedSpawns - 1);
+	}
+
+	TSubclassOf<AActor> BuffClass = nullptr;
+	if (BuffReplaceIndex >= 0)
+	{
+		for (const FExItemSpawnEntry& Entry : CachedSpawnTable->BuffEntries)
+		{
+			if (Entry.ItemDefinition && Entry.ItemDefinition->PickupActorClass)
+			{
+				BuffClass = Entry.ItemDefinition->PickupActorClass;
+				break;
+			}
+		}
+	}
+
+	for (int32 i = 0; i < MaxIter && CurrentDistance < EndDistance; ++i)
+	{
+		// 레인 결정 (결정론 스트림)
+		if (RemainingCoinsInCurrentLane <= 0)
+		{
+			TArray<int32> PossibleLanes = {-1, 0, 1};
+			PossibleLanes.Remove(PersistentTargetLane);
+			PersistentTargetLane = PossibleLanes[ItemRandomStream.RandRange(0, PossibleLanes.Num() - 1)];
+			RemainingCoinsInCurrentLane = ItemRandomStream.RandRange(
+				CachedSpawnTable->MinCoinsPerLine, CachedSpawnTable->MaxCoinsPerLine);
+		}
+
+		// 끊김 판정 (결정론 스트림)
+		if (i > 0 && ItemRandomStream.FRand() < CachedSpawnTable->CoinLineBreakProbability)
+		{
+			CurrentDistance += Spacing * 2.f;
+			RemainingCoinsInCurrentLane = 0;
+			continue;
+		}
+
+		// §3.4 Plan 기반 장애물 질의
+		FExObstacleContext ObstCtx;
+		if (ObstaclePlan.Num() > 0)
+		{
+			// Plan.WorldLocation.X로 PathDistance 근사
+			// ChunkStartDist + LocalPathOffset = 월드 X
+			const float QueryDist = Chunk->GetActorLocation().X + CurrentDistance;
+			const float QueryRadius = Spacing * 0.5f;
+			for (const FExSpawnPlan& Op : ObstaclePlan)
+			{
+				if (FMath::Abs(Op.WorldLocation.X - QueryDist) < QueryRadius)
+				{
+					ObstCtx.bHasObstacle = true;
+					ObstCtx.ObstacleType = (EExObstacleType)Op.ObstacleTypeRaw;
+					ObstCtx.ObstacleTopZ = Op.WorldLocation.Z + 100.f;
+					ObstCtx.ObstacleBottomZ = Op.WorldLocation.Z;
+					ObstCtx.bCanClimbOver = (ObstCtx.ObstacleType == EExObstacleType::Slide);
+					break;
+				}
+			}
+		}
+
+		// 로컬 트랜스폼 계산 (커브 청크 진행 방향 반영)
+		FTransform LocalTrans = Chunk->GetLocalTransformAtDistance(CurrentDistance);
+
+		// 레인 Y 오프셋을 스플라인 RightVector 기준으로 적용
+		// 월드 Y 직접 가산이 아닌 로컬 Right 방향으로 이동 → 커브 이후에도 바닥 안쪽에 위치
+		if (!FMath::IsNearlyZero(CurrentLaneYOffset))
+		{
+			FVector SplineRight = LocalTrans.GetRotation().GetRightVector();
+			LocalTrans.SetLocation(LocalTrans.GetLocation() + SplineRight * CurrentLaneYOffset);
+		}
+
+		// LocalTransform * 청크 WorldTransform → 청크 회전 포함된 완전한 월드 Transform 산출
+		FTransform GlobalTrans = LocalTrans * Chunk->GetActorTransform();
+
+		// Z 계산: GlobalTrans의 Z를 기준으로 사용 (해당 LocalDistance의 실제 바닥 Z)
+		const float ActualFloorZ = GlobalTrans.GetLocation().Z;
+		const float PlacedZ = CalculateItemZ(ObstCtx, ActualFloorZ, 0.5f);
+
+		FVector WorldPos = GlobalTrans.GetLocation();
+		WorldPos.Z = PlacedZ;
+
+		// Plan 생성
+		FExSpawnPlan Plan;
+		Plan.OwnerSegmentIndex = Chunk->SegmentIndex;
+		Plan.LocalPathOffset = CurrentDistance;
+		Plan.ActorClass = (i == BuffReplaceIndex && BuffClass) ? BuffClass : CoinClass;
+		Plan.PlacedZ = PlacedZ;
+		Plan.WorldLocation = WorldPos;
+		Plan.WorldRotation = GlobalTrans.Rotator(); // 청크 회전 포함된 월드 회전
+
+		OutPlan.Add(Plan);
+
+		RemainingCoinsInCurrentLane--;
+		CurrentDistance += Spacing;
+	}
+
+	// 이월값 업데이트
+	PersistentNextCoinDistance = (CurrentDistance > EndDistance) ? CurrentDistance - EndDistance : 0.f;
+}
+
+void UExRunnerItemManager::GenerateBuffItemPlan(AExFloorChunk* Chunk, const TArray<FExSpawnPlan>& ObstaclePlan,
+	float AtDistance, float LateralOffset, TArray<FExSpawnPlan>& OutPlan)
+{
+	if (!Chunk || !CachedSpawnTable) return;
+
+	TSubclassOf<AActor> BuffClass = nullptr;
+	for (const FExItemSpawnEntry& Entry : CachedSpawnTable->BuffEntries)
+	{
+		if (Entry.ItemDefinition && Entry.ItemDefinition->PickupActorClass)
+		{
+			BuffClass = Entry.ItemDefinition->PickupActorClass;
+			break;
+		}
+	}
+	if (!BuffClass) return;
+
+	// §3.4 Plan 기반 장애물 질의
+	FExObstacleContext ObstCtx;
+	const float QueryDist = Chunk->GetActorLocation().X + AtDistance;
+	const float QueryRadius = 200.f;
+	for (const FExSpawnPlan& Op : ObstaclePlan)
+	{
+		if (FMath::Abs(Op.WorldLocation.X - QueryDist) < QueryRadius)
+		{
+			ObstCtx.bHasObstacle = true;
+			ObstCtx.ObstacleType = (EExObstacleType)Op.ObstacleTypeRaw;
+			ObstCtx.ObstacleTopZ = Op.WorldLocation.Z + 100.f;
+			ObstCtx.ObstacleBottomZ = Op.WorldLocation.Z;
+			ObstCtx.bCanClimbOver = (ObstCtx.ObstacleType == EExObstacleType::Slide);
+			break;
+		}
+	}
+
+	FTransform LocalTrans = Chunk->GetLocalTransformAtDistance(AtDistance);
+
+	// 레이터럴 오프셋을 스플라인 RightVector 기준으로 적용
+	if (!FMath::IsNearlyZero(LateralOffset))
+	{
+		FVector SplineRight = LocalTrans.GetRotation().GetRightVector();
+		LocalTrans.SetLocation(LocalTrans.GetLocation() + SplineRight * LateralOffset);
+	}
+
+	// 청크 World Transform 합성 → 진행 방향 포함된 월드 Transform
+	FTransform GlobalTrans = LocalTrans * Chunk->GetActorTransform();
+
+	// Z 계산: GlobalTrans의 Z를 기준으로 사용 (해당 위치의 실제 바닥 Z)
+	const float ActualFloorZ = GlobalTrans.GetLocation().Z;
+	const float PlacedZ = CalculateItemZ(ObstCtx, ActualFloorZ, 0.5f);
+
+	FVector WorldPos = GlobalTrans.GetLocation();
+	WorldPos.Z = PlacedZ;
+
+	FExSpawnPlan Plan;
+	Plan.OwnerSegmentIndex = Chunk->SegmentIndex;
+	Plan.LocalPathOffset = AtDistance;
+	Plan.ActorClass = BuffClass;
+	Plan.PlacedZ = PlacedZ;
+	Plan.WorldLocation = WorldPos;
+	Plan.WorldRotation = GlobalTrans.Rotator(); // 청크 회전 포함된 월드 회전
+
+	OutPlan.Add(Plan);
 }
