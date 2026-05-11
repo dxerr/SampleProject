@@ -51,6 +51,20 @@ void AExPlayerControllerBase::ReceivedPlayer()
 	}
 }
 
+void AExPlayerControllerBase::OnPossess(APawn* aPawn)
+{
+	Super::OnPossess(aPawn);
+
+	// 빙의 완료 시 서버 측에서 GameMode의 OnPlayerReady 호출 (Ready 상태 확정)
+	if (HasAuthority())
+	{
+		if (AExGameModeBase* GameMode = Cast<AExGameModeBase>(GetWorld()->GetAuthGameMode()))
+		{
+			GameMode->OnPlayerReady(this);
+		}
+	}
+}
+
 void AExPlayerControllerBase::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
@@ -203,4 +217,16 @@ void AExPlayerControllerBase::Server_NotifyReadyForMatch_Implementation()
 bool AExPlayerControllerBase::Server_NotifyReadyForMatch_Validate()
 {
 	return true;
+}
+
+void AExPlayerControllerBase::Client_ShowLateJoinPopup_Implementation()
+{
+	UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] Late join attempt blocked. Showing popup."));
+	
+	// TODO: 실제 UI 팝업(로비 복귀 안내 등) 띄우기 구현은 별도 작업으로 진행.
+	// 임시로 화면에 디버그 메시지 표시
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red, TEXT("매치가 이미 시작되어 관전 모드로 대기합니다."));
+	}
 }

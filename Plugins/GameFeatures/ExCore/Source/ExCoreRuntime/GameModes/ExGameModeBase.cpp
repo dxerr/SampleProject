@@ -13,6 +13,9 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "Components/ExVisualOverrideComponent.h"
+#include "Player/ExPlayerStateBase.h"
+#include "Player/ExPlayerControllerBase.h"
+#include "TimerManager.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExCoreGM, Log, All);
 
@@ -56,6 +59,12 @@ void AExGameModeBase::BeginPlay()
 
 	UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] BeginPlay - SpawnDataAsset: %s"), 
 		SpawnDataAsset ? *SpawnDataAsset->GetName() : TEXT("None"));
+
+	// 매치 대기 타임아웃 타이머 시작
+	if (GetMaxWaitForPlayersSeconds() > 0.f)
+	{
+		GetWorld()->GetTimerManager().SetTimer(WaitPlayersTimerHandle, this, &AExGameModeBase::OnWaitPlayersTimeout, GetMaxWaitForPlayersSeconds(), false);
+	}
 }
 
 void AExGameModeBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -121,6 +130,35 @@ void AExGameModeBase::OnFlowSubsystemRequestTravel(const FString& MapURL)
 	}
 }
 
+void AExGameModeBase::OnPlayerReady(APlayerController* PC)
+{
+	if (!PC) return;
+
+	AExPlayerStateBase* PS = PC->GetPlayerState<AExPlayerStateBase>();
+	if (PS)
+	{
+		PS->bIsMatchReady = true;
+		UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] OnPlayerReady: %s is marked ready."), *PC->GetName());
+		CheckAndStartMatch();
+	}
+}
+
+int32 AExGameModeBase::GetExpectedPlayerCount() const
+{
+	// Default to 1 for basic games, can be overridden by specific GameModes
+	return 1;
+}
+
+int32 AExGameModeBase::GetCountdownDuration() const
+{
+	return 3;
+}
+
+float AExGameModeBase::GetMaxWaitForPlayersSeconds() const
+{
+	return 30.f;
+}
+
 void AExGameModeBase::CheckAndStartMatch()
 {
 	AExGameStateBase* ExGameState = GetGameState<AExGameStateBase>();
@@ -131,17 +169,45 @@ void AExGameModeBase::CheckAndStartMatch()
 
 	if (ExGameState->GetCurrentMatchPhase() == ExMatchTags::Match_WaitingForPlayers)
 	{
-		if (CheckAllPlayersReady())
+		// 1. CurrentMatchPhase == Match_WaitingForPlayers (이미 위에서 체크함)
+		// 2. HasClientLoadedCurrentWorld()
+		// 3. bIsMatchReady == true
+		// 4. ActivePlayer 수 >= GetExpectedPlayerCount()
+
+		int32 ReadyPlayers = 0;
+		int32 LoadedPlayers = 0;
+		int32 TotalPlayers = 0;
+
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 		{
-			if (bAutoStartOnReady)
+			APlayerController* PC = It->Get();
+			if (PC)
 			{
-				SetMatchPhase(ExMatchTags::Match_Playing);
-				UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] CheckAndStartMatch: All players ready and bAutoStartOnReady is true. Transitioned to Match_Playing."));
+				TotalPlayers++;
+				if (PC->HasClientLoadedCurrentWorld())
+				{
+					LoadedPlayers++;
+				}
+
+				if (AExPlayerStateBase* PS = PC->GetPlayerState<AExPlayerStateBase>())
+				{
+					if (PS->bIsMatchReady)
+					{
+						ReadyPlayers++;
+					}
+				}
 			}
-			else
-			{
-				UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] CheckAndStartMatch: All players ready but bAutoStartOnReady is false. Waiting for explicit start command."));
-			}
+		}
+
+		bool bAllLoaded = (LoadedPlayers == TotalPlayers) && (TotalPlayers > 0);
+		bool bAllReady = (ReadyPlayers == TotalPlayers) && (TotalPlayers > 0);
+		bool bHasExpectedCount = TotalPlayers >= GetExpectedPlayerCount();
+
+		if (bAllLoaded && bAllReady && bHasExpectedCount)
+		{
+			GetWorld()->GetTimerManager().ClearTimer(WaitPlayersTimerHandle);
+			UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] CheckAndStartMatch: All conditions met. Starting match."));
+			OnAllPlayersReady();
 		}
 	}
 }
@@ -309,4 +375,32 @@ void AExGameModeBase::OnMatchStarted_Implementation()
 
 void AExGameModeBase::OnMatchEnded_Implementation()
 {
+}
+
+void AExGameModeBase::OnAllPlayersReady()
+{
+	StartCountdown();
+}
+
+void AExGameModeBase::StartCountdown()
+{
+	if (AExGameStateBase* ExGameState = GetGameState<AExGameStateBase>())
+	{
+		ExGameState->SetCountdownSeconds(GetCountdownDuration());
+		SetMatchPhase(ExMatchTags::Match_Countdown);
+		
+		GetWorld()->GetTimerManager().SetTimer(CountdownTimerHandle, this, &AExGameModeBase::FinishCountdown, GetCountdownDuration(), false);
+	}
+}
+
+void AExGameModeBase::FinishCountdown()
+{
+	GetWorld()->GetTimerManager().ClearTimer(CountdownTimerHandle);
+	SetMatchPhase(ExMatchTags::Match_Playing);
+}
+
+void AExGameModeBase::OnWaitPlayersTimeout()
+{
+	UE_LOG(LogExCoreGM, Warning, TEXT("[ExGameModeBase] WaitForPlayers timeout! Forcing match start."));
+	OnAllPlayersReady();
 }

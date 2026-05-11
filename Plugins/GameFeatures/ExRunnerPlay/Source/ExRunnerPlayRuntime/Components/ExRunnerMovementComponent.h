@@ -119,6 +119,9 @@ private:
 	
 	float CurrentLaneYOffset = 0.0f;
 	bool bIsLaneWidthCalculated = false;
+	
+	/** 스폰 위치에서 레인 초기값을 역산했는지 여부 (첫 매치 시작 시 순간이동 방지용) */
+	bool bIsLaneInitialized = false;
 
 	/** [추가] 물리적 진행 경로(Path) 거리 계산용 (서버/클라이언트 로컬) */
 	float CurrentPathDistance = 0.0f;

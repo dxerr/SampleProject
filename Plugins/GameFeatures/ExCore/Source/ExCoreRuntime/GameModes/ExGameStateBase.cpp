@@ -9,6 +9,7 @@ AExGameStateBase::AExGameStateBase()
 {
 	// 기본값은 WaitingForPlayers로 세팅
 	CurrentMatchPhase = ExMatchTags::Match_WaitingForPlayers;
+	CountdownSecondsRemaining = 0;
 }
 
 void AExGameStateBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -16,6 +17,7 @@ void AExGameStateBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AExGameStateBase, CurrentMatchPhase);
+	DOREPLIFETIME(AExGameStateBase, CountdownSecondsRemaining);
 }
 
 void AExGameStateBase::BeginPlay()
@@ -52,6 +54,36 @@ void AExGameStateBase::SetMatchPhase(FGameplayTag NewPhase, bool bForceTransitio
 	
 	// 서버 자신도 리플리케이트 콜백을 강제로 로컬 실행
 	OnRep_MatchPhase(OldPhase);
+}
+
+bool AExGameStateBase::IsMatchActive() const
+{
+	return CurrentMatchPhase == ExMatchTags::Match_Playing;
+}
+
+void AExGameStateBase::SetCountdownSeconds(int32 NewSeconds)
+{
+	if (GetLocalRole() != ROLE_Authority)
+	{
+		return; // 서버 권한에서만 허용
+	}
+
+	if (CountdownSecondsRemaining == NewSeconds)
+	{
+		return;
+	}
+
+	int32 OldSeconds = CountdownSecondsRemaining;
+	CountdownSecondsRemaining = NewSeconds;
+
+	// 서버 자신도 리플리케이트 콜백을 강제로 로컬 실행
+	OnRep_CountdownSeconds(OldSeconds);
+}
+
+void AExGameStateBase::OnRep_CountdownSeconds(int32 OldSeconds)
+{
+	// BP/UI로 알림
+	OnCountdownChanged.Broadcast(CountdownSecondsRemaining);
 }
 
 void AExGameStateBase::OnRep_MatchPhase(const FGameplayTag& OldPhase)

@@ -11,6 +11,7 @@
 #include "Struct/FExMovementSettings.h"
 #include "Struct/FExChunkSpawnSettings.h"
 #include "Struct/FExBeatSyncSettings.h"
+#include "Struct/FExMatchFlowSettings.h"
 #include "ExRunnerConfig.generated.h"
 
 /**
@@ -52,6 +53,10 @@ public:
 	/** 비트 동기화(리듬) 관련 설정 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner Config|BeatSync", meta = (ShowOnlyInnerProperties))
 	FExBeatSyncSettings BeatSync;
+
+	/** 매치 동기화 및 플로우 관리 설정 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner Config|MatchFlow", meta = (ShowOnlyInnerProperties))
+	FExMatchFlowSettings MatchFlow;
 
 #if WITH_EDITOR
 	/** 에디터 상에서 데이터의 유효성을 검증합니다. */

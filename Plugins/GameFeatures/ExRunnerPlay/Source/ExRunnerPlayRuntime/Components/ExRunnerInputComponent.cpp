@@ -15,6 +15,7 @@
 #include "ExRunnerMovementComponent.h"
 #include "Engine/World.h"
 #include "ExRunnerPlayRuntimeModule.h"
+#include "Util/Match/ExMatchPhaseHelper.h"
 
 
 
@@ -139,6 +140,8 @@ void UExRunnerInputComponent::NativeOnMoveAction(const FInputActionValue& Value)
 
 void UExRunnerInputComponent::RequestJumpAction(bool bIsTriggered)
 {
+	if (!FExMatchPhaseHelper::IsMatchActive(this)) return;
+
 	// Strategy 게이트: AutoRun 모드에서는 쿨다운 중 차단
 	if (ActiveStrategy && !ActiveStrategy->CanRequestJump(bIsTriggered))
 	{
@@ -172,6 +175,8 @@ void UExRunnerInputComponent::RequestJumpAction(bool bIsTriggered)
 
 void UExRunnerInputComponent::RequestSlideAction(bool bIsTriggered)
 {
+	if (!FExMatchPhaseHelper::IsMatchActive(this)) return;
+
 	// Strategy 게이트: AutoRun 모드에서는 쿨다운 중 차단
 	if (ActiveStrategy && !ActiveStrategy->CanRequestSlide(bIsTriggered))
 	{
@@ -189,6 +194,8 @@ void UExRunnerInputComponent::RequestSlideAction(bool bIsTriggered)
 
 void UExRunnerInputComponent::RequestSprintAction(bool bIsTriggered)
 {
+	if (!FExMatchPhaseHelper::IsMatchActive(this)) return;
+
 	// Strategy 게이트: 필요시 AutoRun 모드에서 스프린트 제한 가능
 	if (ActiveStrategy && !ActiveStrategy->CanRequestSprint(bIsTriggered))
 	{
@@ -199,6 +206,8 @@ void UExRunnerInputComponent::RequestSprintAction(bool bIsTriggered)
 
 void UExRunnerInputComponent::RequestMoveAction(FVector2D AxisValue)
 {
+	if (!FExMatchPhaseHelper::IsMatchActive(this)) return;
+
 	if (AxisValue.SizeSquared() > 0.0f)
 	{
 		// 로그 스팸 방지를 위해 주석 처리
@@ -211,6 +220,8 @@ void UExRunnerInputComponent::RequestMoveAction(FVector2D AxisValue)
 
 void UExRunnerInputComponent::RequestLookAction(float YawAxisValue)
 {
+	if (!FExMatchPhaseHelper::IsMatchActive(this)) return;
+
 	if (ActiveStrategy)
 	{
 		ActiveStrategy->HandleHorizontalInput(FVector2D(YawAxisValue, 0.0f));
@@ -224,6 +235,8 @@ void UExRunnerInputComponent::RequestLookAction(float YawAxisValue)
 
 void UExRunnerInputComponent::RequestLaneChange(int32 LaneDirection)
 {
+	if (!FExMatchPhaseHelper::IsMatchActive(this)) return;
+
 	if (ActiveStrategy)
 	{
 		ActiveStrategy->HandleLaneChangeRequest(LaneDirection);

@@ -73,6 +73,30 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ExMatch|Flow")
 	virtual void CheckAndStartMatch();
 
+	/** 특정 플레이어의 Ready 상태가 확인되었을 때 호출 (서버 측 빙의 완료 시 등) */
+	UFUNCTION(BlueprintCallable, Category = "ExMatch|Flow")
+	void OnPlayerReady(APlayerController* PC);
+
+	/**
+	 * 매치를 시작하기 위해 필요한 총 예상 플레이어 수
+	 * 하위 모드에서 오버라이드하여 데이터 드리븐으로 제공 가능
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExMatch|Flow")
+	virtual int32 GetExpectedPlayerCount() const;
+
+	/**
+	 * 카운트다운 지속 시간(초)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExMatch|Flow")
+	virtual int32 GetCountdownDuration() const;
+
+	/**
+	 * 플레이어 연결 대기 최대 시간(초)
+	 * 이 시간이 초과되면 덜 모였더라도 강제 시작 처리 (옵션)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExMatch|Flow")
+	virtual float GetMaxWaitForPlayersSeconds() const;
+
 	/** 모든 플레이어 컨트롤러가 로딩을 성공적으로 끝냈는지 체크 */
 	UFUNCTION(BlueprintPure, Category = "ExMatch")
 	bool CheckAllPlayersReady() const;
@@ -97,11 +121,29 @@ protected:
 	 */
 	virtual APawn* SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform) override;
 
+	/** 모든 조건이 충족되어 카운트다운을 시작할 수 있는 상태일 때 호출됨 */
+	virtual void OnAllPlayersReady();
+
+	/** 카운트다운 시작 */
+	virtual void StartCountdown();
+
+	/** 카운트다운 종료 및 실제 매치 시작 (Match_Playing으로 전환) */
+	virtual void FinishCountdown();
+
 	/** 매치 시작 로직을 위한 가상 함수. 하위 GameMode에서 재정의합니다. */
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "ExMatch")
 	void OnMatchStarted();
 	virtual void OnMatchStarted_Implementation();
 
+private:
+	FTimerHandle CountdownTimerHandle;
+	FTimerHandle WaitPlayersTimerHandle;
+
+	UFUNCTION()
+	void OnWaitPlayersTimeout();
+
+
+public:
 	/** 매치 종료 결과를 처리하기 위한 가상 함수. 하위 GameMode에서 재정의합니다. */
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "ExMatch")
 	void OnMatchEnded();

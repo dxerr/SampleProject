@@ -11,6 +11,7 @@
 #include "../Components/ExRunnerRuleManagerComponent.h"
 #include "../GameStates/ExRunnerGameState.h"
 #include "../Player/ExRunnerPlayerState.h"
+#include "../Actors/ExFloorChunk.h"
 #include "../Data/ExRunnerConfig.h"
 #include "Subsystems/ExDataCenterSubsystem.h"
 #include "ExGameplayTags.h"
@@ -18,6 +19,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Tags/ExMatchTags.h"
 #include "Tags/ExRunnerTags.h"
+#include "Player/ExPlayerControllerBase.h"
 #include "Subsystems/ExMusicManagerSubsystem.h"
 #include "Data/ExBGMTrackDataAsset.h"
 #include "Components/BoxComponent.h"
@@ -81,10 +83,13 @@ void AExRunnerGameMode::BeginPlay()
 				}
 			}
 		}
+
+		// 플레이어가 접속하기 전 월드 초기 세팅 완료
+		PrewarmRunnerWorld();
 	}
 }
 
-void AExRunnerGameMode::StartRunnerGame()
+void AExRunnerGameMode::PrewarmRunnerWorld()
 {
 	AExRunnerGameState* GS = GetGameState<AExRunnerGameState>();
 	if (GS)
@@ -101,7 +106,6 @@ void AExRunnerGameMode::StartRunnerGame()
 		// PathManager 초기화
 		if (GS->PathManager)
 		{
-			// [Fix] 초기화 타이밍 이슈 대비: RunnerConfig가 없으면 다시 조회 시도
 			if (!RunnerConfig.IsValid())
 			{
 				if (UGameInstance* GI = GetGameInstance())
@@ -109,10 +113,6 @@ void AExRunnerGameMode::StartRunnerGame()
 					if (UExDataCenterSubsystem* DataCenter = GI->GetSubsystem<UExDataCenterSubsystem>())
 					{
 						RunnerConfig = DataCenter->GetConfig<UExRunnerConfig>();
-						if (RunnerConfig.IsValid())
-						{
-							UE_LOG(LogExRunnerPlay, Log, TEXT("StartRunnerGame: RunnerConfig 재조회 성공."));
-						}
 					}
 				}
 			}
@@ -125,46 +125,44 @@ void AExRunnerGameMode::StartRunnerGame()
 			UE_LOG(LogExRunnerPlay, Log, TEXT("PathManager 초기화 완료 (RunnerConfig=%s)"),
 				RunnerConfig.IsValid() ? *RunnerConfig->GetName() : TEXT("None"));
 		}
-	}
 
-	// ── §3.1.1 초기화 계약 (서버) ──
-	// 순서 계약: PathManager → RandomStream 초기화 → 매니저 바인딩 → ChunkSpawner 초기화
-	// SharedTrackSeed가 이미 위에서 설정되었으므로 여기서 스트림을 초기화한다.
-	if (GS && GS->ObstacleManager)
-	{
-		GS->ObstacleManager->InitializeRandomStream(GS->SharedTrackSeed);
-	}
-	if (GS && GS->ItemManager)
-	{
-		GS->ItemManager->InitializeRandomStream(GS->SharedTrackSeed);
-	}
-
-	if (GS && GS->ObstacleManager && GS->ItemManager && GS->ChunkSpawner)
-	{
-		GS->ChunkSpawner->SetManagers(GS->ObstacleManager, GS->ItemManager);
-		
-		// 장애물 매니저의 내부 참조(BoundSpawner) 및 OnChunkDespawned 이벤트 연결을 위해 호출 필수
-		GS->ObstacleManager->BindToSpawner(GS->ChunkSpawner);
-
-		// 아이템 매니저도 OnChunkDespawned 이벤트를 받아 액터를 풀에 반환/파괴할 수 있도록 연결
-		GS->ItemManager->BindToSpawner(GS->ChunkSpawner);
-	}
-
-	// 매니저와 시드 초기화가 완료된 후 스포너를 초기화해야 GenerateItemPlan 호출 시 랜덤 스트림 미초기화 오류가 발생하지 않습니다.
-	if (GS && GS->ChunkSpawner)
-	{
-		if (RunnerConfig.IsValid())
+		// ── 매니저 바인딩 및 시드 초기화 ──
+		if (GS->ObstacleManager)
 		{
-			GS->ChunkSpawner->RunnerConfig = RunnerConfig;
+			GS->ObstacleManager->InitializeRandomStream(GS->SharedTrackSeed);
 		}
-		GS->ChunkSpawner->InitializeSpawner();
-	}
+		if (GS->ItemManager)
+		{
+			GS->ItemManager->InitializeRandomStream(GS->SharedTrackSeed);
+		}
 
-	if (GS && BeatSyncComponent && GS->ObstacleManager)
-	{
-		BeatSyncComponent->BindToObstacleManager(GS->ObstacleManager);
-	}
+		if (GS->ChunkSpawner)
+		{
+			if (GS->ObstacleManager && GS->ItemManager)
+			{
+				GS->ChunkSpawner->SetManagers(GS->ObstacleManager, GS->ItemManager);
+				GS->ObstacleManager->BindToSpawner(GS->ChunkSpawner);
+				GS->ItemManager->BindToSpawner(GS->ChunkSpawner);
+			}
 
+			if (RunnerConfig.IsValid())
+			{
+				GS->ChunkSpawner->RunnerConfig = RunnerConfig;
+			}
+			GS->ChunkSpawner->InitializeSpawner();
+		}
+
+		if (BeatSyncComponent && GS->ObstacleManager)
+		{
+			BeatSyncComponent->BindToObstacleManager(GS->ObstacleManager);
+		}
+
+		UE_LOG(LogExRunnerPlay, Log, TEXT("PrewarmRunnerWorld 완료: 맵 생성 동기화 준비 끝."));
+	}
+}
+
+void AExRunnerGameMode::StartRunnerGame()
+{
 	// BGM 시작 (Track Data 적용 시 내부에서 알아서 Phase 믹싱 데이터까지 동기화)
 	if (CurrentStageBGM && CurrentStageBGM->BGMAsset)
 	{
@@ -347,4 +345,102 @@ void AExRunnerGameMode::CheckAlivePlayers()
 		
 		SetMatchPhase(ExMatchTags::Match_PostMatch);
 	}
+}
+
+void AExRunnerGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
+{
+	AExGameStateBase* GS = GetGameState<AExGameStateBase>();
+	if (GS && GS->GetCurrentMatchPhase() != ExMatchTags::Match_WaitingForPlayers)
+	{
+		UE_LOG(LogExRunnerPlay, Warning, TEXT("[ExRunnerGameMode] Late Join blocked for %s"), *NewPlayer->GetName());
+		if (AExPlayerControllerBase* ExPC = Cast<AExPlayerControllerBase>(NewPlayer))
+		{
+			ExPC->Client_ShowLateJoinPopup();
+		}
+		// 스폰을 스킵하거나 관전자로 변경하는 등의 후속 처리 가능
+		return;
+	}
+
+	Super::HandleStartingNewPlayer_Implementation(NewPlayer);
+}
+
+AActor* AExRunnerGameMode::ChoosePlayerStart_Implementation(AController* Player)
+{
+	AActor* DefaultStart = Super::ChoosePlayerStart_Implementation(Player);
+	if (!DefaultStart)
+	{
+		ensureMsgf(false, TEXT("PlayerStart not found in map %s"), *GetWorld()->GetName());
+	}
+	return DefaultStart;
+}
+
+APawn* AExRunnerGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform)
+{
+	FTransform AdjustedTransform = SpawnTransform;
+
+	// 4인 이상 매치 시도 차단
+	if (RunnerConfig.IsValid() && NextLaneSlotIndex >= RunnerConfig->MatchFlow.LaneSlotOrder.Num())
+	{
+		ensureMsgf(false, TEXT("4인 이상 매치는 미지원, 가변 레인 시스템 도입 필요"));
+		NextLaneSlotIndex = FMath::Max(0, RunnerConfig->MatchFlow.LaneSlotOrder.Num() - 1);
+	}
+
+	int32 TargetLaneIndex = 0;
+	if (RunnerConfig.IsValid() && RunnerConfig->MatchFlow.LaneSlotOrder.IsValidIndex(NextLaneSlotIndex))
+	{
+		TargetLaneIndex = RunnerConfig->MatchFlow.LaneSlotOrder[NextLaneSlotIndex];
+	}
+
+	// 레인 폭 결정
+	float LaneWidth = 100.f;
+	TArray<AActor*> FloorChunks;
+	UGameplayStatics::GetAllActorsOfClass(this, AExFloorChunk::StaticClass(), FloorChunks);
+	if (FloorChunks.Num() > 0)
+	{
+		if (AExFloorChunk* Chunk = Cast<AExFloorChunk>(FloorChunks[0]))
+		{
+			LaneWidth = Chunk->GetFloorBounds().GetSize().Y / 3.0f;
+		}
+	}
+	else if (RunnerConfig.IsValid())
+	{
+		LaneWidth = RunnerConfig->Movement.LaneWidth;
+	}
+
+	// 인덱스 증가
+	NextLaneSlotIndex++;
+
+	// Transform 계산 (우측 벡터를 기준으로 오프셋 적용)
+	FVector RightVec = AdjustedTransform.GetRotation().GetAxisY();
+	FVector Offset = RightVec * (TargetLaneIndex * LaneWidth);
+	AdjustedTransform.AddToTranslation(Offset);
+
+	return Super::SpawnDefaultPawnAtTransform_Implementation(NewPlayer, AdjustedTransform);
+}
+
+int32 AExRunnerGameMode::GetExpectedPlayerCount() const
+{
+	if (RunnerConfig.IsValid())
+	{
+		return RunnerConfig->MatchFlow.ExpectedPlayerCount;
+	}
+	return Super::GetExpectedPlayerCount();
+}
+
+int32 AExRunnerGameMode::GetCountdownDuration() const
+{
+	if (RunnerConfig.IsValid())
+	{
+		return RunnerConfig->MatchFlow.CountdownDurationSeconds;
+	}
+	return Super::GetCountdownDuration();
+}
+
+float AExRunnerGameMode::GetMaxWaitForPlayersSeconds() const
+{
+	if (RunnerConfig.IsValid())
+	{
+		return RunnerConfig->MatchFlow.MaxWaitForPlayersSeconds;
+	}
+	return Super::GetMaxWaitForPlayersSeconds();
 }

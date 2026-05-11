@@ -83,13 +83,23 @@ protected:
 	virtual void Tick(float DeltaTime) override;
 
 	virtual void OnMatchStarted_Implementation() override;
-	virtual void OnMatchEnded_Implementation() override;
 
 	/** TimeUp/GoalReached 룰 발동 시 EventSubsystem 콜백 → SetMatchPhase(PostMatch) */
 	UFUNCTION()
 	void OnRuleEndGameEvent(FGameplayTag EventTag, const FExGameplayEventPayload& Payload);
 
+	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
+	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
+	virtual APawn* SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform) override;
+
 public:
+	virtual void OnMatchEnded_Implementation() override;
+
+	// 매치 플로우 설정 (오버라이드)
+	virtual int32 GetExpectedPlayerCount() const override;
+	virtual int32 GetCountdownDuration() const override;
+	virtual float GetMaxWaitForPlayersSeconds() const override;
+
 	/** 전멸 검사 - Individual 룰 발동 후 생존자가 없으면 매치 종료 처리 */
 	UFUNCTION(BlueprintCallable, Category = "Runner|Rule")
 	void CheckAlivePlayers();
@@ -106,6 +116,12 @@ private:
 
 	/** PlayerPawn 캐시 */
 	TWeakObjectPtr<APawn> CachedPlayerPawn;
+
+	/** 서버 전용: 레인 할당을 위한 인덱스 */
+	int32 NextLaneSlotIndex = 0;
+
+	/** 초기 맵 데이터 스폰 (Chunk 등) 동기적 수행 */
+	void PrewarmRunnerWorld();
 
 	/**
 	 * 캐릭터 회전 갱신 (경로 접선 방향)

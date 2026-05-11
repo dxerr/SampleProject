@@ -27,6 +27,7 @@ protected:
 
 	// 로컬 플레이어가 배정되어 뷰포트 접근이 가능해지는 시점
 	virtual void ReceivedPlayer() override;
+	virtual void OnPossess(APawn* aPawn) override;
 	virtual void PostSeamlessTravel() override;
 	virtual void PlayerTick(float DeltaTime) override;
 
@@ -41,6 +42,11 @@ protected:
 	// 클라이언트가 UI 및 에셋 로딩을 마쳤음을 서버에 알림
 	UFUNCTION(Server, Reliable, WithValidation)
 	void Server_NotifyReadyForMatch();
+
+public:
+	/** Late Join 플레이어에게 매치 참여 불가 팝업 표시 */
+	UFUNCTION(Client, Reliable)
+	void Client_ShowLateJoinPopup();
 
 private:
 	bool bWaitingForGameState = false;

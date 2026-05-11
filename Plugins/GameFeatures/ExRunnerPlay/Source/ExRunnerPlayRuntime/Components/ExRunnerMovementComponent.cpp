@@ -21,6 +21,7 @@
 #include "ExGameplayTags.h"
 #include "../Player/ExRunnerPlayerState.h"
 #include "Net/UnrealNetwork.h"
+#include "Util/Match/ExMatchPhaseHelper.h"
 
 // 디버깅용 로그 카테고리 정의
 DEFINE_LOG_CATEGORY_STATIC(LogExRunnerMovement, Log, All);
@@ -127,6 +128,22 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 {
 	FCharacterDefaultInputs& Inputs = InputCmdResult.InputCollection.FindOrAddMutableDataByType<FCharacterDefaultInputs>();
 	
+	if (!FExMatchPhaseHelper::IsMatchActive(this))
+	{
+		UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, FVector::ZeroVector);
+		
+		AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
+		if (GS && GS->PathManager)
+		{
+			Inputs.OrientationIntent = GS->PathManager->GetDirectionAtDistance(CurrentPathDistance).Vector();
+		}
+		else
+		{
+			Inputs.OrientationIntent = FVector::ForwardVector;
+		}
+		return;
+	}
+
 	// [개선] 컨트롤러 회전 지연과 차선 보간 문제를 해결하기 위해 경로 매니저 활용
 	FVector ForwardDir = FVector::ForwardVector;
 	AExRunnerGameState* GS = GetWorld()->GetGameState<AExRunnerGameState>();
@@ -355,6 +372,9 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
 	// AutoRun 모드일 때만 동작
 	if (!bIsAutoRunMode) return;
 	
+	// 카운트다운 중에는 레인 보간 차단
+	if (!FExMatchPhaseHelper::IsMatchActive(this)) return;
+	
 	// 지연 계산(Lazy Eval): 초기화 시점에 바닥 청크 스폰이 안 되어 실패했다면 매 Tick마다 재시도
 	if (!bIsLaneWidthCalculated)
 	{
@@ -366,15 +386,42 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
 			{
 				float TotalWidth = Chunk->GetFloorBounds().GetSize().Y;
 				DynamicLaneWidth = TotalWidth / 3.0f;
-				bIsLaneWidthCalculated = true; // 계산 완료 마킹
+				bIsLaneWidthCalculated = true;
 				UE_LOG(LogExRunnerMovement, Log, TEXT("[ExRunnerMovement] LaneWidth lazily calculated in Tick: %.1f (TotalWidth: %.1f)"), DynamicLaneWidth, TotalWidth);
 			}
 		}
 	}
 
-	float CurrentLaneWidth = 100.0f;
-	if (bIsLaneWidthCalculated) { CurrentLaneWidth = DynamicLaneWidth; }
-	else if (CachedConfig) { CurrentLaneWidth = CachedConfig->Movement.LaneWidth; }
+	// LaneWidth 계산 직후 첫 프레임: 실제 스폰 위치에서 레인 인덱스/오프셋 역산하여 스냅 (순간이동 방지)
+	if (bIsLaneWidthCalculated && !bIsLaneInitialized)
+	{
+		AExRunnerGameState* GSForInit = GetWorld()->GetGameState<AExRunnerGameState>();
+		if (GSForInit && GSForInit->PathManager && DynamicLaneWidth > 1.0f)
+		{
+			FVector PawnLoc = TargetPawn->GetActorLocation();
+			FVector PathOrigin = GSForInit->PathManager->GetPositionAtDistance(CurrentPathDistance);
+			FVector PathRight = FRotationMatrix(GSForInit->PathManager->GetDirectionAtDistance(CurrentPathDistance)).GetScaledAxis(EAxis::Y);
+
+			// 경로 중심으로부터의 실제 횡 오프셋 계산
+			float ActualLateralOffset = FVector::DotProduct(PawnLoc - PathOrigin, PathRight);
+
+			// 레인 인덱스를 반올림으로 스냅 (-1, 0, 1)
+			CurrentLaneIndex = FMath::Clamp(FMath::RoundToInt(ActualLateralOffset / DynamicLaneWidth), -1, 1);
+
+			// CurrentLaneYOffset도 실제 위치로 즉시 스냅 (보간 없이)
+			CurrentLaneYOffset = ActualLateralOffset;
+
+			bIsLaneInitialized = true;
+			UE_LOG(LogExRunnerMovement, Log,
+				TEXT("[ExRunnerMovement] Lane initialized from spawn: ActualOffset=%.1f, SnappedIndex=%d"),
+				ActualLateralOffset, CurrentLaneIndex);
+		}
+	}
+
+	// 아직 초기화 안 됐으면(LaneWidth 계산 전) 이번 프레임은 보간 스킵
+	if (!bIsLaneInitialized) return;
+
+	float CurrentLaneWidth = DynamicLaneWidth;
 
 	// 목표 레인 오프셋 계산 (가운데: 0, 왼쪽: -LaneWidth, 오른쪽: +LaneWidth)
 	float TargetY = CurrentLaneIndex * CurrentLaneWidth;
@@ -403,6 +450,7 @@ void UExRunnerMovementComponent::UpdateLanePosition(float DeltaTime)
 		}
 	}
 }
+
 
 void UExRunnerMovementComponent::UpdateCharacterRotation(float DeltaTime)
 {

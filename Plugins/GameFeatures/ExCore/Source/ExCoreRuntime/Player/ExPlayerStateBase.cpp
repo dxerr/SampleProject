@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Player/ExPlayerStateBase.h"
+#include "Net/UnrealNetwork.h"
 
 AExPlayerStateBase::AExPlayerStateBase()
 {
@@ -34,4 +35,11 @@ void AExPlayerStateBase::OnRep_Score()
 		OnScoreChangedDelegate.Broadcast(PreviousScore, CurrentScore);
 		PreviousScore = CurrentScore;
 	}
+}
+
+void AExPlayerStateBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AExPlayerStateBase, bIsMatchReady);
 }

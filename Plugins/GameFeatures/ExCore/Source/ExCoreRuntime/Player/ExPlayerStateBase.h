@@ -34,6 +34,15 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "ExPlayer")
 	FOnScoreChanged OnScoreChangedDelegate;
 
+	/**
+	 * 플레이어가 매치를 시작할 준비가 되었는지 여부.
+	 * 서버에서 OnPossess(빙의 완료) 시점에 설정됩니다.
+	 */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "ExMatch")
+	bool bIsMatchReady = false;
+
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 protected:
 	/**
 	 * 네이티브 APlayerState의 OnRep_Score 가상함수를 덮어써서 

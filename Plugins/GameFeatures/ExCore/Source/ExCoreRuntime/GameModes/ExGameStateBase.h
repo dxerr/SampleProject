@@ -8,6 +8,7 @@
 #include "ExGameStateBase.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnMatchPhaseChanged, const FGameplayTag&, OldPhase, const FGameplayTag&, NewPhase);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCountdownChanged, int32, NewCountdown);
 
 /**
  * ExCore의 기본 GameState 클래스입니다.
@@ -45,7 +46,38 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ExMatch")
 	void SetMatchPhase(FGameplayTag NewPhase, bool bForceTransition = false);
 
+	/**
+	 * 매치가 현재 활성화 상태인지(Playing 이상) 확인합니다.
+	 */
+	UFUNCTION(BlueprintPure, Category = "ExMatch")
+	bool IsMatchActive() const;
+
+	/**
+	 * 카운트다운 남은 초를 가져옵니다.
+	 */
+	UFUNCTION(BlueprintPure, Category = "ExMatch")
+	int32 GetCountdownSeconds() const { return CountdownSecondsRemaining; }
+
+	/** 로컬 클라이언트에서 카운트다운이 변경될 때 호출되는 델리게이트 */
+	UPROPERTY(BlueprintAssignable, Category = "ExMatch")
+	FOnCountdownChanged OnCountdownChanged;
+
+	/**
+	 * 서버에서 카운트다운 초를 설정하고 클라이언트로 전파
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExMatch")
+	void SetCountdownSeconds(int32 NewSeconds);
+
 protected:
+	/**
+	 * 서버에서 설정되어 모든 클라이언트로 복제되는 남은 카운트다운 초
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_CountdownSeconds, BlueprintReadOnly, Category = "ExMatch")
+	int32 CountdownSecondsRemaining;
+
+	/** 클라이언트에서 카운트다운 변수 복제 시 호출되는 콜백. */
+	UFUNCTION()
+	virtual void OnRep_CountdownSeconds(int32 OldSeconds);
 	/**
 	 * 서버에서 설정되어 모든 클라이언트로 복제되는 현재 매치 페이즈 태그.
 	 */
