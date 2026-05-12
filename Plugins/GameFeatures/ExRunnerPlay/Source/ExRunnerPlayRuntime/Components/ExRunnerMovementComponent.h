@@ -80,6 +80,14 @@ public:
 	UFUNCTION()
 	void OnLaneChangeRequestedCallback(int32 LaneDirection);
 
+	/** 버프 시스템 등에서 Sprint 여부를 제어하기 위한 인터페이스 */
+	UFUNCTION(BlueprintCallable, Category = "Runner|Movement")
+	void SetWantsToSprint(bool bSprint);
+
+	/** 이동 속도 배율을 직접 적용 (버프 연동) */
+	UFUNCTION(BlueprintCallable, Category = "Runner|Movement")
+	void ApplySpeedMultiplier(float Multiplier);
+
 protected:
 	/** 서버로 레인 변경 인덱스를 전달하는 RPC */
 	UFUNCTION(Server, Reliable)

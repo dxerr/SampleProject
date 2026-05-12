@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # ExCore 아키텍처 핵심 지침서
 
 > 출처: `Md/Architecture/ExCore/` 9개 문서 분석  
@@ -89,6 +93,7 @@
 - `ActivateWidget()` 수동 호출 금지 (이중 활성화 → 입력 라우팅 파괴).
 - `UUserWidget`을 메뉴/창/팝업의 베이스로 사용 금지. 반드시 `UCommonActivatableWidget` 파생 사용.
 - UI 업데이트에 `Event Tick` 사용 금지. **반드시 FieldNotify 바인딩만 사용.**
+- 다른 Actor나 Component클래스에서도 Tick에서의 처리는 최대한 사용 금지
 
 ### 필수 설정
 - `Game Viewport Client Class` = **`CommonGameViewportClient`** (미설정 시 입력 라우팅 전혀 동작 안 함).

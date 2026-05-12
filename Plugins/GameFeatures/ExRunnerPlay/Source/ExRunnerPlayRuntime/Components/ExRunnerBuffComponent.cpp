@@ -230,18 +230,18 @@ void UExRunnerBuffComponent::ApplyBuffEffect(const FExActiveBuffState& Buff)
 	switch (Buff.BuffType)
 	{
 	case EExBuffType::SpeedUp:
-		// BaseMaxSpeed × Weight 로 이동 속도 증가
-		if (CachedMovementComp.IsValid())
+		// 과거 방식: 가상 입력을 주입하여 블루프린트의 Sprint 상태 진입 유도
+		if (BoundPawn.IsValid() && BoundPawn->IsLocallyControlled() && CachedInputComp.IsValid())
 		{
-			CachedMovementComp->ApplySpeedMultiplier(Buff.Weight);
+			CachedInputComp->RequestSprintAction(true);
 		}
 		break;
 
 	case EExBuffType::SpeedDown:
-		// Sprint 해제 → 걷기 상태로 전환
-		if (CachedMovementComp.IsValid())
+		// 과거 방식: 가상 입력을 해제하여 걷기 상태로 전환 유도
+		if (BoundPawn.IsValid() && BoundPawn->IsLocallyControlled() && CachedInputComp.IsValid())
 		{
-			CachedMovementComp->SetWantsToSprint(false);
+			CachedInputComp->RequestSprintAction(false);
 		}
 		break;
 
@@ -258,18 +258,15 @@ void UExRunnerBuffComponent::RevertBuffEffect(EExBuffType BuffType)
 	switch (BuffType)
 	{
 	case EExBuffType::SpeedUp:
-		// 속도 배율 1.0 (원상 복구)
-		if (CachedMovementComp.IsValid())
-		{
-			CachedMovementComp->ApplySpeedMultiplier(1.0f);
-		}
+		// 가상 입력 상태 롤백 (단, 기본이 Sprint이므로 굳이 false를 주입할 필요가 없을 수도 있음)
+		// 스피드다운이 없다면 여전히 Sprint 상태를 유지해야 함.
 		break;
 
 	case EExBuffType::SpeedDown:
-		// Sprint 재활성화
-		if (CachedMovementComp.IsValid())
+		// 디버프 해제 시 원래 상태(스프린트)로 가상 입력 롤백
+		if (BoundPawn.IsValid() && BoundPawn->IsLocallyControlled() && CachedInputComp.IsValid())
 		{
-			CachedMovementComp->SetWantsToSprint(true);
+			CachedInputComp->RequestSprintAction(true);
 		}
 		break;
 
@@ -283,11 +280,29 @@ void UExRunnerBuffComponent::RevertBuffEffect(EExBuffType BuffType)
 // ─────────────────────────────────────────────────────────────
 void UExRunnerBuffComponent::OnRep_ActiveBuffs()
 {
-	// 클라이언트에서는 ActiveBuffs 배열 변경 시 UI 델리게이트만 발행
-	// (실제 효과는 서버에서 적용되고 복제된 Pawn 상태로 반영됨)
+	// 클라이언트에서는 ActiveBuffs 배열 변경 시 UI 델리게이트 발행
+	bool bHasSpeedUp = false;
+	bool bHasSpeedDown = false;
+
 	for (const FExActiveBuffState& Buff : ActiveBuffs)
 	{
 		OnBuffActivated.Broadcast(Buff.BuffType, Buff.RemainingTime);
+		if (Buff.BuffType == EExBuffType::SpeedUp) bHasSpeedDown = false, bHasSpeedUp = true;
+		if (Buff.BuffType == EExBuffType::SpeedDown) bHasSpeedDown = true;
+	}
+
+	// 클라이언트 측 가상 입력 주입 동기화
+	if (BoundPawn.IsValid() && BoundPawn->IsLocallyControlled() && CachedInputComp.IsValid())
+	{
+		if (bHasSpeedDown)
+		{
+			CachedInputComp->RequestSprintAction(false);
+		}
+		else
+		{
+			// 스피드다운이 없으면 기본적으로 Sprint 상태 유지 (게임 중일 경우)
+			CachedInputComp->RequestSprintAction(true);
+		}
 	}
 }
 
@@ -366,17 +381,18 @@ void UExRunnerBuffComponent::OnClearAllBuffsEvent(FGameplayTag Tag, const FExGam
 void UExRunnerBuffComponent::OnMatchPlayingStarted(FGameplayTag Tag, const FExGameplayEventPayload& Payload)
 {
 	// Match_Playing 전환 시점에 기본 Sprint 활성화
-	// 이 시점에는 IsMatchActive() = true이므로 RequestSprintAction이 정상 통과됨
-	if (!GetOwner() || !GetOwner()->HasAuthority()) return;
-
-	UE_LOG(LogExRunnerBuff, Log, TEXT("[ExRunnerBuff] Match_Playing 시작 감지 → 기본 Sprint 활성화"));
-
-	if (CachedMovementComp.IsValid())
+	// 클라이언트/서버 모두 로컬 컨트롤 폰이면 시작 시 Sprint를 활성화
+	if (BoundPawn.IsValid() && BoundPawn->IsLocallyControlled())
 	{
-		CachedMovementComp->SetWantsToSprint(true);
-	}
-	else
-	{
-		UE_LOG(LogExRunnerBuff, Warning, TEXT("[ExRunnerBuff] CachedMovementComp가 유효하지 않아 Sprint 적용 실패. Pawn을 확인하세요."));
+		UE_LOG(LogExRunnerBuff, Log, TEXT("[ExRunnerBuff] Match_Playing 시작 감지 → 기본 Sprint 활성화 (로컬 폰)"));
+
+		if (CachedInputComp.IsValid())
+		{
+			CachedInputComp->RequestSprintAction(true);
+		}
+		else
+		{
+			UE_LOG(LogExRunnerBuff, Warning, TEXT("[ExRunnerBuff] CachedInputComp가 유효하지 않아 Sprint 가상 입력 적용 실패. Pawn을 확인하세요."));
+		}
 	}
 }

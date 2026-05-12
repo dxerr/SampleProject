@@ -6,6 +6,7 @@
 #include "MotionWarpingComponent.h" 
 #include "MoverDataModelTypes.h"
 #include "MoverComponent.h"
+#include "DefaultMovementSet/Settings/CommonLegacyMovementSettings.h"
 #include "ExRunnerStatComponent.h"
 #include "../GameStates/ExRunnerGameState.h"
 #include "../Components/ExPathManager.h"
@@ -246,8 +247,6 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 	UMoverDataModelBlueprintLibrary::SetDirectionalInput(Inputs, MergedInput);
 	
 	// 캐릭터의 고개가 쳐다볼 방향(OrientationIntent)에도 똑같이 타겟 방향을 꽂습니다.
-	Inputs.OrientationIntent = MergedInput.GetSafeNormal();
-
 	Inputs.OrientationIntent = MergedInput.GetSafeNormal();
 
 	// [복구] 기존 뛰기 등 상태 전환을 위해 SuggestedMovementMode 강제 할당 제거
@@ -632,5 +631,36 @@ void UExRunnerMovementComponent::ApplyPreJumpRotation()
 	// 곡면 각도(DeltaYaw)를 계산해 OrientationIntent에 주입하므로 물리적 회전이 유기적으로 이루어집니다.
 	// 카메라 역시 UpdateCharacterRotation의 RInterpTo를 통해 부드럽게 타겟을 쫓습니다.
 	// 여기서 강제로 각도를 쑤셔넣으면(Snap) 점프 키를 누르는 순간 화면이 '튀는(Jitter/Twitch)' 현상이 발생합니다.
+}
+
+void UExRunnerMovementComponent::SetWantsToSprint(bool bSprint)
+{
+	if (!TargetPawn) return;
+	
+	if (UMoverComponent* MoverComp = TargetPawn->FindComponentByClass<UMoverComponent>())
+	{
+		if (UCommonLegacyMovementSettings* Settings = const_cast<UCommonLegacyMovementSettings*>(MoverComp->FindSharedSettings<UCommonLegacyMovementSettings>()))
+		{
+			// BP의 Gait 노드가 무시되더라도, Mover 플러그인 레벨에서 물리적 최대 속도를 강제 변경합니다.
+			// Replicated Buff 시스템에 의해 클라이언트/서버에서 공통으로 호출되므로 Rollback을 방지할 수 있습니다.
+			Settings->MaxSpeed = bSprint ? 649.0f : 376.0f;
+			SetTargetRunningSpeed(Settings->MaxSpeed);
+		}
+	}
+}
+
+void UExRunnerMovementComponent::ApplySpeedMultiplier(float Multiplier)
+{
+	if (!TargetPawn) return;
+	
+	if (UMoverComponent* MoverComp = TargetPawn->FindComponentByClass<UMoverComponent>())
+	{
+		if (UCommonLegacyMovementSettings* Settings = const_cast<UCommonLegacyMovementSettings*>(MoverComp->FindSharedSettings<UCommonLegacyMovementSettings>()))
+		{
+			// 기본 Sprint 속도를 기준으로 배율을 적용
+			Settings->MaxSpeed = 649.0f * Multiplier;
+			SetTargetRunningSpeed(Settings->MaxSpeed);
+		}
+	}
 }
 
