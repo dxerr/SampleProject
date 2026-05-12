@@ -29,12 +29,13 @@ void UExItemEffect_Buff::Execute_Implementation(AActor* Instigator, const UExIte
 		return;
 	}
 
-	// 버프 페이로드 구성: Magnitude를 OptionalValue에, Instigator를 주체로 설정
+	// 버프 페이로드 구성: Magnitude를 OptionalValue에, 데이터 에셋의 RemoveList도 포함
 	FExGameplayEventPayload Payload;
-	Payload.Instigator = Instigator;
-	Payload.Target = Cast<AActor>(Instigator);
+	Payload.Instigator  = Instigator;
+	Payload.Target      = Cast<AActor>(Instigator);
 	Payload.OptionalValue = Magnitude;
-	Payload.Duration = Duration;
+	Payload.Duration    = Duration;
+	Payload.RemoveList  = RemoveList; // 데이터 에셋에서 설정한 RemoveList 전달
 
 	// 버프 태그 이벤트 브로드캐스트 (수신 측: MovementComp, StatComp 등)
 	EventSub->BroadcastEvent(BuffTag, Payload);

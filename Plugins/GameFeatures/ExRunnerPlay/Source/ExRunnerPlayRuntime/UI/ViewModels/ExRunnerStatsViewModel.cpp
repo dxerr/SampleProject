@@ -2,6 +2,7 @@
 
 #include "ExRunnerStatsViewModel.h"
 #include "../../Components/ExRunnerStatComponent.h"
+#include "../../Components/ExRunnerBuffComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
 #include "UObject/UObjectIterator.h"
@@ -19,42 +20,60 @@ void UExRunnerStatsViewModel::AutoInitialize(APlayerController* InController)
 		return;
 	}
 
+	// StatComponent 탐색 (기존 로직 유지)
+	UExRunnerStatComponent* FoundStat = nullptr;
+
 	// 1순위: Pawn 자신에게 직접 붙어있는 경우
-	if (UExRunnerStatComponent* Direct = OwnerPawn->FindComponentByClass<UExRunnerStatComponent>())
-	{
-		InitializeRunnerBindings(Direct);
-		return;
-	}
+	FoundStat = OwnerPawn->FindComponentByClass<UExRunnerStatComponent>();
 
 	// 2순위: Pawn에 Attach된 Child Actor들 순회
-	//        (SkeletalMesh 등 시각 전담 Actor에 StatComponent가 붙어있는 경우 대응)
-	TArray<AActor*> AttachedActors;
-	OwnerPawn->GetAttachedActors(AttachedActors, /*bResetArray=*/true, /*bRecursivelyIncludeAttachedActors=*/true);
-
-	for (AActor* ChildActor : AttachedActors)
+	if (!FoundStat)
 	{
-		if (UExRunnerStatComponent* Found = ChildActor->FindComponentByClass<UExRunnerStatComponent>())
+		TArray<AActor*> AttachedActors;
+		OwnerPawn->GetAttachedActors(AttachedActors, true, true);
+		for (AActor* ChildActor : AttachedActors)
 		{
-			InitializeRunnerBindings(Found);
-			return;
+			FoundStat = ChildActor->FindComponentByClass<UExRunnerStatComponent>();
+			if (FoundStat) break;
 		}
 	}
 
-	// 3순위: World 전체 컴포넌트를 순회하며 Controller의 Pawn과 매칭되는지 확인 (최후의 보루)
-	if (UWorld* World = InController->GetWorld())
+	// 3순위: World 전체 순회 (Fallback)
+	if (!FoundStat)
 	{
-		for (TObjectIterator<UExRunnerStatComponent> It; It; ++It)
+		if (UWorld* World = InController->GetWorld())
 		{
-			if (It->GetWorld() == World && It->GetOwner() == OwnerPawn)
+			for (TObjectIterator<UExRunnerStatComponent> It; It; ++It)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[ExRunnerStatsViewModel] AutoInitialize: TObjectIterator Fallback으로 ExRunnerStatComponent를 찾았습니다!"));
-				InitializeRunnerBindings(*It);
-				return;
+				if (It->GetWorld() == World && It->GetOwner() == OwnerPawn)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[ExRunnerStatsViewModel] AutoInitialize: TObjectIterator Fallback으로 ExRunnerStatComponent를 찾았습니다!"));
+					FoundStat = *It;
+					break;
+				}
 			}
 		}
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[ExRunnerStatsViewModel] AutoInitialize: ExRunnerStatComponent를 최종적으로 찾지 못했습니다. Pawn '%s'"), *OwnerPawn->GetName());
+	if (FoundStat)
+	{
+		InitializeRunnerBindings(FoundStat);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ExRunnerStatsViewModel] AutoInitialize: ExRunnerStatComponent를 최종적으로 찾지 못했습니다. Pawn '%s'"), *OwnerPawn->GetName());
+	}
+
+	// BuffComponent도 같은 Pawn에서 탐색하여 바인딩
+	// BP 노드 추가 없이 AutoInitialize 한 번으로 모두 처리됩니다.
+	if (UExRunnerBuffComponent* BuffComp = OwnerPawn->FindComponentByClass<UExRunnerBuffComponent>())
+	{
+		InitializeBuffBindings(BuffComp);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ExRunnerStatsViewModel] AutoInitialize: ExRunnerBuffComponent를 찾지 못했습니다. 버프 UI가 표시되지 않습니다."));
+	}
 }
 
 void UExRunnerStatsViewModel::OnPawnPossessed(APawn* OldPawn, APawn* NewPawn)
@@ -132,18 +151,31 @@ void UExRunnerStatsViewModel::InitializeRunnerBindings(UExRunnerStatComponent* I
 
 	BoundStatComponent = InStatComponent;
 
-	// 1. 초기값 즉시 반영 (SetCurrentSpeed가 Broadcast까지 처리)
+	// 1. 초기값 즉시 반영
 	SetCurrentSpeed(BoundStatComponent->GetCurrentRunningSpeed());
 	SetCoinCount(BoundStatComponent->GetCoinCount());
 	SetCurrentDistance(BoundStatComponent->GetCurrentDistance());
-	SetSprintRemainingTime(BoundStatComponent->GetSprintRemainingTime());
-	SetMaxSprintTime(1.0f); // Default safe value
+	// 스프린트 잔여시간 초기값 = 0 (BuffComponent에서 관리)
+	SetSprintRemainingTime(0.0f);
+	SetMaxSprintTime(1.0f);
 
-	// 2. 값 변경 이벤트를 구독(Bind)하여 ViewModel 갱신 연결
+	// 2. 값 변경 이벤트 구독
 	BoundStatComponent->OnRunnerSpeedChanged.AddDynamic(this, &UExRunnerStatsViewModel::OnSpeedUpdated);
 	BoundStatComponent->OnCoinCountChanged.AddDynamic(this, &UExRunnerStatsViewModel::OnCoinCountUpdated);
 	BoundStatComponent->OnRunnerDistanceChanged.AddDynamic(this, &UExRunnerStatsViewModel::OnDistanceUpdated);
-	BoundStatComponent->OnSprintTimeChanged.AddDynamic(this, &UExRunnerStatsViewModel::OnSprintTimeUpdated);
+}
+
+void UExRunnerStatsViewModel::InitializeBuffBindings(UExRunnerBuffComponent* InBuffComponent)
+{
+	if (!InBuffComponent) return;
+
+	BoundBuffComponent = InBuffComponent;
+
+	// 버프 활성화/비활성화 이벤트 구독
+	InBuffComponent->OnBuffActivated.AddDynamic(this,   &UExRunnerStatsViewModel::OnBuffActivatedUpdated);
+	InBuffComponent->OnBuffDeactivated.AddDynamic(this,  &UExRunnerStatsViewModel::OnBuffDeactivatedUpdated);
+	// 폴링 주기 잔여 시간 구독 — ProgressBar 카운트다운 용
+	InBuffComponent->OnBuffTimeUpdated.AddDynamic(this,  &UExRunnerStatsViewModel::OnBuffTimeUpdated);
 }
 
 void UExRunnerStatsViewModel::OnSpeedUpdated(float NewSpeed)
@@ -163,14 +195,31 @@ void UExRunnerStatsViewModel::OnDistanceUpdated(float NewDistance)
 	SetCurrentDistance(NewDistance);
 }
 
-void UExRunnerStatsViewModel::OnSprintTimeUpdated(float RemainingTime)
+void UExRunnerStatsViewModel::OnBuffActivatedUpdated(EExBuffType BuffType, float Duration)
 {
-	// 타이머가 새로 시작되었을 경우 (이전 시간이 0 초과 상태가 아니었음) MaxTime 업데이트
-	if (RemainingTime > 0.0f && SprintRemainingTime <= 0.0f)
+	// SpeedUp 버프 활성화 시에만 스프린트 UI 표시
+	if (BuffType == EExBuffType::SpeedUp)
 	{
-		SetMaxSprintTime(RemainingTime);
+		SetMaxSprintTime(Duration);
+		SetSprintRemainingTime(Duration);
 	}
-	SetSprintRemainingTime(RemainingTime);
+}
+
+void UExRunnerStatsViewModel::OnBuffDeactivatedUpdated(EExBuffType BuffType)
+{
+	if (BuffType == EExBuffType::SpeedUp)
+	{
+		SetSprintRemainingTime(0.0f);
+	}
+}
+
+void UExRunnerStatsViewModel::OnBuffTimeUpdated(EExBuffType BuffType, float RemainingTime)
+{
+	// SpeedUp 버프의 잔여 시간을 폴링 주기마다 갱신 — ProgressBar 부드럽게 감소
+	if (BuffType == EExBuffType::SpeedUp)
+	{
+		SetSprintRemainingTime(RemainingTime);
+	}
 }
 
 FText UExRunnerStatsViewModel::GetCurrentSpeedText() const

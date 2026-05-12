@@ -4,9 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "UI/ViewModels/ExPlayerStatsViewModel.h"
+#include "Struct/FExBuffDefinition.h"
 #include "ExRunnerStatsViewModel.generated.h"
 
 class UExRunnerStatComponent;
+class UExRunnerBuffComponent;
 class APlayerController;
 
 /**
@@ -89,6 +91,13 @@ public:
 	void InitializeRunnerBindings(UExRunnerStatComponent* InStatComponent);
 
 	/**
+	 * BuffComponent 바인딩 추가: 버프 시스템이 분리되었으므로
+	 * StatComponent 바인딩 이후 버프 UI 관련만 별도로 추가 연결합니다.
+	 */
+	UFUNCTION(BlueprintCallable, Category="ExUI|RunnerViewModel")
+	void InitializeBuffBindings(UExRunnerBuffComponent* InBuffComponent);
+
+	/**
 	 * [Blueprint 단일 노드 편의 함수]
 	 * PlayerController를 전달하면 내부에서 다음을 자동 처리합니다:
 	 *   1. Controller → Pawn 탐색
@@ -109,6 +118,7 @@ public:
 private:
 	// 상태 감지용 컴포넌트 포인터 (안전 참조)
 	TWeakObjectPtr<UExRunnerStatComponent> BoundStatComponent;
+	TWeakObjectPtr<UExRunnerBuffComponent> BoundBuffComponent;
 
 	/**
 	 * Stat Component 내부에서 스피드 변경 Broadcast가 울리면 호출되는 콜백
@@ -122,6 +132,15 @@ private:
 	UFUNCTION()
 	void OnDistanceUpdated(float NewDistance);
 
+	/** 버프 시작 시 스프린트 UI 갱신 */
 	UFUNCTION()
-	void OnSprintTimeUpdated(float RemainingTime);
+	void OnBuffActivatedUpdated(EExBuffType BuffType, float Duration);
+
+	/** 버프 종료 시 스프린트 UI 초기화 */
+	UFUNCTION()
+	void OnBuffDeactivatedUpdated(EExBuffType BuffType);
+
+	/** 폴링 주기 잔여 시간 구독 — ProgressBar 카운트다운 */
+	UFUNCTION()
+	void OnBuffTimeUpdated(EExBuffType BuffType, float RemainingTime);
 };
