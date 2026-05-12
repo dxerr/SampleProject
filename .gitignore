@@ -49,3 +49,8 @@ sentry.properties
 # Test Scripts & Text outputs
 *.py
 *.txt
+
+# EOS Secrets — 절대 Git에 커밋하지 않음 (Public 저장소 노출 방지)
+# 실제 키 값은 ExNetwork_EOS_Secrets.ini 에 직접 입력
+# 참고: DefaultEngine.ini 의 [ConfigIncludeFiles] 섹션이 이 파일을 참조함
+ExNetwork_EOS_Secrets.ini

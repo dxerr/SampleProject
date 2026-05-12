@@ -56,6 +56,22 @@ AExRunnerGameMode::AExRunnerGameMode()
 	bAutoStartOnReady = true;
 }
 
+void AExRunnerGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
+{
+	Super::InitGame(MapName, Options, ErrorMessage);
+
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UExDataCenterSubsystem* DataCenter = GI->GetSubsystem<UExDataCenterSubsystem>())
+		{
+			if (UExRunnerConfig* Config = DataCenter->GetConfig<UExRunnerConfig>())
+			{
+				RunnerConfig = Config;
+			}
+		}
+	}
+}
+
 void AExRunnerGameMode::BeginPlay()
 {
 	Super::BeginPlay();
@@ -378,6 +394,17 @@ APawn* AExRunnerGameMode::SpawnDefaultPawnAtTransform_Implementation(AController
 {
 	FTransform AdjustedTransform = SpawnTransform;
 
+	if (!RunnerConfig.IsValid())
+	{
+		if (UGameInstance* GI = GetGameInstance())
+		{
+			if (UExDataCenterSubsystem* DataCenter = GI->GetSubsystem<UExDataCenterSubsystem>())
+			{
+				RunnerConfig = DataCenter->GetConfig<UExRunnerConfig>();
+			}
+		}
+	}
+
 	// 4인 이상 매치 시도 차단
 	if (RunnerConfig.IsValid() && NextLaneSlotIndex >= RunnerConfig->MatchFlow.LaneSlotOrder.Num())
 	{
@@ -411,9 +438,21 @@ APawn* AExRunnerGameMode::SpawnDefaultPawnAtTransform_Implementation(AController
 	NextLaneSlotIndex++;
 
 	// Transform 계산 (우측 벡터를 기준으로 오프셋 적용)
+	// 멀티플레이 스폰 시 여러 PlayerStart 중 하나가 무작위로 선택되더라도, 
+	// 항상 트랙의 중앙(레인 0)을 기준으로 배치되도록 기존 좌우 편차를 제거합니다.
+	FVector StartLoc = AdjustedTransform.GetLocation();
 	FVector RightVec = AdjustedTransform.GetRotation().GetAxisY();
-	FVector Offset = RightVec * (TargetLaneIndex * LaneWidth);
-	AdjustedTransform.AddToTranslation(Offset);
+	
+	// 투영을 통해 현재 StartLoc의 RightVec 방향 오프셋을 구함
+	float CurrentRightOffset = FVector::DotProduct(StartLoc, RightVec);
+	
+	// 편차를 제거하여 해당 축 기준 0(중앙)으로 정렬
+	StartLoc -= RightVec * CurrentRightOffset;
+	
+	// 타겟 레인 인덱스에 맞는 오프셋을 새로 적용
+	StartLoc += RightVec * (TargetLaneIndex * LaneWidth);
+	
+	AdjustedTransform.SetLocation(StartLoc);
 
 	return Super::SpawnDefaultPawnAtTransform_Implementation(NewPlayer, AdjustedTransform);
 }
