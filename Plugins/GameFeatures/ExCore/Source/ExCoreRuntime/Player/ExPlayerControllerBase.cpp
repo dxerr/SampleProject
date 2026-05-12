@@ -55,12 +55,24 @@ void AExPlayerControllerBase::OnPossess(APawn* aPawn)
 {
 	Super::OnPossess(aPawn);
 
+	// [ExRunnerStartDiag] OnPossess 호출 여부 확인 로그
+	UE_LOG(LogExCorePC, Log,
+		TEXT("[ExRunnerStartDiag] OnPossess | PC='%s' | Pawn='%s' | HasAuthority=%s"),
+		*GetName(),
+		aPawn ? *aPawn->GetName() : TEXT("null"),
+		HasAuthority() ? TEXT("true") : TEXT("false"));
+
 	// 빙의 완료 시 서버 측에서 GameMode의 OnPlayerReady 호출 (Ready 상태 확정)
 	if (HasAuthority())
 	{
 		if (AExGameModeBase* GameMode = Cast<AExGameModeBase>(GetWorld()->GetAuthGameMode()))
 		{
 			GameMode->OnPlayerReady(this);
+		}
+		else
+		{
+			UE_LOG(LogExCorePC, Warning,
+				TEXT("[ExRunnerStartDiag] OnPossess: GameMode를 AExGameModeBase로 캐스팅 실패! 주의 필요."));
 		}
 	}
 }

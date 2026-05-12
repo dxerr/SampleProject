@@ -31,6 +31,14 @@ struct EXCORERUNTIME_API FExGameplayEventPayload
 	/** 버프/효과 지속 시간 (선택적, 초) */
 	UPROPERTY(BlueprintReadWrite, Category = "Ex|Event")
 	float Duration = 0.0f;
+
+	/**
+	 * 이 버프 활성화 시 먼저 제거할 버프 태그 목록 (RemoveList).
+	 * Ex.Buff.SpeedDown 등 제거 대상 태그를 여기에 낙습니다.
+	 * ExItemEffect_Buff 데이터 에셋에서 에디터로 설정하고, Execute에서 페이로드에 포함됩니다.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Ex|Event")
+	TArray<FGameplayTag> RemoveList;
 };
 
 /** 이벤트 델리게이트 정의 */

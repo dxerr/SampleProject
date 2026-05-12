@@ -139,7 +139,21 @@ void AExGameModeBase::OnPlayerReady(APlayerController* PC)
 	{
 		PS->bIsMatchReady = true;
 		UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] OnPlayerReady: %s is marked ready."), *PC->GetName());
+
+		// [ExRunnerStartDiag] bIsMatchReady 설정 확인 로그
+		UE_LOG(LogExCoreGM, Log,
+			TEXT("[ExRunnerStartDiag] OnPlayerReady | PC='%s' | PS='%s' | bIsMatchReady=%s"),
+			*PC->GetName(),
+			*PS->GetName(),
+			PS->bIsMatchReady ? TEXT("true") : TEXT("false"));
+
 		CheckAndStartMatch();
+	}
+	else
+	{
+		UE_LOG(LogExCoreGM, Warning,
+			TEXT("[ExRunnerStartDiag] OnPlayerReady | PC='%s' | PlayerState가 null! Ready 설정 실패."),
+			*PC->GetName());
 	}
 }
 
@@ -169,11 +183,6 @@ void AExGameModeBase::CheckAndStartMatch()
 
 	if (ExGameState->GetCurrentMatchPhase() == ExMatchTags::Match_WaitingForPlayers)
 	{
-		// 1. CurrentMatchPhase == Match_WaitingForPlayers (이미 위에서 체크함)
-		// 2. HasClientLoadedCurrentWorld()
-		// 3. bIsMatchReady == true
-		// 4. ActivePlayer 수 >= GetExpectedPlayerCount()
-
 		int32 ReadyPlayers = 0;
 		int32 LoadedPlayers = 0;
 		int32 TotalPlayers = 0;
@@ -203,12 +212,27 @@ void AExGameModeBase::CheckAndStartMatch()
 		bool bAllReady = (ReadyPlayers == TotalPlayers) && (TotalPlayers > 0);
 		bool bHasExpectedCount = TotalPlayers >= GetExpectedPlayerCount();
 
+		// [ExRunnerStartDiag] 4-AND 조건 현황 로그 (매 CheckAndStartMatch 호출 시 출력)
+		UE_LOG(LogExCoreGM, Log,
+			TEXT("[ExRunnerStartDiag] CheckAndStartMatch | Total=%d | Loaded=%d | Ready=%d | Expected=%d | bAllLoaded=%s | bAllReady=%s | bHasExpected=%s"),
+			TotalPlayers, LoadedPlayers, ReadyPlayers, GetExpectedPlayerCount(),
+			bAllLoaded ? TEXT("true") : TEXT("false"),
+			bAllReady ? TEXT("true") : TEXT("false"),
+			bHasExpectedCount ? TEXT("true") : TEXT("false"));
+
 		if (bAllLoaded && bAllReady && bHasExpectedCount)
 		{
 			GetWorld()->GetTimerManager().ClearTimer(WaitPlayersTimerHandle);
-			UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] CheckAndStartMatch: All conditions met. Starting match."));
+			UE_LOG(LogExCoreGM, Log, TEXT("[ExRunnerStartDiag] CheckAndStartMatch: 모든 조건 충족! 실제 시작 진행."));
 			OnAllPlayersReady();
 		}
+	}
+	else
+	{
+		// [ExRunnerStartDiag] WaitingForPlayers가 아닌 다른 Phase에서 CheckAndStartMatch 호출 시 로그
+		UE_LOG(LogExCoreGM, Log,
+			TEXT("[ExRunnerStartDiag] CheckAndStartMatch 무시: CurrentPhase='%s' (이미 WaitingForPlayers 단계 알님)"),
+			*ExGameState->GetCurrentMatchPhase().ToString());
 	}
 }
 

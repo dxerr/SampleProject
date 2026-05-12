@@ -34,6 +34,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Effect|Buff", meta = (ClampMin = "0"))
 	float Duration = 5.0f;
 
+	/**
+	 * 이 버프가 활성화될 때 먼저 제거(해제)할 버프 태그 목록.
+	 * 예) SpeedUp의 RemoveList에 Ex.Buff.SpeedDown을 넣으면
+	 *     SpeedDown 중 SpeedUp을 먹으면 SpeedDown이 먼저 해제됩니다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Effect|Buff")
+	TArray<FGameplayTag> RemoveList;
+
 	virtual void Execute_Implementation(AActor* Instigator, const UExItemDefinition* ItemDefinition, AExItemPickupBase* ItemActor) override;
 	virtual FText GetEffectDescription_Implementation() const override;
 };
