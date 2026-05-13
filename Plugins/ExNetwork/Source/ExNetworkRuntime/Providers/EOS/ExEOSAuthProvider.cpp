@@ -7,8 +7,8 @@
 #include "IEOSSDKManager.h"
 
 #if WITH_EOS_SDK
-#include "eos_connect.h"
-#include "eos_platform.h"
+#include "eos_sdk.h"      // EOS_Platform_GetConnectInterface
+#include "eos_connect.h"  // EOS_Connect_*, EOS_HConnect
 
 FExEOSAuthProvider::FExEOSAuthProvider()
 {
@@ -114,7 +114,6 @@ void FExEOSAuthProvider::OnConnectLoginComplete(const EOS_Connect_LoginCallbackI
 	}
 	else if (Data->ResultCode == EOS_EResult::EOS_InvalidUser && Data->ContinuanceToken != nullptr)
 	{
-		// 최초 로그인 — 신규 유저 생성 필요
 		UE_LOG(LogExNetwork, Log, TEXT("[ExEOSAuthProvider] 신규 유저 — CreateUser 시도."));
 
 		IOnlineSubsystem* OSS = IOnlineSubsystem::Get(TEXT("EOS"));
@@ -176,19 +175,15 @@ bool FExEOSAuthProvider::IsLoggedIn(int32 LocalUserNum) const
 
 #else // !WITH_EOS_SDK
 
-// EOS SDK 미지원 환경에서는 빈 구현 제공
 FExEOSAuthProvider::FExEOSAuthProvider()
 {
-	UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSAuthProvider] EOS SDK 미지원 환경 — 로그인 불가."));
+	UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSAuthProvider] EOS SDK 미지원 환경."));
 }
 void FExEOSAuthProvider::Login(int32 LocalUserNum)
 {
 	OnLoginComplete.Broadcast(false, TEXT("EOS SDK not available"));
 }
-void FExEOSAuthProvider::Logout(int32 LocalUserNum)
-{
-	OnLogoutComplete.Broadcast(false);
-}
+void FExEOSAuthProvider::Logout(int32 LocalUserNum) { OnLogoutComplete.Broadcast(false); }
 bool FExEOSAuthProvider::IsLoggedIn(int32 LocalUserNum) const { return false; }
 
 #endif // WITH_EOS_SDK

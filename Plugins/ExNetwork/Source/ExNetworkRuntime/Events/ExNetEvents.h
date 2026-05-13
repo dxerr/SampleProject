@@ -10,29 +10,37 @@
  * BP 구독이 필요한 Dynamic Multicast 델리게이트는
  * UObject 헤더 (ExOnlineSubsystem.h 등) 에 직접 선언한다.
  * UHT 처리 규칙 (.generated.h 순서 제약) 때문이다.
- *
- * Phase 2: 인증 관련 델리게이트
- * Phase 3 이후: 매칭 관련 델리게이트 추가 예정
  */
 
 // ------------------------------------------------------------------
 // 인증 이벤트 (Phase 2)
 // ------------------------------------------------------------------
 
-/**
- * 로그인 완료 시 브로드캐스트 (C++ 구독용).
- * IExAuthProvider 구현체가 이 델리게이트를 소유하고 브로드캐스트한다.
- */
+/** 로그인 완료 (C++ 구독용) */
 DECLARE_MULTICAST_DELEGATE_TwoParams(FExOnLoginCompleteDelegate, bool /*bSuccess*/, const FString& /*ErrorMessage*/);
 
-/**
- * 로그아웃 완료 시 브로드캐스트 (C++ 구독용).
- */
+/** 로그아웃 완료 (C++ 구독용) */
 DECLARE_MULTICAST_DELEGATE_OneParam(FExOnLogoutCompleteDelegate, bool /*bSuccess*/);
 
 // ------------------------------------------------------------------
-// 매칭 이벤트 (Phase 3 이후 추가 예정)
+// Lobby 이벤트 (Phase 3)
 // ------------------------------------------------------------------
 
-// DECLARE_MULTICAST_DELEGATE_OneParam(FExOnMatchFoundDelegate, const FString& /*SessionId*/);
-// DECLARE_MULTICAST_DELEGATE_OneParam(FExOnMatchJoinedDelegate, bool /*bSuccess*/);
+/** Lobby 생성 완료 */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FExOnLobbyCreateCompleteDelegate, bool /*bSuccess*/, const FString& /*ErrorMessage*/);
+
+/** Lobby 검색 완료. ResultCount: 찾은 Lobby 수 */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FExOnLobbyFindCompleteDelegate, bool /*bSuccess*/, int32 /*ResultCount*/);
+
+/** Lobby 참가 완료 */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FExOnLobbyJoinCompleteDelegate, bool /*bSuccess*/, const FString& /*ErrorMessage*/);
+
+/** Lobby 파괴 완료 */
+DECLARE_MULTICAST_DELEGATE_OneParam(FExOnLobbyDestroyCompleteDelegate, bool /*bSuccess*/);
+
+// ------------------------------------------------------------------
+// Quick Match 이벤트 (Phase 3) — BP용 Dynamic은 ExOnlineSubsystem.h에 선언
+// ------------------------------------------------------------------
+
+/** Quick Match 최종 완료 (C++ 구독용) */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FExOnMatchFoundDelegate, bool /*bSuccess*/, const FString& /*ErrorMessage*/);

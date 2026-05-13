@@ -44,6 +44,7 @@ public class ExRunnerPlayRuntime : ModuleRules
 				"CommonUI",
 				"Sentry",
 				"BinkMediaPlayer",
+				"ExNetworkRuntime",	// ExNetwork 매칭 시스템 (Phase 3 테스트용)
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

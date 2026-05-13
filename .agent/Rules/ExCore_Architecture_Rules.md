@@ -104,6 +104,8 @@ trigger: always_on
 - 파생 계산값은 `UFUNCTION(BlueprintPure, FieldNotify)` 선언 → Source 바인딩만 가능.
 - Setter에서 `UE_MVVM_SET_PROPERTY_VALUE` 매크로 필수. 파생값 변경 시 `UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED` 추가.
 - ViewModel 접근 시점: `On Initialized` ❌ → **`On Activated` ✅** (Create Instance 방식은 이 시점에 생성).
+- **FieldNotify 바인딩 없이 ViewModel만 사용 시 런타임 인스턴스가 생성되지 않음 → `Accessed None` 에러 발생.**  
+  해결: `Window → View Bindings` 패널 → 우측 상단 ⚙️ → **`View Settings` → `Create View Without Bindings` 활성화** 필수.
 
 ---
 

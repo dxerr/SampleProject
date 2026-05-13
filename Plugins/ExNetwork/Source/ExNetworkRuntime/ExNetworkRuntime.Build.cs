@@ -20,8 +20,9 @@ public class ExNetworkRuntime : ModuleRules
 				Path.Combine(ModuleDirectory, "Providers"),
 				Path.Combine(ModuleDirectory, "Providers", "EOS"),
 				Path.Combine(ModuleDirectory, "Providers", "Null"),
+				// Phase 3 추가
+				Path.Combine(ModuleDirectory, "Match"),
 				// Phase 3 이후 추가 예정:
-				// Path.Combine(ModuleDirectory, "Match"),
 				// Path.Combine(ModuleDirectory, "Player"),
 			}
 		);
@@ -40,6 +41,7 @@ public class ExNetworkRuntime : ModuleRules
 				"Engine",
 				"OnlineSubsystem",
 				"OnlineSubsystemUtils",
+				"OnlineBase",       // SEARCH_LOBBIES 등 OnlineSessionNames 접근
 				// EOS SDK 직접 호출을 위한 의존성
 				"EOSShared",
 				"OnlineSubsystemEOS",

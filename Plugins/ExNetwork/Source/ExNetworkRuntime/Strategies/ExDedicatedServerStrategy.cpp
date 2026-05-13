@@ -13,7 +13,7 @@ EExServerType FExDedicatedServerStrategy::GetServerType() const
 	return EExServerType::DedicatedServer;
 }
 
-void FExDedicatedServerStrategy::CreateMatch()
+void FExDedicatedServerStrategy::CreateMatch(const FExMatchConfig& Config)
 {
 	UE_LOG(LogExNetwork, Warning, TEXT("[ExDedicatedServerStrategy] CreateMatch — 미구현 (Phase 4+)."));
 }

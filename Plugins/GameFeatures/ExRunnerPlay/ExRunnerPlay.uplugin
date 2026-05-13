@@ -42,6 +42,10 @@
 		{
 			"Name": "BinkMedia",
 			"Enabled": true
+		},
+		{
+			"Name": "ExNetwork",
+			"Enabled": true
 		}
 	],
 	"ExplicitlyLoaded": true,

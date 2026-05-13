@@ -6,29 +6,23 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Core/IExAuthProvider.h"
 #include "Core/IExNetServerStrategy.h"
+#include "Core/ExNetworkTypes.h"
+#include "Match/ExMatchTypes.h"
 #include "ExOnlineSubsystem.generated.h"
 
 class IOnlineSubsystem;
 
-/**
- * 로그인 완료 시 BP에서 구독 가능한 Dynamic Multicast 델리게이트.
- * C++ 구독용은 Events/ExNetEvents.h 의 FExOnLoginCompleteDelegate 사용.
- *
- * 주의: DECLARE_DYNAMIC_MULTICAST_DELEGATE 는 .generated.h 바로 앞에 있어야
- *       UHT가 정상 처리한다. 별도 헤더로 분리하면 UHT 에러 발생.
- */
+/** 로그인 완료 BP 델리게이트 */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FExOnLoginCompleteDynDelegate, bool, bSuccess, const FString&, ErrorMessage);
+
+/** 매칭 완료 BP 델리게이트 */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FExOnMatchFoundDynDelegate, bool, bSuccess, const FString&, ErrorMessage);
 
 /**
  * UExOnlineSubsystem
  *
  * ExNetwork 플러그인의 단일 진입점(Single Entry Gate).
  * GameInstanceSubsystem으로 구현되어 게임 전체 수명 동안 단일 인스턴스를 유지한다.
- *
- * Phase 2 기능:
- *   - EOS OSS 준비 완료 시점을 OnOnlineSubsystemCreated 콜백으로 정확히 감지
- *   - EOS Device ID 자동 로그인
- *   - 서버 환경(Listen/Dedicated) 자동 감지 및 Strategy 선택
  */
 UCLASS()
 class EXNETWORKRUNTIME_API UExOnlineSubsystem : public UGameInstanceSubsystem
@@ -40,38 +34,57 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
-	/** 현재 로그인 상태를 반환한다. */
+	// ------------------------------------------------------------------
+	// 인증 (Phase 2)
+	// ------------------------------------------------------------------
+
+	/** 현재 로그인 상태 */
 	UFUNCTION(BlueprintPure, Category = "ExNetwork|Auth")
 	bool IsLoggedIn() const;
 
-	/** 로그인 완료 시 브로드캐스트. BP와 C++ 모두에서 구독 가능. */
+	/** 로그인 완료 델리게이트 */
 	UPROPERTY(BlueprintAssignable, Category = "ExNetwork|Auth")
 	FExOnLoginCompleteDynDelegate OnLoginComplete;
 
-	/** 현재 서버 전략 타입 문자열을 반환한다. */
+	/** 현재 서버 전략 타입 문자열 */
 	UFUNCTION(BlueprintPure, Category = "ExNetwork|Server")
 	FString GetServerTypeString() const;
 
+	// ------------------------------------------------------------------
+	// 매칭 (Phase 3)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Quick Match 시작.
+	 * Lobby를 검색하여 빈 자리가 있으면 참가하고, 없으면 새로 생성한다.
+	 * 완료 시 OnMatchFound 델리게이트 브로드캐스트.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExNetwork|Match")
+	void FindQuickMatch(const FExMatchConfig& Config);
+
+	/** 진행 중인 매칭 취소 및 Lobby 파괴 */
+	UFUNCTION(BlueprintCallable, Category = "ExNetwork|Match")
+	void CancelMatch();
+
+	/** 현재 매칭 상태 */
+	UFUNCTION(BlueprintPure, Category = "ExNetwork|Match")
+	EExMatchState GetMatchState() const { return CurrentMatchState; }
+
+	/** 매칭 완료 델리게이트 */
+	UPROPERTY(BlueprintAssignable, Category = "ExNetwork|Match")
+	FExOnMatchFoundDynDelegate OnMatchFound;
+
 private:
 
-	/** EOS OSS 획득 시도. NULL 서브시스템이면 nullptr 반환. */
 	IOnlineSubsystem* TryGetEOSSubsystem() const;
-
-	/** OnOnlineSubsystemCreated 콜백 — EOS 생성 시점에 정확히 호출됨 */
 	void HandleOnlineSubsystemCreated(IOnlineSubsystem* NewSubsystem);
-
-	/** OSS 확정 후 AuthProvider 생성 및 로그인 시작 */
 	void InitAuthProviderAndLogin(IOnlineSubsystem* OSS);
-
-	/** 인증 완료 콜백 */
 	void HandleAuthLoginComplete(bool bSuccess, const FString& ErrorMessage);
 
-	/** OnOnlineSubsystemCreated 구독 핸들 (Deinitialize 시 해제) */
 	FDelegateHandle SubsystemCreatedHandle;
 
-	/** 인증 Provider (EOS 구현체) */
 	TUniquePtr<IExAuthProvider> AuthProvider;
-
-	/** 서버 모델 Strategy */
 	TUniquePtr<IExNetServerStrategy> ServerStrategy;
+
+	EExMatchState CurrentMatchState = EExMatchState::Idle;
 };

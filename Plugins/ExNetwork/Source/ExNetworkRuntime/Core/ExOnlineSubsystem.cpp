@@ -6,6 +6,7 @@
 #include "IExNetServerStrategy.h"
 #include "Providers/EOS/ExEOSAuthProvider.h"
 #include "Providers/Null/ExNullAuthProvider.h"
+#include "Providers/EOS/ExEOSLobbyProvider.h"
 #include "Strategies/ExListenServerStrategy.h"
 #include "Strategies/ExDedicatedServerStrategy.h"
 #include "OnlineSubsystem.h"
@@ -19,7 +20,7 @@ void UExOnlineSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] Initialize 시작."));
 
 	// ------------------------------------------------------------------
-	// 1. 서버 Strategy 자동 선택
+	// 1. 서버 Strategy 자동 선택 + LobbyProvider 주입
 	// ------------------------------------------------------------------
 	const UWorld* World = GetWorld();
 	const bool bIsDedicatedServer = (World && World->GetNetMode() == NM_DedicatedServer);
@@ -31,58 +32,29 @@ void UExOnlineSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	}
 	else
 	{
-		ServerStrategy = MakeUnique<FExListenServerStrategy>();
+		auto ListenStrategy = MakeUnique<FExListenServerStrategy>();
+
+		// LobbyProvider는 OSS 획득 후 주입 (아래 InitAuthProviderAndLogin에서 처리)
+		// 임시로 Strategy만 먼저 생성
+		ServerStrategy = MoveTemp(ListenStrategy);
 		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] ServerStrategy 선택: ListenServer"));
 	}
 
 	// ------------------------------------------------------------------
-	// 2. EOS OSS 획득
-	//
-	// OnOnlineSubsystemCreated 는 IOnlineSubsystem::Get() 이 처음 호출될 때
-	// 내부에서 생성 후 브로드캐스트된다. 즉 누군가 Get()을 호출해야 생성된다.
-	//
-	// 처리 순서:
-	//   (1) 먼저 구독 등록
-	//   (2) Get(TEXT("EOS")) 직접 호출하여 생성 유도
-	//       → 이미 생성되어 있으면 Get()이 기존 인스턴스를 즉시 반환
-	//       → 미생성이면 Get() 내부에서 생성 후 OnOnlineSubsystemCreated 브로드캐스트
-	//   (3) Get()이 유효한 EOS OSS를 반환하면 즉시 로그인 진행
-	//       브로드캐스트가 구독 직후 동기로 발생했을 경우 HandleOnlineSubsystemCreated
-	//       에서 이미 처리되었으므로 중복 처리 방지를 위해 AuthProvider 생성 여부 확인
+	// 2. EOS OSS 획득 + 인증 + LobbyProvider 주입
 	// ------------------------------------------------------------------
-
-	// (1) 구독 먼저 등록
 	SubsystemCreatedHandle = FOnlineSubsystemDelegates::OnOnlineSubsystemCreated.AddUObject(
 		this, &UExOnlineSubsystem::HandleOnlineSubsystemCreated
 	);
 
-	// (2) Get() 호출로 생성 유도 — 동기 브로드캐스트 발생 가능
 	IOnlineSubsystem* OSS = IOnlineSubsystem::Get(TEXT("EOS"));
 
-	// (3) Get()이 반환했지만 콜백이 동기 처리되지 않은 경우 직접 처리
-	if (OSS && OSS->GetSubsystemName() == FName("EOS") && !AuthProvider)
+	if (OSS && OSS->GetSubsystemName() != FName("NULL") && !AuthProvider)
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] EOS OSS 즉시 획득 — 직접 초기화 진행."));
-
-		// 구독 해제 (더 이상 불필요)
 		FOnlineSubsystemDelegates::OnOnlineSubsystemCreated.Remove(SubsystemCreatedHandle);
 		SubsystemCreatedHandle.Reset();
-
 		InitAuthProviderAndLogin(OSS);
-	}
-	else if ((!OSS || OSS->GetSubsystemName() == FName("NULL")) && !AuthProvider)
-	{
-		UE_LOG(LogExNetwork, Error, TEXT("[UExOnlineSubsystem] EOS OSS 획득 실패. NullAuthProvider로 폴백합니다."));
-
-		// 구독 해제
-		FOnlineSubsystemDelegates::OnOnlineSubsystemCreated.Remove(SubsystemCreatedHandle);
-		SubsystemCreatedHandle.Reset();
-
-		AuthProvider = MakeUnique<FExNullAuthProvider>();
-		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] AuthProvider 선택: Null"));
-
-		AuthProvider->OnLoginComplete.AddUObject(this, &UExOnlineSubsystem::HandleAuthLoginComplete);
-		AuthProvider->Login(0);
 	}
 }
 
@@ -105,7 +77,6 @@ void UExOnlineSubsystem::HandleOnlineSubsystemCreated(IOnlineSubsystem* NewSubsy
 
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] OnOnlineSubsystemCreated 콜백 — EOS OSS 생성 확인."));
 
-	// 구독 해제 (1회만 처리)
 	FOnlineSubsystemDelegates::OnOnlineSubsystemCreated.Remove(SubsystemCreatedHandle);
 	SubsystemCreatedHandle.Reset();
 
@@ -117,8 +88,19 @@ void UExOnlineSubsystem::InitAuthProviderAndLogin(IOnlineSubsystem* OSS)
 	check(OSS);
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] OSS 확정 — 서브시스템명: %s"), *OSS->GetSubsystemName().ToString());
 
+	// AuthProvider 생성
 	AuthProvider = MakeUnique<FExEOSAuthProvider>();
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] AuthProvider 선택: EOS"));
+
+	// LobbyProvider를 ListenServerStrategy에 주입
+	if (FExListenServerStrategy* ListenStrategy = static_cast<FExListenServerStrategy*>(ServerStrategy.Get()))
+	{
+		if (ListenStrategy->GetServerType() == EExServerType::ListenServer)
+		{
+			ListenStrategy->SetLobbyProvider(MakeUnique<FExEOSLobbyProvider>(OSS));
+			UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] LobbyProvider 주입 완료: ExEOSLobbyProvider"));
+		}
+	}
 
 	AuthProvider->OnLoginComplete.AddUObject(this, &UExOnlineSubsystem::HandleAuthLoginComplete);
 
@@ -161,6 +143,60 @@ FString UExOnlineSubsystem::GetServerTypeString() const
 	return (ServerStrategy->GetServerType() == EExServerType::ListenServer)
 		? TEXT("ListenServer")
 		: TEXT("DedicatedServer");
+}
+
+void UExOnlineSubsystem::FindQuickMatch(const FExMatchConfig& Config)
+{
+	if (!IsLoggedIn())
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] FindQuickMatch: 로그인 미완료. 매칭을 시작할 수 없습니다."));
+		OnMatchFound.Broadcast(false, TEXT("Not logged in"));
+		return;
+	}
+
+	if (CurrentMatchState != EExMatchState::Idle)
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] FindQuickMatch: 이미 매칭 진행 중. State=%d"), (int32)CurrentMatchState);
+		return;
+	}
+
+	FExListenServerStrategy* ListenStrategy = static_cast<FExListenServerStrategy*>(ServerStrategy.Get());
+	if (!ensureMsgf(ListenStrategy, TEXT("[UExOnlineSubsystem] FindQuickMatch: ListenServerStrategy 없음.")))
+	{
+		OnMatchFound.Broadcast(false, TEXT("Strategy not available"));
+		return;
+	}
+
+	CurrentMatchState = EExMatchState::Searching;
+	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] FindQuickMatch 시작 — MatchMode=%s"), *Config.MatchMode);
+
+	ListenStrategy->FindAndJoinOrCreate(Config,
+		[this](bool bSuccess, const FString& ErrorMessage)
+		{
+			if (bSuccess)
+			{
+				CurrentMatchState = EExMatchState::Ready;
+				UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] 매칭 완료 — 성공."));
+			}
+			else
+			{
+				CurrentMatchState = EExMatchState::Idle;
+				UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] 매칭 실패 — %s"), *ErrorMessage);
+			}
+			OnMatchFound.Broadcast(bSuccess, ErrorMessage);
+		}
+	);
+}
+
+void UExOnlineSubsystem::CancelMatch()
+{
+	FExListenServerStrategy* ListenStrategy = static_cast<FExListenServerStrategy*>(ServerStrategy.Get());
+	if (ListenStrategy)
+	{
+		ListenStrategy->CancelMatch();
+	}
+	CurrentMatchState = EExMatchState::Idle;
+	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] CancelMatch 완료."));
 }
 
 void UExOnlineSubsystem::HandleAuthLoginComplete(bool bSuccess, const FString& ErrorMessage)
