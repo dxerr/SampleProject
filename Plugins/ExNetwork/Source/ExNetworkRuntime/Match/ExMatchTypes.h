@@ -36,9 +36,16 @@ struct FExMatchConfig
 {
 	GENERATED_BODY()
 
+	FExMatchConfig()
+		: MaxPlayers(2)
+		, MatchMode(TEXT("Default"))
+		, MapPath(TEXT(""))
+	{
+	}
+
 	/** 최대 플레이어 수 (기본 2) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Match")
-	int32 MaxPlayers = 2;
+	int32 MaxPlayers;
 
 	/**
 	 * 게임 모드 식별자. Lobby 검색 필터로 사용된다.

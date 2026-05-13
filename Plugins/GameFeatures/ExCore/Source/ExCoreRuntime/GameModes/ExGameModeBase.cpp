@@ -124,9 +124,14 @@ void AExGameModeBase::OnFlowSubsystemRequestTravel(const FString& MapURL)
 {
 	if (UWorld* World = GetWorld())
 	{
-		UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] Performing ServerTravel to URL: %s with Seamless: %s"), *MapURL, bUseSeamlessTravel ? TEXT("True") : TEXT("False"));
-		// bAbsolute=false (상대경로 유지), bShouldSkipGameNotify=false (보통 false)
-		World->ServerTravel(MapURL, false, bUseSeamlessTravel);
+		// [Fix] Seamless Travel은 반드시 TransitionMap이 설정되어야 합니다.
+		// TransitionMap 미설정 시 Non-Seamless로 폴백되면서 클라이언트가 같은 포트에
+		// 중복 연결을 시도하여 "Host closed the connection" 에러 발생.
+		// 안정적인 전환을 위해 Non-Seamless Travel(bSeamless=false)을 사용합니다.
+		// (Seamless Travel이 필요한 경우 ProjectSettings에서 TransitionMap을 설정하세요.)
+		const bool bSeamless = false;
+		UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] Performing ServerTravel to URL: %s (Non-Seamless)"), *MapURL);
+		World->ServerTravel(MapURL, false, bSeamless);
 	}
 }
 

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "MVVMViewModelBase.h"
 #include "UI/Widgets/ExModalWidget.h"   // EExModalResult
+#include "ExMatchTypes.h"              // FExMatchConfig 값 타입 멤버 포함 시 완전 정의 필수
 #include "ExLobbyMatchViewModel.generated.h"
 
 class UExOnlineSubsystem;
@@ -55,6 +56,10 @@ private:
 	UFUNCTION()
 	void OnMatchFoundCallback(bool bSuccess, const FString& ErrorMessage);
 
+	/** StartGame 결과 수신 (Phase 4) — 서버가 ServerTravel을 수행하면 자동 맵 전환 */
+	UFUNCTION()
+	void OnGameStartedCallback(bool bSuccess, const FString& ErrorMessage);
+
 	/** 팝업(대기 팝업)의 버튼 클릭 결과 수신 — 취소 처리 */
 	UFUNCTION()
 	void OnMatchingPopupResult(EExModalResult Result, const FText& InputText);
@@ -82,6 +87,9 @@ private:
 	/** 매칭 진행 중 여부 — 중복 호출 방지 */
 	bool bIsMatching = false;
 
+	/** EOS 로그인 완료 전 버튼이 클릭된 경우 true — 로그인 완료 즉시 자동으로 StartQuickMatch() 재호출 */
+	bool bPendingStartMatch = false;
+
 	/** 현재 표시 중인 대기 팝업 (닫기용 캐싱) */
 	UPROPERTY(Transient)
 	TObjectPtr<UExPopupWidget> ActiveMatchingPopup;
@@ -96,4 +104,9 @@ private:
 	/** 매칭 Config (MatchMode, MaxPlayers 고정값) */
 	static constexpr int32 DefaultMaxPlayers = 2;
 	static const FString DefaultMatchMode;
+	static const FString DefaultMapPath; // Phase 4: StartGame에 필요한 맵 경로
+
+	/** StartGame 호출 시 사용할 Config 보존 (OnMatchFoundCallback 스코프 밖에서도 접근) */
+	UPROPERTY(Transient)
+	FExMatchConfig PendingConfig;
 };

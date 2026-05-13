@@ -4,33 +4,27 @@
 
 #include "CoreMinimal.h"
 #include "Core/IExAuthProvider.h"
-
-#if WITH_EOS_SDK
-#include "eos_connect_types.h"
-#endif
-
-class IOnlineSubsystemEOS;
+#include "Interfaces/OnlineIdentityInterface.h"
 
 /**
  * FExEOSAuthProvider
  *
  * IExAuthProvider의 EOS 구현체.
- * EOS Connect Device ID 익명 로그인을 EOS SDK 직접 호출로 수행한다.
+ * IOnlineIdentity::AutoLogin() 을 통해 EOS Connect Device ID 로그인을 수행한다.
  *
- * 공식 OnlineSubsystemEOS의 IOnlineIdentity::Login()은 EAS(Epic Account) 기반
- * 인증만 지원하고 Device ID를 지원하지 않으므로, EOS SDK API를 직접 호출한다.
+ * bUseEAS=false, bUseEOSConnect=true 설정 하에서 AutoLogin은
+ * FUserManagerEOS::CallEOSConnectLogin() → EOS Connect Device ID 경로를 타며,
+ * IOnlineIdentity의 LocalUser 등록까지 처리하여 IOnlineSession(Lobby/Session) 사용이 가능해진다.
  *
- * 로그인 흐름:
- *   1. IOnlineSubsystemEOS::GetEOSPlatformHandle() → EOS_HPlatform 획득
- *   2. EOS_Connect_CreateDeviceId() → 디바이스 고유 ID 생성 (최초 1회, 이미 있으면 스킵)
- *   3. EOS_Connect_Login() with EOS_ECT_DEVICEID_ACCESS_TOKEN → 익명 로그인
+ * 이전에 EOS SDK 직접 호출(EOS_Connect_Login) 방식은 EOS Connect 레이어만 로그인되고
+ * IOnlineIdentity LocalUser가 등록되지 않아 IOnlineSession에서 "user not logged in" 에러가 발생했다.
  */
 class FExEOSAuthProvider : public IExAuthProvider
 {
 public:
 
 	explicit FExEOSAuthProvider();
-	virtual ~FExEOSAuthProvider() override = default;
+	virtual ~FExEOSAuthProvider() override;
 
 	virtual void Login(int32 LocalUserNum) override;
 	virtual void Logout(int32 LocalUserNum) override;
@@ -38,10 +32,11 @@ public:
 
 private:
 
-#if WITH_EOS_SDK
-	void OnCreateDeviceIdComplete(const EOS_Connect_CreateDeviceIdCallbackInfo* Data, int32 LocalUserNum);
-	void OnConnectLoginComplete(const EOS_Connect_LoginCallbackInfo* Data, int32 LocalUserNum);
-#endif
+	void HandleLoginComplete(int32 LocalUserNum, bool bSuccess, const FUniqueNetId& UserId, const FString& ErrorStr);
+	void HandleLogoutComplete(int32 LocalUserNum, bool bSuccess);
 
 	bool bLoggedIn = false;
+
+	FDelegateHandle LoginCompleteHandle;
+	FDelegateHandle LogoutCompleteHandle;
 };
