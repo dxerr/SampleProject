@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "UI/Widgets/ExHUDLayoutWidget.h"
 #include "UI/Widgets/ExWindowWidget.h"
@@ -42,8 +42,26 @@ void UExHUDLayoutWidget::RegisterStacksToManager()
 	{
 		if (UExUIManagerSubsystem* UIManager = LP->GetSubsystem<UExUIManagerSubsystem>())
 		{
-			// 만약 하나라도 BindWidget 실패로 null이라면 매니저에서 경고를 냅니다.
+			// BindWidget 실패로 null이더라도 UIManager에서 경고를 남김
 			UIManager->RegisterStacks(GameStack, MenuStack);
+
+			// 디테일 패널에서 지정한 팝업/토스트 클래스를 UIManager에 자동 등록
+			// 설정되지 않은 경우 기존 값 유지 (다른 HUD에서 이미 설정했을 수 있음)
+			if (PopupWidgetClass)
+			{
+				UIManager->SetPopupWidgetClass(PopupWidgetClass);
+			}
+			if (ToastWidgetClass)
+			{
+				UIManager->SetToastWidgetClass(ToastWidgetClass);
+			}
+
+			// ToastContainer가 배치되어 있으면 자동 등록 (BindWidgetOptional — 없어도 OK)
+			if (ToastContainer)
+			{
+				UIManager->RegisterToastContainer(ToastContainer);
+				UE_LOG(LogTemp, Log, TEXT("[ExHUDLayoutWidget] ToastContainer 자동 등록 완료."));
+			}
 		}
 	}
 }

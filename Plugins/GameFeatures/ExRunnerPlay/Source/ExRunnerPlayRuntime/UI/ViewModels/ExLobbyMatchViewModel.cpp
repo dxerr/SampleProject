@@ -6,6 +6,7 @@
 #include "UI/Subsystems/ExUIManagerSubsystem.h"
 #include "UI/Widgets/ExPopupWidget.h"
 #include "UI/Data/ExPopupDescriptor.h"
+#include "Blueprint/UserWidget.h"
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
@@ -27,8 +28,16 @@ void UExLobbyMatchViewModel::AutoInitialize(UObject* WorldContextObject)
 		return;
 	}
 
-	// WorldContext 캐싱 — GetUIManager()에서 사용
-	CachedWorldContext = WorldContextObject;
+	// Widget->GetOwningLocalPlayer()로 LocalPlayer 직접 캐싱 — GetUIManager()에서 사용
+	// ULocalPlayerSubsystem은 GetFirstPlayerController()가 아닌 소유 LocalPlayer 기준으로 접근해야 함
+	if (UUserWidget* Widget = Cast<UUserWidget>(WorldContextObject))
+	{
+		CachedLocalPlayer = Widget->GetOwningLocalPlayer();
+		if (!CachedLocalPlayer.IsValid())
+		{
+			UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] AutoInitialize: Widget에서 LocalPlayer를 얻지 못했습니다."));
+		}
+	}
 
 	UWorld* World = WorldContextObject->GetWorld();
 	if (!World) return;
@@ -213,16 +222,14 @@ void UExLobbyMatchViewModel::ShowResultPopup(const FText& Title, const FText& Bo
 
 UExUIManagerSubsystem* UExLobbyMatchViewModel::GetUIManager() const
 {
-	// CachedWorldContext 우선 사용 (MVVM Create Instance 환경에서 GetWorld()는 nullptr 반환 가능)
-	UObject* Context = CachedWorldContext.IsValid() ? CachedWorldContext.Get() : nullptr;
-	UWorld* World = Context ? Context->GetWorld() : GetWorld();
-	if (!World) return nullptr;
-
-	APlayerController* PC = World->GetFirstPlayerController();
-	if (!PC) return nullptr;
-
-	ULocalPlayer* LP = PC->GetLocalPlayer();
-	if (!LP) return nullptr;
+	// CachedLocalPlayer 우선 사용 — AutoInitialize에서 Widget->GetOwningLocalPlayer()로 캐싱됨
+	// GetFirstPlayerController()는 서버 PC를 반환할 수 있어 LocalPlayer가 nullptr인 경우가 있음
+	ULocalPlayer* LP = CachedLocalPlayer.Get();
+	if (!LP)
+	{
+		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] GetUIManager: CachedLocalPlayer가 유효하지 않습니다."));
+		return nullptr;
+	}
 
 	return LP->GetSubsystem<UExUIManagerSubsystem>();
 }

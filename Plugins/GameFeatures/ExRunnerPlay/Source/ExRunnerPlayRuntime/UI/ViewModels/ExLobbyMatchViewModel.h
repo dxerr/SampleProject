@@ -10,6 +10,7 @@
 class UExOnlineSubsystem;
 class UExPopupWidget;
 class UExUIManagerSubsystem;
+class ULocalPlayer;
 
 /**
  * UExLobbyMatchViewModel
@@ -89,8 +90,8 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UExOnlineSubsystem> CachedOnlineSubsystem;
 
-	/** AutoInitialize 시 전달된 WorldContext — GetUIManager()에서 GetWorld() 대신 사용 */
-	TWeakObjectPtr<UObject> CachedWorldContext;
+	/** AutoInitialize 시 Widget->GetOwningLocalPlayer()로 얻은 LocalPlayer 캐싱 — UIManager 접근용 */
+	TWeakObjectPtr<ULocalPlayer> CachedLocalPlayer;
 
 	/** 매칭 Config (MatchMode, MaxPlayers 고정값) */
 	static constexpr int32 DefaultMaxPlayers = 2;

@@ -23,7 +23,7 @@ void FExDedicatedServerStrategy::JoinMatch(const FString& SessionId)
 	UE_LOG(LogExNetwork, Warning, TEXT("[ExDedicatedServerStrategy] JoinMatch — 미구현 (Phase 4+). SessionId=%s"), *SessionId);
 }
 
-void FExDedicatedServerStrategy::StartGameSession(const FString& MapPath)
+void FExDedicatedServerStrategy::StartGameSession(const FString& MapPath, UWorld* World)
 {
 	UE_LOG(LogExNetwork, Warning, TEXT("[ExDedicatedServerStrategy] StartGameSession — 미구현 (Phase 4+). MapPath=%s"), *MapPath);
 }

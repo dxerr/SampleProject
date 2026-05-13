@@ -4,11 +4,14 @@
 
 #include "CoreMinimal.h"
 #include "CommonActivatableWidget.h"
+#include "Components/PanelWidget.h"
 #include "ExHUDLayoutWidget.generated.h"
 
 // 전방 선언
 class UCommonActivatableWidgetStack;
 class UExWindowWidget;
+class UExPopupWidget;
+class UExToastWidget;
 
 /**
  * 게임의 루트 스크린을 책임지는 HUD 레이아웃용 베이스 클래스입니다.
@@ -59,11 +62,33 @@ protected:
 	TObjectPtr<UCommonActivatableWidgetStack> MenuStack;
 
 	/**
+	 * 토스트 알림이 쓌일 컨테이너 패널 (BindWidgetOptional — 없어도 컴파일 OK)
+	 * BP에서 'ToastContainer'라는 이름으로 위젯 노드를 배치하면 자동으로 RegisterToastContainer 호출됨
+	 */
+	UPROPERTY(meta=(BindWidgetOptional))
+	TObjectPtr<UPanelWidget> ToastContainer;
+
+	/**
 	 * ESC 버튼이나 패드의 뒤로가기/스타트 버튼을 눌렀을 때 기본적으로 불려질 
 	 * 최상단 일시정지 메뉴(WindowWidget)의 클래스. BP에서 기본값을 지정합니다.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category="ExUI")
 	TSubclassOf<UExWindowWidget> EscapeMenuClass;
+
+	/**
+	 * 이 HUD Layout에서 사용할 공통 팝업 위젯 클래스.
+	 * 디테일 패널에서 WBP_ExPopup 등을 선택하면 Register 시 UIManager에 자동 설정됩니다.
+	 * 설정하지 않으면 팝업 기능이 비활성화됩니다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category="ExUI|Classes")
+	TSubclassOf<UExPopupWidget> PopupWidgetClass;
+
+	/**
+	 * 이 HUD Layout에서 사용할 토스트 위젯 클래스.
+	 * 디테일 패널에서 WBP_ExToast 등을 선택하면 Register 시 UIManager에 자동 설정됩니다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category="ExUI|Classes")
+	TSubclassOf<UExToastWidget> ToastWidgetClass;
 
 private:
 	/**

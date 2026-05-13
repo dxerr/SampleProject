@@ -3,6 +3,7 @@
 #include "ExListenServerStrategy.h"
 #include "Core/ExNetworkLog.h"
 #include "Providers/IExLobbyProvider.h"
+#include "Engine/World.h"
 
 FExListenServerStrategy::FExListenServerStrategy()
 {
@@ -31,14 +32,41 @@ void FExListenServerStrategy::CreateMatch(const FExMatchConfig& Config)
 
 void FExListenServerStrategy::JoinMatch(const FString& SessionId)
 {
-	// Phase 3: ResultIndex 기반으로 변경됨. 직접 호출은 FindAndJoinOrCreate 사용 권장.
-	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] JoinMatch 호출 — FindAndJoinOrCreate 사용 권장."));
+	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] JoinMatch — FindAndJoinOrCreate 사용 권장."));
 }
 
-void FExListenServerStrategy::StartGameSession(const FString& MapPath)
+void FExListenServerStrategy::StartGameSession(const FString& MapPath, UWorld* World)
 {
-	// Phase 4에서 ServerTravel 호출로 채워진다.
-	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] StartGameSession — MapPath=%s, Phase 4에서 구현 예정."), *MapPath);
+	if (!ensureMsgf(World, TEXT("[ExListenServerStrategy] StartGameSession: World 없음.")))
+	{
+		return;
+	}
+
+	// 서버 권한 체크 — 클라이언트는 ServerTravel 호출 금지
+	if (World->GetNetMode() == NM_Client)
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] StartGameSession: 클라이언트는 호출 불가. 서버만 ServerTravel 수행."));
+		return;
+	}
+
+	if (!ensureMsgf(!MapPath.IsEmpty(), TEXT("[ExListenServerStrategy] StartGameSession: MapPath가 비어있습니다.")))
+	{
+		return;
+	}
+
+	// Lobby 명시적 파괴 — 새 플레이어 참가 차단 후 게임 전환
+	if (LobbyProvider && LobbyProvider->IsInLobby())
+	{
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] StartGameSession: Lobby 파괴 후 ServerTravel 진행."));
+		LobbyProvider->DestroyLobby();
+	}
+
+	// ServerTravel — ?listen 옵션으로 클라이언트가 새 맵에서도 접속 유지
+	// UE 엔진이 연결된 모든 클라이언트를 자동으로 새 맵으로 이동시킨다.
+	const FString TravelURL = MapPath + TEXT("?listen");
+	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] ServerTravel 실행 — URL=%s"), *TravelURL);
+
+	World->ServerTravel(TravelURL);
 }
 
 void FExListenServerStrategy::DestroyMatch()
@@ -58,30 +86,24 @@ void FExListenServerStrategy::FindAndJoinOrCreate(const FExMatchConfig& Config, 
 		return;
 	}
 
-	// Config를 멤버에 값 복사 — 호출자 스택이 해제된 후에도 비동기 체인 전체에서 유효하게 유지
-	PendingConfig = Config;
-
 	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Quick Match 시작 — Lobby 검색 중..."));
 
-	// FindLobbies 완료 콜백 바인딩 (PendingConfig 참조 — 멤버이므로 항상 유효)
 	LobbyProvider->OnFindComplete.AddLambda(
-		[this, OnComplete](bool bSuccess, int32 ResultCount)
+		[this, Config, OnComplete](bool bSuccess, int32 ResultCount)
 		{
 			LobbyProvider->OnFindComplete.Clear();
-			OnFindComplete(bSuccess, ResultCount, PendingConfig, OnComplete);
+			OnFindComplete(bSuccess, ResultCount, Config, OnComplete);
 		}
 	);
 
-	LobbyProvider->FindLobbies(PendingConfig);
+	LobbyProvider->FindLobbies(Config);
 }
-
 
 void FExListenServerStrategy::OnFindComplete(bool bSuccess, int32 ResultCount, FExMatchConfig Config, TFunction<void(bool, const FString&)> OnComplete)
 {
 	if (bSuccess && ResultCount > 0)
 	{
-		// 빈 Lobby 발견 → 참가
-		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby %d개 발견 — 첫 번째 Lobby에 참가 시도."), ResultCount);
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby %d개 발견 — 첫 번째 Lobby 참가 시도."), ResultCount);
 
 		LobbyProvider->OnJoinComplete.AddLambda(
 			[this, OnComplete](bool bJoinSuccess, const FString& ErrorMessage)
@@ -95,7 +117,6 @@ void FExListenServerStrategy::OnFindComplete(bool bSuccess, int32 ResultCount, F
 	}
 	else
 	{
-		// 빈 Lobby 없음 → 새로 생성
 		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 빈 Lobby 없음 — 새 Lobby 생성 중..."));
 
 		LobbyProvider->OnCreateComplete.AddLambda(

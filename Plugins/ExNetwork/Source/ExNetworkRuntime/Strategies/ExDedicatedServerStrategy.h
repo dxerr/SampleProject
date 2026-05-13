@@ -22,6 +22,6 @@ public:
 	virtual EExServerType GetServerType() const override;
 	virtual void CreateMatch(const FExMatchConfig& Config) override;
 	virtual void JoinMatch(const FString& SessionId) override;
-	virtual void StartGameSession(const FString& MapPath) override;
+	virtual void StartGameSession(const FString& MapPath, UWorld* World) override;
 	virtual void DestroyMatch() override;
 };

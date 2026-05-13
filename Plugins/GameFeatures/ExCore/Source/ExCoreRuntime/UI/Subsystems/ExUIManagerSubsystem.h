@@ -25,7 +25,7 @@ class UExModalWidget;
  * Window 타입(인벤토리 등)이나 Modal 패턴(확인 안내창) 등 
  * 각종 위젯의 Push / Pop 라우팅을 총괄합니다.
  */
-UCLASS(Config=Game)
+UCLASS()
 class EXCORERUNTIME_API UExUIManagerSubsystem : public ULocalPlayerSubsystem
 {
 	GENERATED_BODY()
@@ -42,6 +42,21 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "ExUI")
 	void RegisterStacks(UCommonActivatableWidgetStack* InGameStack, UCommonActivatableWidgetStack* InMenuStack);
+
+	/**
+	 * HUD Layout이 사용할 팝업 위젯 클래스를 등록합니다.
+	 * ExHUDLayoutWidget 파생 위젯의 디테일 패널에서 설정하면 자동으로 호출됩니다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExUI|Classes")
+	void SetPopupWidgetClass(TSubclassOf<UExPopupWidget> InClass);
+
+	/**
+	 * HUD Layout이 사용할 토스트 위젯 클래스를 등록합니다.
+	 * ExHUDLayoutWidget 파생 위젯의 디테일 패널에서 설정하면 자동으로 호출됩니다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExUI|Classes")
+	void SetToastWidgetClass(TSubclassOf<UExToastWidget> InClass);
+
 
 	/**
 	 * 창 모드 기반 위젯(UExWindowWidget 파생)을 Menu Stack에 추가(Push)합니다.
@@ -193,7 +208,7 @@ private:
 	// 서브시스템은 추적만 하므로 약참조 배열 (GC 개입 X)
 	TArray<TWeakObjectPtr<UExToastWidget>> ActiveToasts;
 
-	UPROPERTY(Config)
+	UPROPERTY()
 	int32 MaxVisibleToasts = 3;
 
 	// 화면 노출 한계 치 초과율 방어용 큐 (이탈 메시지 방지)

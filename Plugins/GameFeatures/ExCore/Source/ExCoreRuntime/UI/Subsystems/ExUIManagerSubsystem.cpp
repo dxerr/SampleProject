@@ -15,6 +15,7 @@ void UExUIManagerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	MenuStack = nullptr;
 }
 
+
 void UExUIManagerSubsystem::Deinitialize()
 {
 	GameStack = nullptr;
@@ -34,6 +35,24 @@ void UExUIManagerSubsystem::RegisterStacks(UCommonActivatableWidgetStack* InGame
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[ExUIManagerSubsystem] 일부 UI 스택 등록이 누락되었습니다 (Game:%d, Menu:%d)"), InGameStack != nullptr, InMenuStack != nullptr);
+	}
+}
+
+void UExUIManagerSubsystem::SetPopupWidgetClass(TSubclassOf<UExPopupWidget> InClass)
+{
+	if (InClass)
+	{
+		PopupWidgetClass = InClass;
+		UE_LOG(LogTemp, Log, TEXT("[ExUIManagerSubsystem] PopupWidgetClass 등록: %s"), *InClass->GetName());
+	}
+}
+
+void UExUIManagerSubsystem::SetToastWidgetClass(TSubclassOf<UExToastWidget> InClass)
+{
+	if (InClass)
+	{
+		ToastWidgetClass = InClass;
+		UE_LOG(LogTemp, Log, TEXT("[ExUIManagerSubsystem] ToastWidgetClass 등록: %s"), *InClass->GetName());
 	}
 }
 

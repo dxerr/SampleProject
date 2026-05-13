@@ -12,6 +12,7 @@
 #include "OnlineSubsystem.h"
 #include "OnlineDelegates.h"
 #include "Engine/World.h"
+#include "Engine/GameInstance.h"
 
 void UExOnlineSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -19,9 +20,6 @@ void UExOnlineSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] Initialize 시작."));
 
-	// ------------------------------------------------------------------
-	// 1. 서버 Strategy 자동 선택 + LobbyProvider 주입
-	// ------------------------------------------------------------------
 	const UWorld* World = GetWorld();
 	const bool bIsDedicatedServer = (World && World->GetNetMode() == NM_DedicatedServer);
 
@@ -32,23 +30,15 @@ void UExOnlineSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	}
 	else
 	{
-		auto ListenStrategy = MakeUnique<FExListenServerStrategy>();
-
-		// LobbyProvider는 OSS 획득 후 주입 (아래 InitAuthProviderAndLogin에서 처리)
-		// 임시로 Strategy만 먼저 생성
-		ServerStrategy = MoveTemp(ListenStrategy);
+		ServerStrategy = MakeUnique<FExListenServerStrategy>();
 		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] ServerStrategy 선택: ListenServer"));
 	}
 
-	// ------------------------------------------------------------------
-	// 2. EOS OSS 획득 + 인증 + LobbyProvider 주입
-	// ------------------------------------------------------------------
 	SubsystemCreatedHandle = FOnlineSubsystemDelegates::OnOnlineSubsystemCreated.AddUObject(
 		this, &UExOnlineSubsystem::HandleOnlineSubsystemCreated
 	);
 
 	IOnlineSubsystem* OSS = IOnlineSubsystem::Get(TEXT("EOS"));
-
 	if (OSS && OSS->GetSubsystemName() != FName("NULL") && !AuthProvider)
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] EOS OSS 즉시 획득 — 직접 초기화 진행."));
@@ -76,10 +66,8 @@ void UExOnlineSubsystem::HandleOnlineSubsystemCreated(IOnlineSubsystem* NewSubsy
 	}
 
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] OnOnlineSubsystemCreated 콜백 — EOS OSS 생성 확인."));
-
 	FOnlineSubsystemDelegates::OnOnlineSubsystemCreated.Remove(SubsystemCreatedHandle);
 	SubsystemCreatedHandle.Reset();
-
 	InitAuthProviderAndLogin(NewSubsystem);
 }
 
@@ -88,11 +76,9 @@ void UExOnlineSubsystem::InitAuthProviderAndLogin(IOnlineSubsystem* OSS)
 	check(OSS);
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] OSS 확정 — 서브시스템명: %s"), *OSS->GetSubsystemName().ToString());
 
-	// AuthProvider 생성
 	AuthProvider = MakeUnique<FExEOSAuthProvider>();
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] AuthProvider 선택: EOS"));
 
-	// LobbyProvider를 ListenServerStrategy에 주입
 	if (FExListenServerStrategy* ListenStrategy = static_cast<FExListenServerStrategy*>(ServerStrategy.Get()))
 	{
 		if (ListenStrategy->GetServerType() == EExServerType::ListenServer)
@@ -136,20 +122,16 @@ bool UExOnlineSubsystem::IsLoggedIn() const
 
 FString UExOnlineSubsystem::GetServerTypeString() const
 {
-	if (!ServerStrategy)
-	{
-		return TEXT("None");
-	}
+	if (!ServerStrategy) return TEXT("None");
 	return (ServerStrategy->GetServerType() == EExServerType::ListenServer)
-		? TEXT("ListenServer")
-		: TEXT("DedicatedServer");
+		? TEXT("ListenServer") : TEXT("DedicatedServer");
 }
 
 void UExOnlineSubsystem::FindQuickMatch(const FExMatchConfig& Config)
 {
 	if (!IsLoggedIn())
 	{
-		UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] FindQuickMatch: 로그인 미완료. 매칭을 시작할 수 없습니다."));
+		UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] FindQuickMatch: 로그인 미완료."));
 		OnMatchFound.Broadcast(false, TEXT("Not logged in"));
 		return;
 	}
@@ -173,14 +155,13 @@ void UExOnlineSubsystem::FindQuickMatch(const FExMatchConfig& Config)
 	ListenStrategy->FindAndJoinOrCreate(Config,
 		[this](bool bSuccess, const FString& ErrorMessage)
 		{
+			CurrentMatchState = bSuccess ? EExMatchState::Ready : EExMatchState::Idle;
 			if (bSuccess)
 			{
-				CurrentMatchState = EExMatchState::Ready;
 				UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] 매칭 완료 — 성공."));
 			}
 			else
 			{
-				CurrentMatchState = EExMatchState::Idle;
 				UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] 매칭 실패 — %s"), *ErrorMessage);
 			}
 			OnMatchFound.Broadcast(bSuccess, ErrorMessage);
@@ -199,6 +180,58 @@ void UExOnlineSubsystem::CancelMatch()
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] CancelMatch 완료."));
 }
 
+void UExOnlineSubsystem::StartGame(const FExMatchConfig& Config)
+{
+	// 실패 조건 검증
+	if (!IsLoggedIn())
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] StartGame: 로그인 미완료."));
+		OnGameStarted.Broadcast(false, TEXT("Not logged in"));
+		return;
+	}
+
+	if (CurrentMatchState != EExMatchState::Ready)
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] StartGame: 매칭 Ready 상태가 아님. State=%d"), (int32)CurrentMatchState);
+		OnGameStarted.Broadcast(false, TEXT("Match not ready"));
+		return;
+	}
+
+	if (Config.MapPath.IsEmpty())
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] StartGame: MapPath가 비어있습니다."));
+		OnGameStarted.Broadcast(false, TEXT("MapPath is empty"));
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] StartGame: World 없음."));
+		OnGameStarted.Broadcast(false, TEXT("World not available"));
+		return;
+	}
+
+	// 클라이언트는 StartGame 호출 무시 (ServerTravel은 서버만)
+	if (World->GetNetMode() == NM_Client)
+	{
+		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame: 클라이언트 — 서버의 ServerTravel을 기다립니다."));
+		return;
+	}
+
+	if (!ensureMsgf(ServerStrategy, TEXT("[UExOnlineSubsystem] StartGame: ServerStrategy 없음.")))
+	{
+		OnGameStarted.Broadcast(false, TEXT("ServerStrategy not available"));
+		return;
+	}
+
+	CurrentMatchState = EExMatchState::InGame;
+	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame — MapPath=%s"), *Config.MapPath);
+
+	OnGameStarted.Broadcast(true, TEXT(""));
+	ServerStrategy->StartGameSession(Config.MapPath, World);
+}
+
 void UExOnlineSubsystem::HandleAuthLoginComplete(bool bSuccess, const FString& ErrorMessage)
 {
 	if (bSuccess)
@@ -209,6 +242,5 @@ void UExOnlineSubsystem::HandleAuthLoginComplete(bool bSuccess, const FString& E
 	{
 		UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] 로그인 완료 — 실패. Error=%s"), *ErrorMessage);
 	}
-
 	OnLoginComplete.Broadcast(bSuccess, ErrorMessage);
 }

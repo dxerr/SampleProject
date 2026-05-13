@@ -5,8 +5,8 @@
 #include "CoreMinimal.h"
 #include "Core/ExNetworkTypes.h"
 
-// FExMatchConfig 전방 선언 (헤더 의존성 최소화)
 struct FExMatchConfig;
+class UWorld;
 
 /**
  * IExNetServerStrategy
@@ -23,6 +23,12 @@ public:
 	virtual EExServerType GetServerType() const = 0;
 	virtual void CreateMatch(const FExMatchConfig& Config) = 0;
 	virtual void JoinMatch(const FString& SessionId) = 0;
-	virtual void StartGameSession(const FString& MapPath) = 0;
+
+	/**
+	 * 게임 맵으로 전환한다.
+	 * @param MapPath 전환할 맵 경로
+	 * @param World   현재 World 참조 (ServerTravel에 필요)
+	 */
+	virtual void StartGameSession(const FString& MapPath, UWorld* World) = 0;
 	virtual void DestroyMatch() = 0;
 };
