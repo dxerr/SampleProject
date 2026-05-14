@@ -1,9 +1,11 @@
 // Copyright ExFrameWork. All Rights Reserved.
 
 #include "ExLobbyMatchViewModel.h"
-#include "ExOnlineSubsystem.h"        // ExNetworkRuntime: PublicIncludePaths에 Core/ 등록
-#include "ExMatchTypes.h"              // ExNetworkRuntime: PublicIncludePaths에 Match/ 등록
+#include "ExOnlineSubsystem.h"        
+#include "ExMatchTypes.h"              
 #include "UI/Subsystems/ExUIManagerSubsystem.h"
+#include "Subsystems/ExDataCenterSubsystem.h"
+#include "Data/ExRunnerConfig.h"
 #include "UI/Widgets/ExPopupWidget.h"
 #include "UI/Data/ExPopupDescriptor.h"
 #include "Blueprint/UserWidget.h"
@@ -68,26 +70,24 @@ void UExLobbyMatchViewModel::AutoInitialize(UObject* WorldContextObject)
 // 퍼블릭 API — View에서 호출할 단일 진입점
 // ─────────────────────────────────────────────────────────────────────────────
 
-void UExLobbyMatchViewModel::StartQuickMatch()
+void UExLobbyMatchViewModel::StartMultiPlay()
 {
-	// 중복 호출 방지
 	if (bIsMatching)
 	{
-		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] StartQuickMatch: 이미 매칭 진행 중 — 무시됩니다."));
+		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] StartMultiPlay: 이미 매칭 진행 중 — 무시됩니다."));
 		return;
 	}
 
 	if (!CachedOnlineSubsystem)
 	{
-		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] StartQuickMatch: OnlineSubsystem이 없습니다. AutoInitialize 호출 여부를 확인하세요."));
+		UE_LOG(LogExLobbyMatchVM, Error, TEXT("[ExLobbyMatchVM] StartMultiPlay: OnlineSubsystem이 없습니다. View(BP)의 OnActivated에서 AutoInitialize가 호출되었는지 확인하세요."));
 		return;
 	}
 
-	// 로그인 미완료 시 차단 — EOS Connect Login 완료 전 Lobby 작업은 반드시 실패
 	if (!CachedOnlineSubsystem->IsLoggedIn())
 	{
-		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] StartQuickMatch: EOS 로그인 완료 대기 중입니다. 로그인 완료 이후 자동 시작됩니다."));
-		bPendingStartMatch = true;  // 로그인 완료 시 OnLoginCompleteCallback에서 자동 재호출
+		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] StartMultiPlay: EOS 로그인 완료 대기 중입니다."));
+		bPendingStartMultiPlay = true;  
 		ShowResultPopup(
 			FText::FromString(TEXT("로그인 준비 중")),
 			FText::FromString(TEXT("EOS 서버에 연결 중입니다.\n연결 완료 후 자동으로 매칭을 시작합니다."))
@@ -95,29 +95,76 @@ void UExLobbyMatchViewModel::StartQuickMatch()
 		return;
 	}
 
-
 	bIsMatching = true;
-	UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] StartQuickMatch 시작 — MatchMode=%s, MaxPlayers=%d"),
-		*DefaultMatchMode, DefaultMaxPlayers);
+	RetryCount = 0;
+	UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] StartMultiPlay 시작"));
 
-	// 1. 대기 팝업 표시
 	ShowMatchingPopup();
 
-	// 2. Config 준비 및 PendingConfig 보존
-	// (OnMatchFoundCallback에서 StartGame 호출 시 재사용)
 	PendingConfig = FExMatchConfig{};
 	PendingConfig.MatchMode   = DefaultMatchMode;
 	PendingConfig.MaxPlayers  = DefaultMaxPlayers;
-	PendingConfig.MapPath     = DefaultMapPath;   // Phase 4: StartGame에 필수
+	PendingConfig.MapPath     = DefaultMapPath;   
 
-	// 3. 델리게이트 바인딩 (중복 방지를 위해 먼저 제거)
+	if (UWorld* World = GetWorld())
+	{
+		if (UGameInstance* GI = World->GetGameInstance())
+		{
+			if (UExDataCenterSubsystem* DataCenter = GI->GetSubsystem<UExDataCenterSubsystem>())
+			{
+				if (const UExRunnerConfig* Config = DataCenter->GetConfig<UExRunnerConfig>())
+				{
+					PendingConfig.ExpectedPlayerCount = Config->MatchFlow.ExpectedPlayerCount;
+					PendingConfig.MaxWaitForPlayersSeconds = Config->MatchFlow.MaxWaitForPlayersSeconds;
+				}
+			}
+		}
+	}
+	PendingConfig.bIsSinglePlay = false;
+
 	CachedOnlineSubsystem->OnMatchFound.RemoveDynamic(this, &UExLobbyMatchViewModel::OnMatchFoundCallback);
 	CachedOnlineSubsystem->OnMatchFound.AddDynamic(this, &UExLobbyMatchViewModel::OnMatchFoundCallback);
-
 	CachedOnlineSubsystem->OnGameStarted.RemoveDynamic(this, &UExLobbyMatchViewModel::OnGameStartedCallback);
 	CachedOnlineSubsystem->OnGameStarted.AddDynamic(this, &UExLobbyMatchViewModel::OnGameStartedCallback);
 
-	// 4. FindQuickMatch 호출
+	CachedOnlineSubsystem->FindQuickMatch(PendingConfig);
+}
+
+void UExLobbyMatchViewModel::StartSinglePlay()
+{
+	if (bIsMatching) return;
+	if (!CachedOnlineSubsystem)
+	{
+		UE_LOG(LogExLobbyMatchVM, Error, TEXT("[ExLobbyMatchVM] StartSinglePlay: OnlineSubsystem이 없습니다. View(BP)의 OnActivated에서 AutoInitialize가 호출되었는지 확인하세요."));
+		return;
+	}
+
+	if (!CachedOnlineSubsystem->IsLoggedIn())
+	{
+		bPendingStartSinglePlay = true;  
+		ShowResultPopup(
+			FText::FromString(TEXT("로그인 준비 중")),
+			FText::FromString(TEXT("EOS 서버에 연결 중입니다.\n연결 완료 후 자동으로 시작합니다."))
+		);
+		return;
+	}
+
+	bIsMatching = true;
+	RetryCount = 0;
+	ShowMatchingPopup();
+
+	PendingConfig = FExMatchConfig{};
+	PendingConfig.MatchMode   = DefaultMatchMode;
+	PendingConfig.MaxPlayers  = DefaultMaxPlayers;
+	PendingConfig.MapPath     = DefaultMapPath;   
+	PendingConfig.ExpectedPlayerCount = 1;
+	PendingConfig.bIsSinglePlay = true;
+
+	CachedOnlineSubsystem->OnMatchFound.RemoveDynamic(this, &UExLobbyMatchViewModel::OnMatchFoundCallback);
+	CachedOnlineSubsystem->OnMatchFound.AddDynamic(this, &UExLobbyMatchViewModel::OnMatchFoundCallback);
+	CachedOnlineSubsystem->OnGameStarted.RemoveDynamic(this, &UExLobbyMatchViewModel::OnGameStartedCallback);
+	CachedOnlineSubsystem->OnGameStarted.AddDynamic(this, &UExLobbyMatchViewModel::OnGameStartedCallback);
+
 	CachedOnlineSubsystem->FindQuickMatch(PendingConfig);
 }
 
@@ -127,29 +174,34 @@ void UExLobbyMatchViewModel::StartQuickMatch()
 
 void UExLobbyMatchViewModel::OnMatchFoundCallback(bool bSuccess, const FString& ErrorMessage)
 {
+	if (!bSuccess && ErrorMessage == TEXT("Timeout"))
+	{
+		if (RetryCount < 2)
+		{
+			RetryCount++;
+			UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] 매칭 타임아웃. 재시도 %d/2"), RetryCount);
+			CachedOnlineSubsystem->FindQuickMatch(PendingConfig);
+			return;
+		}
+	}
+
 	bIsMatching = false;
 
-	// 델리게이트 바인딩 해제 (1회성 처리)
 	if (CachedOnlineSubsystem)
 	{
 		CachedOnlineSubsystem->OnMatchFound.RemoveDynamic(this, &UExLobbyMatchViewModel::OnMatchFoundCallback);
 	}
 
-	// 대기 팝업 닫기
 	CloseMatchingPopup();
 
 	if (bSuccess)
 	{
 		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] 매칭 완료 — 성공. StartGame 호출."));
-
-		// 팝업: "게임 시작 중..." 안내 (ServerTravel 전까지 사용자에게 피드백)
 		ShowResultPopup(
 			FText::FromString(TEXT("매칭 완료!")),
 			FText::FromString(TEXT("상대 플레이어를 찾았습니다!\n게임을 시작합니다..."))
 		);
 
-		// Phase 4: 서버에서 StartGame 호출 — MapPath 필수
-		// 서버가 ServerTravel을 실행하면 모든 클라이언트는 자동으로 맵 전환됨
 		CachedOnlineSubsystem->StartGame(PendingConfig);
 	}
 	else
@@ -260,19 +312,23 @@ void UExLobbyMatchViewModel::OnLoginCompleteCallback(bool bSuccess, const FStrin
 
 	if (bSuccess)
 	{
-		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] EOS 로그인 완료 — 이제 StartQuickMatch 호출 가능."));
+		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] EOS 로그인 완료."));
 
-		// 로그인 전 버튼이 이미 클릭된 경우 자동으로 매칭 시작
-		if (bPendingStartMatch)
+		if (bPendingStartMultiPlay)
 		{
-			bPendingStartMatch = false;
-			UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] Pending 매칭 요청 감지 — StartQuickMatch 자동 시작."));
-			StartQuickMatch();
+			bPendingStartMultiPlay = false;
+			StartMultiPlay();
+		}
+		else if (bPendingStartSinglePlay)
+		{
+			bPendingStartSinglePlay = false;
+			StartSinglePlay();
 		}
 	}
 	else
 	{
-		bPendingStartMatch = false;
+		bPendingStartMultiPlay = false;
+		bPendingStartSinglePlay = false;
 		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] EOS 로그인 실패 — %s"), *ErrorMessage);
 		ShowResultPopup(
 			FText::FromString(TEXT("연결 실패")),

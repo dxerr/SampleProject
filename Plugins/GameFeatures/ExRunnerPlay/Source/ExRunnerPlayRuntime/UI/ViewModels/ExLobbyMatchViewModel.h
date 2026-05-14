@@ -43,11 +43,17 @@ public:
 
 	/**
 	 * MultiPlay 버튼 On Clicked에 연결할 단일 함수.
-	 * 매칭 대기 팝업 표시 → FindQuickMatch 호출 → 결과 처리까지 내부에서 수행.
-	 * 매칭 진행 중 재호출 시 무시됩니다.
+	 * ExRunnerConfig 설정에 따라 매칭 진행.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "ExLobby|Match")
-	void StartQuickMatch();
+	void StartMultiPlay();
+
+	/**
+	 * SinglePlay 버튼 On Clicked에 연결할 단일 함수.
+	 * 대기 없이 혼자 즉시 시작.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ExLobby|Match")
+	void StartSinglePlay();
 
 private:
 	// ── ExOnlineSubsystem 콜백 ────────────────────────────────────────
@@ -87,8 +93,12 @@ private:
 	/** 매칭 진행 중 여부 — 중복 호출 방지 */
 	bool bIsMatching = false;
 
-	/** EOS 로그인 완료 전 버튼이 클릭된 경우 true — 로그인 완료 즉시 자동으로 StartQuickMatch() 재호출 */
-	bool bPendingStartMatch = false;
+	/** EOS 로그인 완료 전 버튼이 클릭된 경우 true — 로그인 완료 즉시 자동으로 재호출 */
+	bool bPendingStartMultiPlay = false;
+	bool bPendingStartSinglePlay = false;
+
+	/** 매칭 재시도 횟수 (최대 2회) */
+	int32 RetryCount = 0;
 
 	/** 현재 표시 중인 대기 팝업 (닫기용 캐싱) */
 	UPROPERTY(Transient)
