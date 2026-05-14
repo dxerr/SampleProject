@@ -14,6 +14,12 @@ FExListenServerStrategy::FExListenServerStrategy()
 	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 생성됨 — Listen Server 모드."));
 }
 
+FExListenServerStrategy::~FExListenServerStrategy()
+{
+	ClearWaitLobbyTicker();
+	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 소멸됨 — Ticker 핸들 해제."));
+}
+
 EExServerType FExListenServerStrategy::GetServerType() const
 {
 	return EExServerType::ListenServer;
@@ -104,6 +110,25 @@ void FExListenServerStrategy::FindAndJoinOrCreate(const FExMatchConfig& Config, 
 	if (!ensureMsgf(LobbyProvider, TEXT("[ExListenServerStrategy] FindAndJoinOrCreate: LobbyProvider 없음.")))
 	{
 		OnComplete(false, TEXT("LobbyProvider not set"));
+		return;
+	}
+
+	if (Config.bIsSinglePlay)
+	{
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Single Play 모드 — 빈 Lobby 검색 생략 후 새 Lobby 즉시 생성 중..."));
+
+		LobbyProvider->OnCreateComplete.AddLambda(
+			[this, Config, OnComplete](bool bCreateSuccess, const FString& ErrorMessage)
+			{
+				FExListenServerStrategy* SafeThis = this;
+				TFunction<void(bool, const FString&)> SafeOnComplete = OnComplete;
+				SafeThis->LobbyProvider->OnCreateComplete.Clear();
+				SafeThis->CurrentWaitConfig = Config;
+				SafeThis->OnCreateComplete(bCreateSuccess, ErrorMessage, SafeOnComplete);
+			}
+		);
+
+		LobbyProvider->CreateLobby(Config);
 		return;
 	}
 
@@ -236,7 +261,7 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
 			OSS->GetSessionInterface()->UpdateSession(ExMatchSessionName, *Settings, true);
 		}
 
-		ClearWaitLobbyTicker();
+		WaitLobbyTickerHandle.Reset();
 		if (CachedOnComplete)
 		{
 			CachedOnComplete(true, TEXT(""));
@@ -247,7 +272,7 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
 
 	if (WaitLobbyElapsed >= CurrentWaitConfig.MaxWaitForPlayersSeconds)
 	{
-		ClearWaitLobbyTicker();
+		WaitLobbyTickerHandle.Reset();
 		if (LobbyProvider)
 		{
 			LobbyProvider->DestroyLobby();
@@ -278,7 +303,7 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Client(float DeltaTime)
 		int32 MatchStarted = 0;
 		if (Settings->Get(FName("MATCH_STARTED"), MatchStarted) && MatchStarted == 1)
 		{
-			ClearWaitLobbyTicker();
+			WaitLobbyTickerHandle.Reset();
 			if (CachedOnComplete)
 			{
 				CachedOnComplete(true, TEXT(""));
@@ -290,7 +315,7 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Client(float DeltaTime)
 
 	if (WaitLobbyElapsed >= CurrentWaitConfig.MaxWaitForPlayersSeconds)
 	{
-		ClearWaitLobbyTicker();
+		WaitLobbyTickerHandle.Reset();
 		if (LobbyProvider)
 		{
 			LobbyProvider->DestroyLobby();

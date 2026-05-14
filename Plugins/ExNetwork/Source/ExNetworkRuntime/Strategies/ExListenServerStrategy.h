@@ -25,7 +25,7 @@ class FExListenServerStrategy : public IExNetServerStrategy
 public:
 
 	explicit FExListenServerStrategy();
-	virtual ~FExListenServerStrategy() override = default;
+	virtual ~FExListenServerStrategy() override;
 
 	/** IExNetServerStrategy 구현 */
 	virtual EExServerType GetServerType() const override;
