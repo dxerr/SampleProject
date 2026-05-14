@@ -139,6 +139,7 @@ void UExOnlineSubsystem::FindQuickMatch(const FExMatchConfig& Config)
 	if (CurrentMatchState != EExMatchState::Idle)
 	{
 		UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] FindQuickMatch: 이미 매칭 진행 중. State=%d"), (int32)CurrentMatchState);
+		OnMatchFound.Broadcast(false, TEXT("Already matching"));
 		return;
 	}
 
