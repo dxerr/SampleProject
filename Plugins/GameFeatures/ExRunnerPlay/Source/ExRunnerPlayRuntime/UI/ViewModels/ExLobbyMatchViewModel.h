@@ -77,7 +77,7 @@ private:
 	// ── 내부 헬퍼 ─────────────────────────────────────────────────────
 
 	/** 매칭 대기 팝업 표시 (Acknowledge: 취소 버튼 1개) */
-	void ShowMatchingPopup();
+	void ShowMatchingPopup(bool bIsSinglePlay = false);
 
 	/** 현재 대기 팝업 닫기 */
 	void CloseMatchingPopup();

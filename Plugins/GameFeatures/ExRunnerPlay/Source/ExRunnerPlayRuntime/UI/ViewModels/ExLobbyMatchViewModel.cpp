@@ -55,6 +55,13 @@ void UExLobbyMatchViewModel::AutoInitialize(UObject* WorldContextObject)
 		return;
 	}
 
+	// 인게임에서 로비로 돌아온 경우 (MatchState가 Idle이 아닐 때) 상태 초기화
+	if (CachedOnlineSubsystem->GetMatchState() != EExMatchState::Idle)
+	{
+		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] AutoInitialize: 이전 매칭 상태가 남아있어 초기화 (CancelMatch) 진행."));
+		CachedOnlineSubsystem->CancelMatch();
+	}
+
 	// 로그인 미완료 시 OnLoginComplete 구독 — 버튼 클릭 타이밍 문제 대비
 	if (!CachedOnlineSubsystem->IsLoggedIn())
 	{
@@ -99,7 +106,7 @@ void UExLobbyMatchViewModel::StartMultiPlay()
 	RetryCount = 0;
 	UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] StartMultiPlay 시작"));
 
-	ShowMatchingPopup();
+	ShowMatchingPopup(false);
 
 	PendingConfig = FExMatchConfig{};
 	PendingConfig.MatchMode   = DefaultMatchMode;
@@ -151,7 +158,7 @@ void UExLobbyMatchViewModel::StartSinglePlay()
 
 	bIsMatching = true;
 	RetryCount = 0;
-	ShowMatchingPopup();
+	ShowMatchingPopup(true);
 
 	PendingConfig = FExMatchConfig{};
 	PendingConfig.MatchMode   = DefaultMatchMode;
@@ -241,14 +248,18 @@ void UExLobbyMatchViewModel::OnMatchingPopupResult(EExModalResult Result, const 
 // 내부 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
-void UExLobbyMatchViewModel::ShowMatchingPopup()
+void UExLobbyMatchViewModel::ShowMatchingPopup(bool bIsSinglePlay)
 {
 	UExUIManagerSubsystem* UIMgr = GetUIManager();
 	if (!UIMgr) return;
 
+	FText Title = bIsSinglePlay ? FText::FromString(TEXT("시작 준비중입니다.")) : FText::FromString(TEXT("매칭 중..."));
+	FText Desc = bIsSinglePlay ? FText::FromString(TEXT("게임 시작을 준비 중입니다.\n\n취소하려면 아래 버튼을 누르세요.")) 
+                               : FText::FromString(TEXT("상대 플레이어를 찾는 중입니다.\n\n취소하려면 아래 버튼을 누르세요."));
+
 	ActiveMatchingPopup = UIMgr->ShowAcknowledgeBP(
-		FText::FromString(TEXT("매칭 중...")),
-		FText::FromString(TEXT("상대 플레이어를 찾는 중입니다.\n\n취소하려면 아래 버튼을 누르세요."))
+		Title,
+		Desc
 	);
 
 	if (ActiveMatchingPopup)
