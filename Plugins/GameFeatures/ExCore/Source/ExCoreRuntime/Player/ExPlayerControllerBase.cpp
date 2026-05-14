@@ -244,32 +244,5 @@ void AExPlayerControllerBase::Client_ShowLateJoinPopup_Implementation()
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// [Play 버튼] Server RPC — 맵 전환 요청
-// ─────────────────────────────────────────────────────────────────────────────
 
-void AExPlayerControllerBase::Server_RequestTransitionToExperience_Implementation(const UExExperienceDefinition* ExperienceConfig)
-{
-	// 이 함수는 서버에서만 실행됩니다.
-	// 클라이언트에서 직접 ExGameFlowSubsystem::TransitionToExperience를 호출하면
-	// 클라이언트에 GameMode가 없어 OnRequestTravel이 아무 동작도 하지 않습니다.
-	// 이 RPC를 경유해야 서버 측 GameMode가 ServerTravel을 정상 실행합니다.
-	UE_LOG(LogExCorePC, Log, TEXT("[ExPlayerControllerBase] Server_RequestTransitionToExperience: %s"),
-		ExperienceConfig ? *ExperienceConfig->GetName() : TEXT("null"));
-
-	if (!ExperienceConfig)
-	{
-		UE_LOG(LogExCorePC, Warning, TEXT("[ExPlayerControllerBase] Server_RequestTransitionToExperience: ExperienceConfig가 null입니다."));
-		return;
-	}
-
-	if (UGameInstance* GI = GetGameInstance())
-	{
-		if (UExGameFlowSubsystem* FlowSubsystem = GI->GetSubsystem<UExGameFlowSubsystem>())
-		{
-			// 서버에서 실행: SetFlowState(Flow_InGame) → OnRequestTravel.Broadcast → GameMode::ServerTravel
-			FlowSubsystem->TransitionToExperience(ExperienceConfig);
-		}
-	}
-}
 

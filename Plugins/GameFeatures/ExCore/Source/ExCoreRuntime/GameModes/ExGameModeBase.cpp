@@ -60,11 +60,6 @@ void AExGameModeBase::BeginPlay()
 	UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] BeginPlay - SpawnDataAsset: %s"), 
 		SpawnDataAsset ? *SpawnDataAsset->GetName() : TEXT("None"));
 
-	// 매치 대기 타임아웃 타이머 시작
-	if (GetMaxWaitForPlayersSeconds() > 0.f)
-	{
-		GetWorld()->GetTimerManager().SetTimer(WaitPlayersTimerHandle, this, &AExGameModeBase::OnWaitPlayersTimeout, GetMaxWaitForPlayersSeconds(), false);
-	}
 }
 
 void AExGameModeBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -215,19 +210,16 @@ void AExGameModeBase::CheckAndStartMatch()
 
 		bool bAllLoaded = (LoadedPlayers == TotalPlayers) && (TotalPlayers > 0);
 		bool bAllReady = (ReadyPlayers == TotalPlayers) && (TotalPlayers > 0);
-		bool bHasExpectedCount = TotalPlayers >= GetExpectedPlayerCount();
 
 		// [ExRunnerStartDiag] 4-AND 조건 현황 로그 (매 CheckAndStartMatch 호출 시 출력)
 		UE_LOG(LogExCoreGM, Log,
-			TEXT("[ExRunnerStartDiag] CheckAndStartMatch | Total=%d | Loaded=%d | Ready=%d | Expected=%d | bAllLoaded=%s | bAllReady=%s | bHasExpected=%s"),
+			TEXT("[ExRunnerStartDiag] CheckAndStartMatch | Total=%d | Loaded=%d | Ready=%d | Expected=%d | bAllLoaded=%s | bAllReady=%s"),
 			TotalPlayers, LoadedPlayers, ReadyPlayers, GetExpectedPlayerCount(),
 			bAllLoaded ? TEXT("true") : TEXT("false"),
-			bAllReady ? TEXT("true") : TEXT("false"),
-			bHasExpectedCount ? TEXT("true") : TEXT("false"));
+			bAllReady ? TEXT("true") : TEXT("false"));
 
-		if (bAllLoaded && bAllReady && bHasExpectedCount)
+		if (bAllLoaded && bAllReady)
 		{
-			GetWorld()->GetTimerManager().ClearTimer(WaitPlayersTimerHandle);
 			UE_LOG(LogExCoreGM, Log, TEXT("[ExRunnerStartDiag] CheckAndStartMatch: 모든 조건 충족! 실제 시작 진행."));
 			OnAllPlayersReady();
 		}
@@ -428,8 +420,4 @@ void AExGameModeBase::FinishCountdown()
 	SetMatchPhase(ExMatchTags::Match_Playing);
 }
 
-void AExGameModeBase::OnWaitPlayersTimeout()
-{
-	UE_LOG(LogExCoreGM, Warning, TEXT("[ExGameModeBase] WaitForPlayers timeout! Forcing match start."));
-	OnAllPlayersReady();
-}
+

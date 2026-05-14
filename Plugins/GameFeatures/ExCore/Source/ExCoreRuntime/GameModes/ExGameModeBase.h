@@ -137,11 +137,6 @@ protected:
 
 private:
 	FTimerHandle CountdownTimerHandle;
-	FTimerHandle WaitPlayersTimerHandle;
-
-	UFUNCTION()
-	void OnWaitPlayersTimeout();
-
 
 public:
 	/** 매치 종료 결과를 처리하기 위한 가상 함수. 하위 GameMode에서 재정의합니다. */
