@@ -117,6 +117,8 @@ void FExListenServerStrategy::FindAndJoinOrCreate(const FExMatchConfig& Config, 
 	LobbyProvider->OnCreateComplete.Clear();
 	LobbyProvider->OnJoinComplete.Clear();
 
+	FindRetryCount = 0; // 새 매칭 시작 시 재시도 카운터 초기화
+
 	if (Config.bIsSinglePlay)
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Single Play 모드 — 빈 Lobby 검색 생략 후 새 Lobby 즉시 생성 중..."));
@@ -173,19 +175,47 @@ void FExListenServerStrategy::OnFindComplete(bool bSuccess, int32 ResultCount, F
 	}
 	else
 	{
-		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 빈 Lobby 없음 — 새 Lobby 생성 중..."));
+		if (FindRetryCount < MaxFindRetries)
+		{
+			FindRetryCount++;
+			UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 없음 — %.1f초 후 재검색 시도 (%d/%d)..."),
+				FindRetryDelay, FindRetryCount, MaxFindRetries);
 
-		LobbyProvider->OnCreateComplete.Clear();
-		LobbyProvider->OnCreateComplete.AddLambda(
-			[this, OnComplete](bool bCreateSuccess, const FString& ErrorMessage)
-			{
-				FExListenServerStrategy* SafeThis = this;
-				TFunction<void(bool, const FString&)> SafeOnComplete = OnComplete;
-				SafeThis->OnCreateComplete(bCreateSuccess, ErrorMessage, SafeOnComplete);
-			}
-		);
+			// FindRetryDelay 후 재검색
+			FTSTicker::GetCoreTicker().AddTicker(
+				FTickerDelegate::CreateLambda([this, Config, OnComplete](float) -> bool
+				{
+					LobbyProvider->OnFindComplete.Clear();
+					LobbyProvider->OnFindComplete.AddLambda(
+						[this, Config, OnComplete](bool bSuccess2, int32 ResultCount2)
+						{
+							LobbyProvider->OnFindComplete.Clear();
+							this->OnFindComplete(bSuccess2, ResultCount2, Config, OnComplete);
+						}
+					);
+					LobbyProvider->FindLobbies(Config);
+					return false; // 1회만 실행
+				}),
+				FindRetryDelay
+			);
+		}
+		else
+		{
+			FindRetryCount = 0;
+			UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 재검색 %d회 후 Lobby 없음 — 새 Lobby 생성 중..."), MaxFindRetries);
 
-		LobbyProvider->CreateLobby(Config);
+			LobbyProvider->OnCreateComplete.Clear();
+			LobbyProvider->OnCreateComplete.AddLambda(
+				[this, OnComplete](bool bCreateSuccess, const FString& ErrorMessage)
+				{
+					FExListenServerStrategy* SafeThis = this;
+					TFunction<void(bool, const FString&)> SafeOnComplete = OnComplete;
+					SafeThis->OnCreateComplete(bCreateSuccess, ErrorMessage, SafeOnComplete);
+				}
+			);
+
+			LobbyProvider->CreateLobby(Config);
+		}
 	}
 }
 
@@ -326,16 +356,25 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Client(float DeltaTime)
 	if (Settings)
 	{
 		int32 MatchStarted = 0;
-		if (Settings->Get(FName("MATCH_STARTED"), MatchStarted) && MatchStarted == 1)
+		const bool bHasProperty = Settings->Get(FName("MATCH_STARTED"), MatchStarted);
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Client 폴링 — MATCH_STARTED 속성: 존재=%d, 값=%d, 경과=%.1f초"),
+			bHasProperty, MatchStarted, WaitLobbyElapsed);
+
+		if (bHasProperty && MatchStarted == 1)
 		{
 			WaitLobbyTickerHandle.Reset();
 			if (CachedOnComplete)
 			{
+				UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Client MATCH_STARTED 감지 — 매칭 완료."));
 				CachedOnComplete(true, TEXT(""));
 				CachedOnComplete = nullptr;
 			}
-			return false; 
+			return false;
 		}
+	}
+	else
+	{
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Client 폴링 — SessionSettings 없음, 경과=%.1f초"), WaitLobbyElapsed);
 	}
 
 	if (WaitLobbyElapsed >= CurrentWaitConfig.MaxWaitForPlayersSeconds)

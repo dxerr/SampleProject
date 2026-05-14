@@ -69,6 +69,12 @@ private:
 	FExMatchConfig CurrentWaitConfig;
 	TFunction<void(bool, const FString&)> CachedOnComplete;
 
+	// 검색 재시도 관련 (동시 접속 타이밍 문제 대응)
+	// 검색 결과 0개일 때 즉시 생성하지 않고 MaxFindRetries회 재검색 후 생성
+	static constexpr int32 MaxFindRetries = 3;
+	static constexpr float FindRetryDelay = 2.0f; // 초
+	int32 FindRetryCount = 0;
+
 	void ClearWaitLobbyTicker();
 	bool CheckLobbyWaitConditions_Host(float DeltaTime);
 	bool CheckLobbyWaitConditions_Client(float DeltaTime);

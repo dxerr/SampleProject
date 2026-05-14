@@ -250,10 +250,46 @@ void FExEOSLobbyProvider::HandleJoinSessionComplete(FName SessionName, EOnJoinSe
 			*SessionName.ToString(), *ConnectInfo);
 		OnJoinComplete.Broadcast(true, TEXT(""));
 	}
+	else if (Result == EOnJoinSessionCompleteResult::AlreadyInSession)
+	{
+		// 이전 PIE 세션이 로컬에 남아있는 경우 — 기존 세션 파괴 후 재시도
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSLobbyProvider] 이미 세션에 참가 중 — 기존 로컬 세션 파괴 후 재참가 시도."));
+
+		// 기존 세션 파괴 후 재시도
+		const TSharedPtr<FOnlineSessionSearch> CachedSearch = SearchResults;
+		const int32 CachedResultIndex = 0; // 항상 첫 번째 결과
+
+		FDelegateHandle CleanupHandle = SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(
+			FOnDestroySessionCompleteDelegate::CreateLambda(
+				[this, CachedSearch, CachedResultIndex](FName DestroyedName, bool bDestroySuccess)
+				{
+					SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroyCompleteHandle);
+					bInLobby = false;
+
+					if (bDestroySuccess && CachedSearch.IsValid() && CachedSearch->SearchResults.IsValidIndex(CachedResultIndex))
+					{
+						UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] 기존 세션 파괴 완료 — 재참가 시도."));
+						JoinCompleteHandle = SessionInterface->AddOnJoinSessionCompleteDelegate_Handle(
+							FOnJoinSessionCompleteDelegate::CreateRaw(this, &FExEOSLobbyProvider::HandleJoinSessionComplete)
+						);
+						SessionInterface->JoinSession(0, ExMatchSessionName, CachedSearch->SearchResults[CachedResultIndex]);
+					}
+					else
+					{
+						UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSLobbyProvider] 기존 세션 파괴 후 재참가 불가."));
+						OnJoinComplete.Broadcast(false, TEXT("AlreadyInSession cleanup failed"));
+					}
+				}
+			)
+		);
+		DestroyCompleteHandle = CleanupHandle;
+		SessionInterface->DestroySession(ExMatchSessionName);
+	}
 	else
 	{
-		UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSLobbyProvider] Lobby 참가 실패 — Result=%d"), (int32)Result);
-		OnJoinComplete.Broadcast(false, FString::Printf(TEXT("JoinSession failed: %d"), (int32)Result));
+		const FString ResultStr = LexToString(Result);
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSLobbyProvider] Lobby 참가 실패 — Result=%d (%s)"), (int32)Result, *ResultStr);
+		OnJoinComplete.Broadcast(false, FString::Printf(TEXT("JoinSession failed: %s"), *ResultStr));
 	}
 }
 
