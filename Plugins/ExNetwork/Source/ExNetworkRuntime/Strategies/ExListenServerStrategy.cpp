@@ -4,6 +4,10 @@
 #include "Core/ExNetworkLog.h"
 #include "Providers/IExLobbyProvider.h"
 #include "Engine/World.h"
+#include "OnlineSessionSettings.h"
+#include "OnlineSubsystem.h"
+#include "Interfaces/OnlineSessionInterface.h"
+#include "GameFramework/PlayerController.h"
 
 FExListenServerStrategy::FExListenServerStrategy()
 {
@@ -42,10 +46,27 @@ void FExListenServerStrategy::StartGameSession(const FString& MapPath, UWorld* W
 		return;
 	}
 
-	// 서버 권한 체크 — 클라이언트는 ServerTravel 호출 금지
+	// 클라이언트는 ClientTravel 수행
 	if (World->GetNetMode() == NM_Client)
 	{
-		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] StartGameSession: 클라이언트는 호출 불가. 서버만 ServerTravel 수행."));
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] StartGameSession: 클라이언트는 호스트로 ClientTravel을 시도합니다."));
+		IOnlineSubsystem* OSS = IOnlineSubsystem::Get();
+		if (OSS && OSS->GetSessionInterface().IsValid())
+		{
+			FString ConnectInfo;
+			if (OSS->GetSessionInterface()->GetResolvedConnectString(ExMatchSessionName, ConnectInfo))
+			{
+				if (APlayerController* PC = World->GetFirstPlayerController())
+				{
+					UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] ClientTravel -> %s"), *ConnectInfo);
+					PC->ClientTravel(ConnectInfo, TRAVEL_Absolute);
+				}
+			}
+			else
+			{
+				UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] GetResolvedConnectString 실패. 호스트의 연결 정보를 가져올 수 없습니다."));
+			}
+		}
 		return;
 	}
 
@@ -95,6 +116,7 @@ void FExListenServerStrategy::FindAndJoinOrCreate(const FExMatchConfig& Config, 
 			FExMatchConfig SafeConfig = Config;
 			TFunction<void(bool, const FString&)> SafeOnComplete = OnComplete;
 			SafeThis->LobbyProvider->OnFindComplete.Clear();
+			SafeThis->CurrentWaitConfig = SafeConfig;
 			SafeThis->OnFindComplete(bSuccess, ResultCount, SafeConfig, SafeOnComplete);
 		}
 	);
@@ -143,32 +165,143 @@ void FExListenServerStrategy::OnCreateComplete(bool bSuccess, const FString& Err
 	if (bSuccess)
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 생성 성공 — 상대 플레이어 대기 중."));
+		WaitLobbyElapsed = 0.f;
+		CachedOnComplete = OnComplete;
+		WaitLobbyTickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FExListenServerStrategy::CheckLobbyWaitConditions_Host), 1.0f);
 	}
 	else
 	{
 		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] Lobby 생성 실패 — %s"), *ErrorMessage);
+		OnComplete(bSuccess, ErrorMessage);
 	}
-	OnComplete(bSuccess, ErrorMessage);
 }
 
 void FExListenServerStrategy::OnJoinComplete(bool bSuccess, const FString& ErrorMessage, TFunction<void(bool, const FString&)> OnComplete)
 {
 	if (bSuccess)
 	{
-		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 참가 성공 — 매칭 완료."));
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 참가 성공 — 매치 시작 대기 중."));
+		WaitLobbyElapsed = 0.f;
+		CachedOnComplete = OnComplete;
+		WaitLobbyTickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FExListenServerStrategy::CheckLobbyWaitConditions_Client), 1.0f);
 	}
 	else
 	{
 		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] Lobby 참가 실패 — %s"), *ErrorMessage);
+		OnComplete(bSuccess, ErrorMessage);
 	}
-	OnComplete(bSuccess, ErrorMessage);
 }
 
 void FExListenServerStrategy::CancelMatch()
 {
+	ClearWaitLobbyTicker();
 	if (LobbyProvider && LobbyProvider->IsInLobby())
 	{
 		LobbyProvider->DestroyLobby();
 	}
 	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 매칭 취소."));
+}
+
+void FExListenServerStrategy::ClearWaitLobbyTicker()
+{
+	if (WaitLobbyTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(WaitLobbyTickerHandle);
+		WaitLobbyTickerHandle.Reset();
+	}
+}
+
+bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
+{
+	WaitLobbyElapsed += DeltaTime;
+	IOnlineSubsystem* OSS = IOnlineSubsystem::Get();
+	if (!OSS || !OSS->GetSessionInterface().IsValid())
+	{
+		return true;
+	}
+
+	FNamedOnlineSession* Session = OSS->GetSessionInterface()->GetNamedSession(ExMatchSessionName);
+	if (!Session)
+	{
+		return true;
+	}
+
+	int32 CurrentPlayers = Session->RegisteredPlayers.Num();
+	if (CurrentWaitConfig.bIsSinglePlay || CurrentPlayers >= CurrentWaitConfig.ExpectedPlayerCount)
+	{
+		FOnlineSessionSettings* Settings = OSS->GetSessionInterface()->GetSessionSettings(ExMatchSessionName);
+		if (Settings)
+		{
+			Settings->Set(FName("MATCH_STARTED"), 1, EOnlineDataAdvertisementType::ViaOnlineService);
+			OSS->GetSessionInterface()->UpdateSession(ExMatchSessionName, *Settings, true);
+		}
+
+		ClearWaitLobbyTicker();
+		if (CachedOnComplete)
+		{
+			CachedOnComplete(true, TEXT(""));
+			CachedOnComplete = nullptr;
+		}
+		return false; 
+	}
+
+	if (WaitLobbyElapsed >= CurrentWaitConfig.MaxWaitForPlayersSeconds)
+	{
+		ClearWaitLobbyTicker();
+		if (LobbyProvider)
+		{
+			LobbyProvider->DestroyLobby();
+		}
+		if (CachedOnComplete)
+		{
+			CachedOnComplete(false, TEXT("Timeout"));
+			CachedOnComplete = nullptr;
+		}
+		return false;
+	}
+
+	return true; 
+}
+
+bool FExListenServerStrategy::CheckLobbyWaitConditions_Client(float DeltaTime)
+{
+	WaitLobbyElapsed += DeltaTime;
+	IOnlineSubsystem* OSS = IOnlineSubsystem::Get();
+	if (!OSS || !OSS->GetSessionInterface().IsValid())
+	{
+		return true;
+	}
+
+	FOnlineSessionSettings* Settings = OSS->GetSessionInterface()->GetSessionSettings(ExMatchSessionName);
+	if (Settings)
+	{
+		int32 MatchStarted = 0;
+		if (Settings->Get(FName("MATCH_STARTED"), MatchStarted) && MatchStarted == 1)
+		{
+			ClearWaitLobbyTicker();
+			if (CachedOnComplete)
+			{
+				CachedOnComplete(true, TEXT(""));
+				CachedOnComplete = nullptr;
+			}
+			return false; 
+		}
+	}
+
+	if (WaitLobbyElapsed >= CurrentWaitConfig.MaxWaitForPlayersSeconds)
+	{
+		ClearWaitLobbyTicker();
+		if (LobbyProvider)
+		{
+			LobbyProvider->DestroyLobby();
+		}
+		if (CachedOnComplete)
+		{
+			CachedOnComplete(false, TEXT("Timeout"));
+			CachedOnComplete = nullptr;
+		}
+		return false;
+	}
+
+	return true; 
 }

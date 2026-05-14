@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Core/IExNetServerStrategy.h"
 #include "Match/ExMatchTypes.h"
+#include "Containers/Ticker.h"
 
 class IExLobbyProvider;
 
@@ -61,4 +62,14 @@ private:
 	void OnJoinComplete(bool bSuccess, const FString& ErrorMessage, TFunction<void(bool, const FString&)> OnComplete);
 
 	TUniquePtr<IExLobbyProvider> LobbyProvider;
+
+	// 매치 대기 관련
+	FTSTicker::FDelegateHandle WaitLobbyTickerHandle;
+	float WaitLobbyElapsed = 0.f;
+	FExMatchConfig CurrentWaitConfig;
+	TFunction<void(bool, const FString&)> CachedOnComplete;
+
+	void ClearWaitLobbyTicker();
+	bool CheckLobbyWaitConditions_Host(float DeltaTime);
+	bool CheckLobbyWaitConditions_Client(float DeltaTime);
 };

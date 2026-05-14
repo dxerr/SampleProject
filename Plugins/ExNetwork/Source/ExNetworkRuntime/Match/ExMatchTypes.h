@@ -40,6 +40,9 @@ struct FExMatchConfig
 		: MaxPlayers(2)
 		, MatchMode(TEXT("Default"))
 		, MapPath(TEXT(""))
+		, ExpectedPlayerCount(2)
+		, MaxWaitForPlayersSeconds(60.f)
+		, bIsSinglePlay(false)
 	{
 	}
 
@@ -62,4 +65,16 @@ struct FExMatchConfig
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Match")
 	FString MapPath = TEXT("");
+
+	/** 대기 인원. (이 인원이 모여야 게임 시작) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Match")
+	int32 ExpectedPlayerCount = 2;
+
+	/** 최대 대기 시간 (초) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Match")
+	float MaxWaitForPlayersSeconds = 60.f;
+
+	/** 싱글플레이 여부 (true면 대기 없이 즉시 시작) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Match")
+	bool bIsSinglePlay = false;
 };
