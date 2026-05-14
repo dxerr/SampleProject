@@ -113,7 +113,8 @@ void UExLobbyMatchViewModel::StartMultiPlay()
 	PendingConfig.MaxPlayers  = DefaultMaxPlayers;
 	PendingConfig.MapPath     = DefaultMapPath;   
 
-	if (UWorld* World = GetWorld())
+	UWorld* World = CachedOnlineSubsystem->GetWorld();
+	if (World)
 	{
 		if (UGameInstance* GI = World->GetGameInstance())
 		{
