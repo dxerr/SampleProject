@@ -190,7 +190,7 @@ void UExLobbyMatchViewModel::OnMatchFoundCallback(bool bSuccess, const FString& 
 			
 			if (ActiveMatchingPopup)
 			{
-				FText NewDesc = FText::FromString(FString::Printf(TEXT("상대 플레이어를 찾는 중입니다... (%d/3)\n\n취소하려면 아래 버튼을 누르세요."), RetryCount + 1));
+				FText NewDesc = FText::FromString(FString::Printf(TEXT("상대 플레이어를 찾는 중입니다...\n\n[ 참가 인원 : 1 / %d 명 ]\n[ 검색 시도 : %d / 3 회 ]\n\n취소하려면 아래 버튼을 누르세요."), PendingConfig.ExpectedPlayerCount, RetryCount + 1));
 				ActiveMatchingPopup->UpdateBodyText(NewDesc);
 			}
 
@@ -267,7 +267,7 @@ void UExLobbyMatchViewModel::ShowMatchingPopup(bool bIsSinglePlay)
 
 	FText Title = bIsSinglePlay ? FText::FromString(TEXT("시작 준비중입니다.")) : FText::FromString(TEXT("매칭 중..."));
 	FText Desc = bIsSinglePlay ? FText::FromString(TEXT("게임 시작을 준비 중입니다.\n\n취소하려면 아래 버튼을 누르세요.")) 
-                               : FText::FromString(FString::Printf(TEXT("상대 플레이어를 찾는 중입니다... (%d/3)\n\n취소하려면 아래 버튼을 누르세요."), RetryCount + 1));
+                               : FText::FromString(FString::Printf(TEXT("상대 플레이어를 찾는 중입니다...\n\n[ 참가 인원 : 1 / %d 명 ]\n[ 검색 시도 : %d / 3 회 ]\n\n취소하려면 아래 버튼을 누르세요."), PendingConfig.ExpectedPlayerCount, RetryCount + 1));
 
 	ActiveMatchingPopup = UIMgr->ShowAcknowledgeBP(
 		Title,
