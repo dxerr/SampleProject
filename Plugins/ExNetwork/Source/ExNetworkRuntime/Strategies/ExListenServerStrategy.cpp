@@ -137,6 +137,8 @@ void FExListenServerStrategy::FindAndJoinOrCreate(const FExMatchConfig& Config, 
 
 	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Quick Match 시작 — Lobby 검색 중..."));
 
+	// 이전 콜백이 남아있을 수 있으므로 클리어
+	LobbyProvider->OnFindComplete.Clear();
 	LobbyProvider->OnFindComplete.AddLambda(
 		[this, Config, OnComplete](bool bSuccess, int32 ResultCount)
 		{
@@ -157,6 +159,7 @@ void FExListenServerStrategy::OnFindComplete(bool bSuccess, int32 ResultCount, F
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby %d개 발견 — 첫 번째 Lobby 참가 시도."), ResultCount);
 
+		LobbyProvider->OnJoinComplete.Clear();
 		LobbyProvider->OnJoinComplete.AddLambda(
 			[this, OnComplete](bool bJoinSuccess, const FString& ErrorMessage)
 			{
@@ -172,6 +175,7 @@ void FExListenServerStrategy::OnFindComplete(bool bSuccess, int32 ResultCount, F
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 빈 Lobby 없음 — 새 Lobby 생성 중..."));
 
+		LobbyProvider->OnCreateComplete.Clear();
 		LobbyProvider->OnCreateComplete.AddLambda(
 			[this, OnComplete](bool bCreateSuccess, const FString& ErrorMessage)
 			{
@@ -255,7 +259,18 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
 	FNamedOnlineSession* Session = OSS->GetSessionInterface()->GetNamedSession(ExMatchSessionName);
 	if (!Session)
 	{
-		return true;
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] CheckLobbyWaitConditions_Host: Session Invalid! 즉시 타임아웃 처리."));
+		WaitLobbyTickerHandle.Reset();
+		if (LobbyProvider)
+		{
+			LobbyProvider->DestroyLobby();
+		}
+		if (CachedOnComplete)
+		{
+			CachedOnComplete(false, TEXT("Timeout"));
+			CachedOnComplete = nullptr;
+		}
+		return false;
 	}
 
 	int32 CurrentPlayers = Session->RegisteredPlayers.Num();
@@ -279,6 +294,7 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
 
 	if (WaitLobbyElapsed >= CurrentWaitConfig.MaxWaitForPlayersSeconds)
 	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] Lobby 대기 타임아웃 발생 (%.1f / %.1f 초 경과)."), WaitLobbyElapsed, CurrentWaitConfig.MaxWaitForPlayersSeconds);
 		WaitLobbyTickerHandle.Reset();
 		if (LobbyProvider)
 		{
