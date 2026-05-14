@@ -59,6 +59,14 @@ FText UExPopupWidget::GetInputText() const
 	return FText::GetEmpty();
 }
 
+void UExPopupWidget::UpdateBodyText(const FText& NewText)
+{
+	if (Text_Body)
+	{
+		Text_Body->SetText(NewText);
+	}
+}
+
 void UExPopupWidget::SetupButtons(const TArray<FExPopupButtonDesc>& ButtonDescs)
 {
 	if (!Panel_Buttons) return;

@@ -42,6 +42,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "ExUI|Popup")
 	FText GetInputText() const;
 
+	UFUNCTION(BlueprintCallable, Category = "ExUI|Popup")
+	void UpdateBodyText(const FText& NewText);
+
 protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UCommonRichTextBlock> Text_Title;
