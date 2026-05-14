@@ -113,6 +113,10 @@ void FExListenServerStrategy::FindAndJoinOrCreate(const FExMatchConfig& Config, 
 		return;
 	}
 
+	LobbyProvider->OnFindComplete.Clear();
+	LobbyProvider->OnCreateComplete.Clear();
+	LobbyProvider->OnJoinComplete.Clear();
+
 	if (Config.bIsSinglePlay)
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Single Play 모드 — 빈 Lobby 검색 생략 후 새 Lobby 즉시 생성 중..."));
@@ -122,7 +126,6 @@ void FExListenServerStrategy::FindAndJoinOrCreate(const FExMatchConfig& Config, 
 			{
 				FExListenServerStrategy* SafeThis = this;
 				TFunction<void(bool, const FString&)> SafeOnComplete = OnComplete;
-				SafeThis->LobbyProvider->OnCreateComplete.Clear();
 				SafeThis->CurrentWaitConfig = Config;
 				SafeThis->OnCreateComplete(bCreateSuccess, ErrorMessage, SafeOnComplete);
 			}
@@ -140,7 +143,6 @@ void FExListenServerStrategy::FindAndJoinOrCreate(const FExMatchConfig& Config, 
 			FExListenServerStrategy* SafeThis = this;
 			FExMatchConfig SafeConfig = Config;
 			TFunction<void(bool, const FString&)> SafeOnComplete = OnComplete;
-			SafeThis->LobbyProvider->OnFindComplete.Clear();
 			SafeThis->CurrentWaitConfig = SafeConfig;
 			SafeThis->OnFindComplete(bSuccess, ResultCount, SafeConfig, SafeOnComplete);
 		}
@@ -160,7 +162,6 @@ void FExListenServerStrategy::OnFindComplete(bool bSuccess, int32 ResultCount, F
 			{
 				FExListenServerStrategy* SafeThis = this;
 				TFunction<void(bool, const FString&)> SafeOnComplete = OnComplete;
-				SafeThis->LobbyProvider->OnJoinComplete.Clear();
 				SafeThis->OnJoinComplete(bJoinSuccess, ErrorMessage, SafeOnComplete);
 			}
 		);
@@ -176,7 +177,6 @@ void FExListenServerStrategy::OnFindComplete(bool bSuccess, int32 ResultCount, F
 			{
 				FExListenServerStrategy* SafeThis = this;
 				TFunction<void(bool, const FString&)> SafeOnComplete = OnComplete;
-				SafeThis->LobbyProvider->OnCreateComplete.Clear();
 				SafeThis->OnCreateComplete(bCreateSuccess, ErrorMessage, SafeOnComplete);
 			}
 		);
@@ -220,9 +220,16 @@ void FExListenServerStrategy::OnJoinComplete(bool bSuccess, const FString& Error
 void FExListenServerStrategy::CancelMatch()
 {
 	ClearWaitLobbyTicker();
-	if (LobbyProvider && LobbyProvider->IsInLobby())
+	if (LobbyProvider)
 	{
-		LobbyProvider->DestroyLobby();
+		LobbyProvider->OnFindComplete.Clear();
+		LobbyProvider->OnCreateComplete.Clear();
+		LobbyProvider->OnJoinComplete.Clear();
+
+		if (LobbyProvider->IsInLobby())
+		{
+			LobbyProvider->DestroyLobby();
+		}
 	}
 	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 매칭 취소."));
 }

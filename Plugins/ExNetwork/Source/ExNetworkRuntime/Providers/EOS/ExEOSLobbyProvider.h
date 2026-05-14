@@ -58,4 +58,7 @@ private:
 	FDelegateHandle FindCompleteHandle;
 	FDelegateHandle JoinCompleteHandle;
 	FDelegateHandle DestroyCompleteHandle;
+
+	/** 조인 실패 시 상세 로그 캡처기 */
+	TSharedPtr<class FExEOSJoinLogCatcher> JoinLogCatcher;
 };

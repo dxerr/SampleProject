@@ -5,6 +5,38 @@
 #include "OnlineSubsystem.h"
 #include "OnlineSessionSettings.h"
 #include "Online/OnlineSessionNames.h"
+#include "Misc/OutputDevice.h"
+
+class FExEOSJoinLogCatcher : public FOutputDevice
+{
+public:
+	FString LastError;
+	
+	FExEOSJoinLogCatcher()
+	{
+		GLog->AddOutputDevice(this);
+	}
+	
+	virtual ~FExEOSJoinLogCatcher()
+	{
+		if (GLog)
+		{
+			GLog->RemoveOutputDevice(this);
+		}
+	}
+
+	virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const class FName& Category) override
+	{
+		if (Category == FName(TEXT("LogOnlineSession")) && Verbosity == ELogVerbosity::Warning)
+		{
+			FString Msg = V;
+			if (Msg.Contains(TEXT("JoinLobby not successful")) || Msg.Contains(TEXT("JoinSession failed")))
+			{
+				LastError = Msg;
+			}
+		}
+	}
+};
 
 FExEOSLobbyProvider::FExEOSLobbyProvider(IOnlineSubsystem* InOSS)
 	: OSS(InOSS)
@@ -71,6 +103,7 @@ void FExEOSLobbyProvider::FindLobbies(const FExMatchConfig& Config)
 	SearchResults->MaxSearchResults = 10;
 	SearchResults->bIsLanQuery = false;
 	SearchResults->QuerySettings.Set(SEARCH_LOBBIES, true, EOnlineComparisonOp::Equals);
+	SearchResults->QuerySettings.Set(SEARCH_MINSLOTSAVAILABLE, 1, EOnlineComparisonOp::GreaterThanEquals);
 	SearchResults->QuerySettings.Set(FName("MatchMode"), Config.MatchMode, EOnlineComparisonOp::Equals);
 
 	FindCompleteHandle = SessionInterface->AddOnFindSessionsCompleteDelegate_Handle(
@@ -96,6 +129,8 @@ void FExEOSLobbyProvider::JoinLobby(int32 ResultIndex)
 	}
 
 	UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] JoinLobby 시작 — ResultIndex=%d"), ResultIndex);
+
+	JoinLogCatcher = MakeShared<FExEOSJoinLogCatcher>();
 
 	JoinCompleteHandle = SessionInterface->AddOnJoinSessionCompleteDelegate_Handle(
 		FOnJoinSessionCompleteDelegate::CreateRaw(this, &FExEOSLobbyProvider::HandleJoinSessionComplete)
@@ -165,6 +200,13 @@ void FExEOSLobbyProvider::HandleJoinSessionComplete(FName SessionName, EOnJoinSe
 {
 	SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinCompleteHandle);
 
+	FString DetailedError = FString::Printf(TEXT("JoinSession failed: %d"), (int32)Result);
+	if (JoinLogCatcher.IsValid() && !JoinLogCatcher->LastError.IsEmpty())
+	{
+		DetailedError = JoinLogCatcher->LastError;
+	}
+	JoinLogCatcher.Reset();
+
 	const bool bSuccess = (Result == EOnJoinSessionCompleteResult::Success);
 
 	if (bSuccess)
@@ -175,8 +217,8 @@ void FExEOSLobbyProvider::HandleJoinSessionComplete(FName SessionName, EOnJoinSe
 	}
 	else
 	{
-		UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSLobbyProvider] Lobby 참가 실패 — Result=%d"), (int32)Result);
-		OnJoinComplete.Broadcast(false, FString::Printf(TEXT("JoinSession failed: %d"), (int32)Result));
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSLobbyProvider] Lobby 참가 실패 — 세부 사유: %s"), *DetailedError);
+		OnJoinComplete.Broadcast(false, DetailedError);
 	}
 }
 
