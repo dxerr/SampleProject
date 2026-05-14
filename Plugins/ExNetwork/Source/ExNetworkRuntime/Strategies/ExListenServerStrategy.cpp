@@ -273,7 +273,9 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
 		return false;
 	}
 
-	int32 CurrentPlayers = Session->RegisteredPlayers.Num();
+	int32 CurrentPlayers = Session->SessionSettings.NumPublicConnections - Session->NumOpenPublicConnections;
+	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Host 대기 중 — 현재 %d / %d 명, 경과 %.1f초"),
+		CurrentPlayers, CurrentWaitConfig.ExpectedPlayerCount, WaitLobbyElapsed);
 	if (CurrentWaitConfig.bIsSinglePlay || CurrentPlayers >= CurrentWaitConfig.ExpectedPlayerCount)
 	{
 		FOnlineSessionSettings* Settings = OSS->GetSessionInterface()->GetSessionSettings(ExMatchSessionName);

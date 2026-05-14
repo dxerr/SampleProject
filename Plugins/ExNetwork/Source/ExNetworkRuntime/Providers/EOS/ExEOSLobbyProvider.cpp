@@ -27,6 +27,7 @@ FExEOSLobbyProvider::~FExEOSLobbyProvider()
 		SessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(FindCompleteHandle);
 		SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinCompleteHandle);
 		SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroyCompleteHandle);
+		SessionInterface->ClearOnSessionParticipantJoinedDelegate_Handle(ParticipantsChangeHandle);
 	}
 }
 
@@ -37,6 +38,8 @@ void FExEOSLobbyProvider::CreateLobby(const FExMatchConfig& Config)
 		OnCreateComplete.Broadcast(false, TEXT("SessionInterface invalid"));
 		return;
 	}
+
+	MaxPlayersCache = Config.MaxPlayers;
 
 	// 로그인 상태 확인
 	if (OSS)
@@ -65,11 +68,13 @@ void FExEOSLobbyProvider::CreateLobby(const FExMatchConfig& Config)
 	SessionSettings.bAllowInvites = false;
 	SessionSettings.Set(FName("MatchMode"), Config.MatchMode, EOnlineDataAdvertisementType::ViaOnlineService);
 
-	UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] SessionSettings — NumPublicConnections=%d, bShouldAdvertise=%d, bUsesPresence=%d, bUseLobbiesIfAvailable=%d"),
-		SessionSettings.NumPublicConnections,
-		SessionSettings.bShouldAdvertise,
-		SessionSettings.bUsesPresence,
-		SessionSettings.bUseLobbiesIfAvailable);
+	UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] SessionSettings — NumPublicConnections=%d, bShouldAdvertise=%d, bUsesPresence=%d"),
+		SessionSettings.NumPublicConnections, SessionSettings.bShouldAdvertise, SessionSettings.bUsesPresence);
+
+	// 참가자 변경 감지 등록 — 호스트가 상대방 입장을 감지하기 위해 CreateLobby 전에 바인딩
+	ParticipantsChangeHandle = SessionInterface->AddOnSessionParticipantJoinedDelegate_Handle(
+		FOnSessionParticipantJoinedDelegate::CreateRaw(this, &FExEOSLobbyProvider::HandleSessionParticipantJoined)
+	);
 
 	CreateCompleteHandle = SessionInterface->AddOnCreateSessionCompleteDelegate_Handle(
 		FOnCreateSessionCompleteDelegate::CreateRaw(this, &FExEOSLobbyProvider::HandleCreateSessionComplete)
@@ -86,7 +91,6 @@ void FExEOSLobbyProvider::FindLobbies(const FExMatchConfig& Config)
 		return;
 	}
 
-	// 로그인 상태 확인
 	if (OSS)
 	{
 		IOnlineIdentityPtr Identity = OSS->GetIdentityInterface();
@@ -109,9 +113,7 @@ void FExEOSLobbyProvider::FindLobbies(const FExMatchConfig& Config)
 	SearchResults->QuerySettings.Set(FName("MatchMode"), Config.MatchMode, EOnlineComparisonOp::Equals);
 
 	UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] 검색 조건 — MaxSearchResults=%d, bIsLanQuery=%d, SEARCH_LOBBIES=true, MatchMode=%s"),
-		SearchResults->MaxSearchResults,
-		SearchResults->bIsLanQuery,
-		*Config.MatchMode);
+		SearchResults->MaxSearchResults, SearchResults->bIsLanQuery, *Config.MatchMode);
 
 	FindCompleteHandle = SessionInterface->AddOnFindSessionsCompleteDelegate_Handle(
 		FOnFindSessionsCompleteDelegate::CreateRaw(this, &FExEOSLobbyProvider::HandleFindSessionsComplete)
@@ -137,9 +139,7 @@ void FExEOSLobbyProvider::JoinLobby(int32 ResultIndex)
 
 	const FOnlineSessionSearchResult& Result = SearchResults->SearchResults[ResultIndex];
 	UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] JoinLobby 시작 — ResultIndex=%d, SessionId=%s, Ping=%dms"),
-		ResultIndex,
-		*Result.Session.GetSessionIdStr(),
-		Result.PingInMs);
+		ResultIndex, *Result.Session.GetSessionIdStr(), Result.PingInMs);
 
 	JoinCompleteHandle = SessionInterface->AddOnJoinSessionCompleteDelegate_Handle(
 		FOnJoinSessionCompleteDelegate::CreateRaw(this, &FExEOSLobbyProvider::HandleJoinSessionComplete)
@@ -156,6 +156,9 @@ void FExEOSLobbyProvider::DestroyLobby()
 		return;
 	}
 
+	// 참가자 감지 해제
+	SessionInterface->ClearOnSessionParticipantJoinedDelegate_Handle(ParticipantsChangeHandle);
+
 	UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] DestroyLobby 시작."));
 
 	DestroyCompleteHandle = SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(
@@ -170,6 +173,17 @@ bool FExEOSLobbyProvider::IsInLobby() const
 	return bInLobby;
 }
 
+int32 FExEOSLobbyProvider::GetCurrentPlayerCount() const
+{
+	if (!SessionInterface.IsValid()) return 0;
+
+	FNamedOnlineSession* Session = SessionInterface->GetNamedSession(ExMatchSessionName);
+	if (!Session) return 0;
+
+	// NumPublicConnections - NumOpenPublicConnections = 현재 참가 인원
+	return Session->SessionSettings.NumPublicConnections - Session->NumOpenPublicConnections;
+}
+
 void FExEOSLobbyProvider::HandleCreateSessionComplete(FName SessionName, bool bSuccess)
 {
 	SessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateCompleteHandle);
@@ -177,22 +191,17 @@ void FExEOSLobbyProvider::HandleCreateSessionComplete(FName SessionName, bool bS
 	if (bSuccess)
 	{
 		bInLobby = true;
-		// 생성된 세션 정보 출력
 		FNamedOnlineSession* Session = SessionInterface->GetNamedSession(SessionName);
 		if (Session)
 		{
 			UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] Lobby 생성 완료 — SessionId=%s, NumOpenPublicConnections=%d"),
-				*Session->GetSessionIdStr(),
-				Session->NumOpenPublicConnections);
-		}
-		else
-		{
-			UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] Lobby 생성 완료 — SessionName=%s"), *SessionName.ToString());
+				*Session->GetSessionIdStr(), Session->NumOpenPublicConnections);
 		}
 		OnCreateComplete.Broadcast(true, TEXT(""));
 	}
 	else
 	{
+		SessionInterface->ClearOnSessionParticipantJoinedDelegate_Handle(ParticipantsChangeHandle);
 		UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSLobbyProvider] Lobby 생성 실패 — SessionName=%s"), *SessionName.ToString());
 		OnCreateComplete.Broadcast(false, TEXT("CreateSession failed"));
 	}
@@ -208,21 +217,14 @@ void FExEOSLobbyProvider::HandleFindSessionsComplete(bool bSuccess)
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] Lobby 검색 완료 — 결과 %d개"), ResultCount);
 
-		// 검색 결과 상세 출력
-		if (SearchResults.IsValid())
+		for (int32 i = 0; i < ResultCount; i++)
 		{
-			for (int32 i = 0; i < SearchResults->SearchResults.Num(); i++)
-			{
-				const FOnlineSessionSearchResult& Result = SearchResults->SearchResults[i];
-				FString MatchMode;
-				Result.Session.SessionSettings.Get(FName("MatchMode"), MatchMode);
-				UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider]   [%d] SessionId=%s, MatchMode=%s, OpenConnections=%d, Ping=%dms"),
-					i,
-					*Result.Session.GetSessionIdStr(),
-					*MatchMode,
-					Result.Session.NumOpenPublicConnections,
-					Result.PingInMs);
-			}
+			const FOnlineSessionSearchResult& Result = SearchResults->SearchResults[i];
+			FString MatchMode;
+			Result.Session.SessionSettings.Get(FName("MatchMode"), MatchMode);
+			UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider]   [%d] SessionId=%s, MatchMode=%s, OpenConnections=%d, Ping=%dms"),
+				i, *Result.Session.GetSessionIdStr(), *MatchMode,
+				Result.Session.NumOpenPublicConnections, Result.PingInMs);
 		}
 	}
 	else
@@ -242,19 +244,10 @@ void FExEOSLobbyProvider::HandleJoinSessionComplete(FName SessionName, EOnJoinSe
 	if (bSuccess)
 	{
 		bInLobby = true;
-
-		// 접속 주소 확인
 		FString ConnectInfo;
-		if (SessionInterface->GetResolvedConnectString(SessionName, ConnectInfo))
-		{
-			UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] Lobby 참가 완료 — SessionName=%s, ConnectString=%s"),
-				*SessionName.ToString(), *ConnectInfo);
-		}
-		else
-		{
-			UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] Lobby 참가 완료 — SessionName=%s (ConnectString 없음)"),
-				*SessionName.ToString());
-		}
+		SessionInterface->GetResolvedConnectString(SessionName, ConnectInfo);
+		UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] Lobby 참가 완료 — SessionName=%s, ConnectString=%s"),
+			*SessionName.ToString(), *ConnectInfo);
 		OnJoinComplete.Broadcast(true, TEXT(""));
 	}
 	else
@@ -267,8 +260,24 @@ void FExEOSLobbyProvider::HandleJoinSessionComplete(FName SessionName, EOnJoinSe
 void FExEOSLobbyProvider::HandleDestroySessionComplete(FName SessionName, bool bSuccess)
 {
 	SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroyCompleteHandle);
-
 	bInLobby = false;
 	UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] Lobby 파괴 완료 — bSuccess=%d"), bSuccess);
 	OnDestroyComplete.Broadcast(bSuccess);
+}
+
+void FExEOSLobbyProvider::HandleSessionParticipantJoined(FName SessionName, const FUniqueNetId& UniqueId)
+{
+	if (SessionName != ExMatchSessionName) return;
+
+	const int32 CurrentCount = GetCurrentPlayerCount();
+	UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] 참가자 입장 — UserId=%s, 현재인원=%d/%d"),
+		*UniqueId.ToString(), CurrentCount, MaxPlayersCache);
+
+	// 정원이 채워지면 OnParticipantsFull 브로드캐스트 → 호스트에게 매칭 완료 알림
+	if (CurrentCount >= MaxPlayersCache)
+	{
+		UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] Lobby 정원 충족 (%d/%d) — OnParticipantsFull 브로드캐스트."),
+			CurrentCount, MaxPlayersCache);
+		OnParticipantsFull.Broadcast(CurrentCount);
+	}
 }

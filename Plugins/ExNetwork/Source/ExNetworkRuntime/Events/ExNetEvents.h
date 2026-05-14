@@ -38,6 +38,13 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FExOnLobbyJoinCompleteDelegate, bool /*bSuc
 /** Lobby 파괴 완료 */
 DECLARE_MULTICAST_DELEGATE_OneParam(FExOnLobbyDestroyCompleteDelegate, bool /*bSuccess*/);
 
+/**
+ * Lobby 정원이 채워졌을 때 브로드캐스트.
+ * 호스트가 OnMatchFound를 받는 경로.
+ * int32: 현재 참가 인원 수
+ */
+DECLARE_MULTICAST_DELEGATE_OneParam(FExOnLobbyParticipantsFullDelegate, int32 /*CurrentCount*/);
+
 // ------------------------------------------------------------------
 // Quick Match 이벤트 (Phase 3) — BP용 Dynamic은 ExOnlineSubsystem.h에 선언
 // ------------------------------------------------------------------

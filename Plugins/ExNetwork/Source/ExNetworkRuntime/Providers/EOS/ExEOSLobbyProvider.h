@@ -12,13 +12,6 @@
  *
  * IExLobbyProvider의 EOS 구현체.
  * UE 표준 IOnlineSession API를 통해 EOS Lobby를 생성/검색/참가한다.
- *
- * EOS Lobby 사용 조건:
- *   FOnlineSessionSettings::bUsesPresence = true  → EOS Lobby 경로
- *   FOnlineSessionSettings::bUsesPresence = false → EOS Session 경로
- *
- * 의존성:
- *   Initialize(IOnlineSubsystem*) 로 OSS 참조 주입 필요
  */
 class FExEOSLobbyProvider : public IExLobbyProvider
 {
@@ -27,12 +20,12 @@ public:
 	explicit FExEOSLobbyProvider(IOnlineSubsystem* InOSS);
 	virtual ~FExEOSLobbyProvider() override;
 
-	/** IExLobbyProvider 구현 */
 	virtual void CreateLobby(const FExMatchConfig& Config) override;
 	virtual void FindLobbies(const FExMatchConfig& Config) override;
 	virtual void JoinLobby(int32 ResultIndex) override;
 	virtual void DestroyLobby() override;
 	virtual bool IsInLobby() const override;
+	virtual int32 GetCurrentPlayerCount() const override;
 
 private:
 
@@ -41,24 +34,21 @@ private:
 	void HandleJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result);
 	void HandleDestroySessionComplete(FName SessionName, bool bSuccess);
 
-	/** OSS 참조 (소유하지 않음 — UExOnlineSubsystem이 소유) */
+	/** 상대방이 Lobby에 입장했을 때 호출 (IOnlineSession::OnSessionParticipantJoined) */
+	void HandleSessionParticipantJoined(FName SessionName, const FUniqueNetId& UniqueId);
+
 	IOnlineSubsystem* OSS = nullptr;
-
-	/** 세션 인터페이스 캐시 */
 	IOnlineSessionPtr SessionInterface;
-
-	/** FindLobbies 결과 저장 */
 	TSharedPtr<FOnlineSessionSearch> SearchResults;
 
-	/** 현재 Lobby 참가 여부 */
 	bool bInLobby = false;
 
-	/** 델리게이트 핸들 */
+	/** 생성 시 설정한 MaxPlayers (참가자 수 비교용) */
+	int32 MaxPlayersCache = 2;
+
 	FDelegateHandle CreateCompleteHandle;
 	FDelegateHandle FindCompleteHandle;
 	FDelegateHandle JoinCompleteHandle;
 	FDelegateHandle DestroyCompleteHandle;
-
-	/** 조인 실패 시 상세 로그 캡처기 */
-	TSharedPtr<class FExEOSJoinLogCatcher> JoinLogCatcher;
+	FDelegateHandle ParticipantsChangeHandle;
 };
