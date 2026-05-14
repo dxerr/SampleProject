@@ -91,8 +91,10 @@ void FExListenServerStrategy::FindAndJoinOrCreate(const FExMatchConfig& Config, 
 	LobbyProvider->OnFindComplete.AddLambda(
 		[this, Config, OnComplete](bool bSuccess, int32 ResultCount)
 		{
+			FExMatchConfig SafeConfig = Config;
+			TFunction<void(bool, const FString&)> SafeOnComplete = OnComplete;
 			LobbyProvider->OnFindComplete.Clear();
-			OnFindComplete(bSuccess, ResultCount, Config, OnComplete);
+			OnFindComplete(bSuccess, ResultCount, SafeConfig, SafeOnComplete);
 		}
 	);
 
@@ -108,8 +110,9 @@ void FExListenServerStrategy::OnFindComplete(bool bSuccess, int32 ResultCount, F
 		LobbyProvider->OnJoinComplete.AddLambda(
 			[this, OnComplete](bool bJoinSuccess, const FString& ErrorMessage)
 			{
+				TFunction<void(bool, const FString&)> SafeOnComplete = OnComplete;
 				LobbyProvider->OnJoinComplete.Clear();
-				OnJoinComplete(bJoinSuccess, ErrorMessage, OnComplete);
+				OnJoinComplete(bJoinSuccess, ErrorMessage, SafeOnComplete);
 			}
 		);
 
@@ -122,8 +125,9 @@ void FExListenServerStrategy::OnFindComplete(bool bSuccess, int32 ResultCount, F
 		LobbyProvider->OnCreateComplete.AddLambda(
 			[this, OnComplete](bool bCreateSuccess, const FString& ErrorMessage)
 			{
+				TFunction<void(bool, const FString&)> SafeOnComplete = OnComplete;
 				LobbyProvider->OnCreateComplete.Clear();
-				OnCreateComplete(bCreateSuccess, ErrorMessage, OnComplete);
+				OnCreateComplete(bCreateSuccess, ErrorMessage, SafeOnComplete);
 			}
 		);
 

@@ -41,8 +41,7 @@ public class ExNetworkRuntime : ModuleRules
 				"OnlineBase",
 				"EOSShared",
 				"OnlineSubsystemEOS",
-				// EOS SDK 직접 호출 제거 — IOnlineIdentity::AutoLogin() 사용으로 전환
-				// "EOSSDK",
+				"EOSSDK",
 			}
 		);
 

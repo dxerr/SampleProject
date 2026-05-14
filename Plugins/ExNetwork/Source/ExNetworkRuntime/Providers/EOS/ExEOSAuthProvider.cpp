@@ -4,6 +4,12 @@
 #include "Core/ExNetworkLog.h"
 #include "OnlineSubsystem.h"
 #include "Interfaces/OnlineIdentityInterface.h"
+#include "IEOSSDKManager.h"
+
+#if WITH_EOS_SDK
+#include "eos_sdk.h"
+#include "eos_connect.h"
+#endif
 
 FExEOSAuthProvider::FExEOSAuthProvider()
 {
@@ -47,9 +53,70 @@ void FExEOSAuthProvider::Login(int32 LocalUserNum)
 		FOnLoginCompleteDelegate::CreateRaw(this, &FExEOSAuthProvider::HandleLoginComplete)
 	);
 
-	// FUserManagerEOS::CallEOSConnectLogin()은 Credentials.Type을 "externalauth:TYPE" 형식으로 파싱한다.
-	// LexFromString(EOS_EExternalCredentialType) 기준 Device ID 문자열 = "DeviceIdAccessToken"
-	// Token은 빈 문자열 — Device ID는 EOS SDK가 자동 관리한다.
+#if WITH_EOS_SDK
+	if (IEOSSDKManager* SDKManager = IEOSSDKManager::Get())
+	{
+		auto Platforms = SDKManager->GetActivePlatforms();
+		if (Platforms.Num() > 0)
+		{
+			EOS_HPlatform Platform = *Platforms[0];
+			EOS_HConnect ConnectHandle = EOS_Platform_GetConnectInterface(Platform);
+
+			EOS_Connect_CreateDeviceIdOptions Options = {};
+			Options.ApiVersion = EOS_CONNECT_CREATEDEVICEID_API_LATEST;
+			Options.DeviceModel = "PC";
+
+			struct FCreateDeviceContext
+			{
+				FExEOSAuthProvider* Provider;
+				IOnlineIdentityPtr Identity;
+				int32 LocalUserNum;
+			};
+
+			FCreateDeviceContext* Context = new FCreateDeviceContext{ this, Identity, LocalUserNum };
+
+			UE_LOG(LogExNetwork, Log, TEXT("[ExEOSAuthProvider] EOS_Connect_CreateDeviceId 호출 시작..."));
+			
+			EOS_Connect_CreateDeviceId(ConnectHandle, &Options, Context, [](const EOS_Connect_CreateDeviceIdCallbackInfo* Data)
+			{
+				FCreateDeviceContext* Ctx = static_cast<FCreateDeviceContext*>(Data->ClientData);
+				
+				if (Data->ResultCode == EOS_EResult::EOS_Success || Data->ResultCode == EOS_EResult::EOS_DuplicateNotAllowed)
+				{
+					if (Data->ResultCode == EOS_EResult::EOS_Success)
+					{
+						UE_LOG(LogExNetwork, Log, TEXT("[ExEOSAuthProvider] CreateDeviceId 성공."));
+					}
+					else
+					{
+						UE_LOG(LogExNetwork, Log, TEXT("[ExEOSAuthProvider] CreateDeviceId 중복/이미 존재함."));
+					}
+
+					FOnlineAccountCredentials Credentials;
+					Credentials.Type = TEXT("externalauth:DeviceIdAccessToken");
+					Credentials.Id = TEXT("");
+					Credentials.Token = TEXT("");
+
+					UE_LOG(LogExNetwork, Log, TEXT("[ExEOSAuthProvider] Identity->Login() 호출."));
+					Ctx->Identity->Login(Ctx->LocalUserNum, Credentials);
+				}
+				else
+				{
+					FString ErrorMsg = FString::Printf(TEXT("CreateDeviceId failed: %d"), (int32)Data->ResultCode);
+					UE_LOG(LogExNetwork, Error, TEXT("[ExEOSAuthProvider] %s"), *ErrorMsg);
+					Ctx->Provider->OnLoginComplete.Broadcast(false, ErrorMsg);
+				}
+				delete Ctx;
+			});
+
+			return; // 콜백에서 Login을 이어서 수행함
+		}
+	}
+#endif
+
+	UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSAuthProvider] EOS SDK를 찾을 수 없습니다. 다이렉트 로그인 시도."));
+
+	// Fallback if SDK or Platform is not available
 	FOnlineAccountCredentials Credentials;
 	Credentials.Type = TEXT("externalauth:DeviceIdAccessToken");
 	Credentials.Id = TEXT("");
