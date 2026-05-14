@@ -85,6 +85,9 @@ private:
 	/** 매칭 결과 Info 팝업 표시 (AutoClose) */
 	void ShowResultPopup(const FText& Title, const FText& Body);
 
+	/** 에러 발생 팝업 (Acknowledge: 사용자 확인 필요) */
+	void ShowErrorPopup(const FText& Title, const FText& Body);
+
 	/** UIManagerSubsystem 안전 반환 */
 	class UExUIManagerSubsystem* GetUIManager() const;
 

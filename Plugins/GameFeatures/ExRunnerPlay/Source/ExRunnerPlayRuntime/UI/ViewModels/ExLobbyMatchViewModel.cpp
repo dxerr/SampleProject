@@ -187,6 +187,13 @@ void UExLobbyMatchViewModel::OnMatchFoundCallback(bool bSuccess, const FString& 
 		{
 			RetryCount++;
 			UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] 매칭 타임아웃. 재시도 %d/2"), RetryCount);
+			
+			if (ActiveMatchingPopup)
+			{
+				FText NewDesc = FText::FromString(FString::Printf(TEXT("상대 플레이어를 찾는 중입니다... (%d/3)\n\n취소하려면 아래 버튼을 누르세요."), RetryCount + 1));
+				ActiveMatchingPopup->UpdateBodyText(NewDesc);
+			}
+
 			CachedOnlineSubsystem->FindQuickMatch(PendingConfig);
 			return;
 		}
@@ -214,7 +221,7 @@ void UExLobbyMatchViewModel::OnMatchFoundCallback(bool bSuccess, const FString& 
 	else
 	{
 		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] 매칭 실패 — %s"), *ErrorMessage);
-		ShowResultPopup(
+		ShowErrorPopup(
 			FText::FromString(TEXT("매칭 실패")),
 			FText::FromString(FString::Printf(TEXT("다시 시도해 주세요.\n(%s)"), *ErrorMessage))
 		);
@@ -233,6 +240,11 @@ void UExLobbyMatchViewModel::OnMatchingPopupResult(EExModalResult Result, const 
 	UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] 사용자가 매칭을 취소했습니다."));
 
 	bIsMatching = false;
+	
+	if (ActiveMatchingPopup)
+	{
+		ActiveMatchingPopup->OnPopupResult.RemoveDynamic(this, &UExLobbyMatchViewModel::OnMatchingPopupResult);
+	}
 	ActiveMatchingPopup = nullptr;
 
 	// OnMatchFound / OnGameStarted 바인딩 해제
@@ -255,7 +267,7 @@ void UExLobbyMatchViewModel::ShowMatchingPopup(bool bIsSinglePlay)
 
 	FText Title = bIsSinglePlay ? FText::FromString(TEXT("시작 준비중입니다.")) : FText::FromString(TEXT("매칭 중..."));
 	FText Desc = bIsSinglePlay ? FText::FromString(TEXT("게임 시작을 준비 중입니다.\n\n취소하려면 아래 버튼을 누르세요.")) 
-                               : FText::FromString(TEXT("상대 플레이어를 찾는 중입니다.\n\n취소하려면 아래 버튼을 누르세요."));
+                               : FText::FromString(FString::Printf(TEXT("상대 플레이어를 찾는 중입니다... (%d/3)\n\n취소하려면 아래 버튼을 누르세요."), RetryCount + 1));
 
 	ActiveMatchingPopup = UIMgr->ShowAcknowledgeBP(
 		Title,
@@ -265,7 +277,7 @@ void UExLobbyMatchViewModel::ShowMatchingPopup(bool bIsSinglePlay)
 	if (ActiveMatchingPopup)
 	{
 		// 팝업 버튼 클릭(취소) 결과 수신
-		ActiveMatchingPopup->OnPopupResult.AddDynamic(this, &UExLobbyMatchViewModel::OnMatchingPopupResult);
+		ActiveMatchingPopup->OnPopupResult.AddUniqueDynamic(this, &UExLobbyMatchViewModel::OnMatchingPopupResult);
 		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] 매칭 대기 팝업 표시 완료."));
 	}
 	else
@@ -293,6 +305,15 @@ void UExLobbyMatchViewModel::ShowResultPopup(const FText& Title, const FText& Bo
 
 	// Info 타입: 버튼 없이 3초 자동 닫힘
 	UIMgr->ShowInfoBP(Title, Body, 3.0f);
+}
+
+void UExLobbyMatchViewModel::ShowErrorPopup(const FText& Title, const FText& Body)
+{
+	UExUIManagerSubsystem* UIMgr = GetUIManager();
+	if (!UIMgr) return;
+
+	// 에러 타입: 사용자가 반드시 '확인' 버튼을 눌러야 닫히는 Acknowledge 모달
+	UIMgr->ShowAcknowledgeBP(Title, Body);
 }
 
 UExUIManagerSubsystem* UExLobbyMatchViewModel::GetUIManager() const
@@ -341,7 +362,7 @@ void UExLobbyMatchViewModel::OnLoginCompleteCallback(bool bSuccess, const FStrin
 		bPendingStartMultiPlay = false;
 		bPendingStartSinglePlay = false;
 		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] EOS 로그인 실패 — %s"), *ErrorMessage);
-		ShowResultPopup(
+		ShowErrorPopup(
 			FText::FromString(TEXT("연결 실패")),
 			FText::FromString(FString::Printf(TEXT("EOS 서버 연결에 실패했습니다.\n(%s)"), *ErrorMessage))
 		);
@@ -371,7 +392,7 @@ void UExLobbyMatchViewModel::OnGameStartedCallback(bool bSuccess, const FString&
 		// 실패: 상태 리셋 후 오류 팝업 표시
 		bIsMatching = false;
 		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] StartGame 실패 — %s"), *ErrorMessage);
-		ShowResultPopup(
+		ShowErrorPopup(
 			FText::FromString(TEXT("게임 시작 실패")),
 			FText::FromString(FString::Printf(TEXT("게임을 시작하지 못했습니다.\n(%s)"), *ErrorMessage))
 		);
