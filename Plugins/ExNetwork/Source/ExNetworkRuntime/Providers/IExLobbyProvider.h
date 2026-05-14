@@ -22,6 +22,7 @@ public:
 	virtual void JoinLobby(int32 ResultIndex) = 0;
 	virtual void DestroyLobby() = 0;
 	virtual bool IsInLobby() const = 0;
+	virtual bool HasLocalSession() const = 0;
 
 	/** 현재 Lobby의 참가 인원 수 반환 */
 	virtual int32 GetCurrentPlayerCount() const = 0;

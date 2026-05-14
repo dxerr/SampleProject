@@ -57,7 +57,7 @@ public:
 
 private:
 
-	void OnFindComplete(bool bSuccess, int32 ResultCount, FExMatchConfig Config, TFunction<void(bool, const FString&)> OnComplete);
+	void OnFindComplete(bool bSuccess, int32 ResultCount, TFunction<void(bool, const FString&)> OnComplete);
 	void OnCreateComplete(bool bSuccess, const FString& ErrorMessage, TFunction<void(bool, const FString&)> OnComplete);
 	void OnJoinComplete(bool bSuccess, const FString& ErrorMessage, TFunction<void(bool, const FString&)> OnComplete);
 
@@ -65,14 +65,15 @@ private:
 
 	// 매치 대기 관련
 	FTSTicker::FDelegateHandle WaitLobbyTickerHandle;
-	float WaitLobbyElapsed = 0.f;
+	FTSTicker::FDelegateHandle FindRetryTickerHandle;
+	double WaitStartTime = 0.0;   // FPlatformTime::Seconds() 절대 시간 기반
 	FExMatchConfig CurrentWaitConfig;
 	TFunction<void(bool, const FString&)> CachedOnComplete;
 
-	// 검색 재시도 관련 (동시 접속 타이밍 문제 대응)
-	// 검색 결과 0개일 때 즉시 생성하지 않고 MaxFindRetries회 재검색 후 생성
-	static constexpr int32 MaxFindRetries = 3;
-	static constexpr float FindRetryDelay = 2.0f; // 초
+	// 검색 재시도 관련
+	// MaxWaitForPlayersSeconds 동안 FindRetryDelay 간격으로 재검색
+	// 타임아웃 후에도 Lobby 없으면 그때 생성
+	static constexpr float FindRetryDelay = 2.0f;
 	int32 FindRetryCount = 0;
 
 	void ClearWaitLobbyTicker();

@@ -25,6 +25,7 @@ public:
 	virtual void JoinLobby(int32 ResultIndex) override;
 	virtual void DestroyLobby() override;
 	virtual bool IsInLobby() const override;
+	virtual bool HasLocalSession() const override;
 	virtual int32 GetCurrentPlayerCount() const override;
 
 private:

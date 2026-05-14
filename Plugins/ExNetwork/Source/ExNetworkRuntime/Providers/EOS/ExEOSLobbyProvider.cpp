@@ -61,7 +61,7 @@ void FExEOSLobbyProvider::CreateLobby(const FExMatchConfig& Config)
 	FOnlineSessionSettings SessionSettings;
 	SessionSettings.NumPublicConnections = Config.MaxPlayers;
 	SessionSettings.bShouldAdvertise = true;
-	SessionSettings.bAllowJoinInProgress = false;
+	SessionSettings.bAllowJoinInProgress = true;
 	SessionSettings.bIsLANMatch = false;
 	SessionSettings.bUsesPresence = true;
 	SessionSettings.bUseLobbiesIfAvailable = true;
@@ -171,6 +171,15 @@ void FExEOSLobbyProvider::DestroyLobby()
 bool FExEOSLobbyProvider::IsInLobby() const
 {
 	return bInLobby;
+}
+
+bool FExEOSLobbyProvider::HasLocalSession() const
+{
+	if (SessionInterface.IsValid())
+	{
+		return SessionInterface->GetNamedSession(ExMatchSessionName) != nullptr;
+	}
+	return false;
 }
 
 int32 FExEOSLobbyProvider::GetCurrentPlayerCount() const
