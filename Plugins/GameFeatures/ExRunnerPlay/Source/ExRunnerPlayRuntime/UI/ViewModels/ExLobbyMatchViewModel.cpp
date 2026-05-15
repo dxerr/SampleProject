@@ -25,6 +25,12 @@ const FString UExLobbyMatchViewModel::DefaultMapPath   = TEXT("/ExRunnerPlay/Map
 
 void UExLobbyMatchViewModel::AutoInitialize(UObject* WorldContextObject)
 {
+	if (CachedOnlineSubsystem)
+	{
+		// 이미 초기화된 인스턴스입니다. (예: 팝업이 닫히면서 뷰가 재활성화된 경우)
+		return;
+	}
+
 	if (!WorldContextObject)
 	{
 		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] AutoInitialize: WorldContextObject가 없습니다."));
