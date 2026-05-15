@@ -14,7 +14,8 @@
 #include "Engine/LocalPlayer.h"
 #include "GameFramework/PlayerController.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogExLobbyMatchVM, Log, All);
+#include "Core/ExNetworkLog.h"
+
 
 const FString UExLobbyMatchViewModel::DefaultMatchMode = TEXT("Runner");
 const FString UExLobbyMatchViewModel::DefaultMapPath   = TEXT("/ExRunnerPlay/Map/L_ExRunnerTest");
@@ -27,13 +28,15 @@ void UExLobbyMatchViewModel::AutoInitialize(UObject* WorldContextObject)
 {
 	if (CachedOnlineSubsystem)
 	{
-		// 이미 초기화된 인스턴스입니다. (예: 팝업이 닫히면서 뷰가 재활성화된 경우)
+		// 이미 초기화된 인스턴스. (예: 팝업이 닫히면서 뷰가 재활성화된 경우)
+		UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] AutoInitialize 재진입 무시 — 이미 초기화됨. 로그인상태=%s"),
+			CachedOnlineSubsystem->IsLoggedIn() ? TEXT("로그인됨") : TEXT("대기중"));
 		return;
 	}
 
 	if (!WorldContextObject)
 	{
-		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] AutoInitialize: WorldContextObject가 없습니다."));
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExLobbyMatchVM] AutoInitialize: WorldContextObject가 없습니다."));
 		return;
 	}
 
@@ -44,7 +47,7 @@ void UExLobbyMatchViewModel::AutoInitialize(UObject* WorldContextObject)
 		CachedLocalPlayer = Widget->GetOwningLocalPlayer();
 		if (!CachedLocalPlayer.IsValid())
 		{
-			UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] AutoInitialize: Widget에서 LocalPlayer를 얻지 못했습니다."));
+			UE_LOG(LogExNetwork, Warning, TEXT("[ExLobbyMatchVM] AutoInitialize: Widget에서 LocalPlayer를 얻지 못했습니다."));
 		}
 	}
 
@@ -57,7 +60,7 @@ void UExLobbyMatchViewModel::AutoInitialize(UObject* WorldContextObject)
 	CachedOnlineSubsystem = GI->GetSubsystem<UExOnlineSubsystem>();
 	if (!CachedOnlineSubsystem)
 	{
-		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] AutoInitialize: UExOnlineSubsystem을 찾을 수 없습니다."));
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExLobbyMatchVM] AutoInitialize: UExOnlineSubsystem을 찾을 수 없습니다."));
 		return;
 	}
 
@@ -68,10 +71,10 @@ void UExLobbyMatchViewModel::AutoInitialize(UObject* WorldContextObject)
 	if (!CachedOnlineSubsystem->IsLoggedIn())
 	{
 		CachedOnlineSubsystem->OnLoginComplete.AddDynamic(this, &UExLobbyMatchViewModel::OnLoginCompleteCallback);
-		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] AutoInitialize: 로그인 대기 중 — OnLoginComplete 구독 등록."));
+		UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] AutoInitialize: 로그인 대기 중 — OnLoginComplete 구독 등록."));
 	}
 
-	UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] AutoInitialize 완료. 로그인 상태: %s"),
+	UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] AutoInitialize 완료. 로그인 상태: %s"),
 		CachedOnlineSubsystem->IsLoggedIn() ? TEXT("로그인됨") : TEXT("대기 중"));
 }
 
@@ -83,19 +86,19 @@ void UExLobbyMatchViewModel::StartMultiPlay()
 {
 	if (bIsMatching)
 	{
-		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] StartMultiPlay: 이미 매칭 진행 중 — 무시됩니다."));
+		UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] StartMultiPlay: 이미 매칭 진행 중 — 무시됩니다."));
 		return;
 	}
 
 	if (!CachedOnlineSubsystem)
 	{
-		UE_LOG(LogExLobbyMatchVM, Error, TEXT("[ExLobbyMatchVM] StartMultiPlay: OnlineSubsystem이 없습니다. View(BP)의 OnActivated에서 AutoInitialize가 호출되었는지 확인하세요."));
+		UE_LOG(LogExNetwork, Error, TEXT("[ExLobbyMatchVM] StartMultiPlay: OnlineSubsystem이 없습니다. View(BP)의 OnActivated에서 AutoInitialize가 호출되었는지 확인하세요."));
 		return;
 	}
 
 	if (!CachedOnlineSubsystem->IsLoggedIn())
 	{
-		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] StartMultiPlay: EOS 로그인 완료 대기 중입니다."));
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExLobbyMatchVM] StartMultiPlay: EOS 로그인 완료 대기 중입니다."));
 		bPendingStartMultiPlay = true;  
 		ShowResultPopup(
 			FText::FromString(TEXT("로그인 준비 중")),
@@ -106,7 +109,8 @@ void UExLobbyMatchViewModel::StartMultiPlay()
 
 	bIsMatching = true;
 	RetryCount = 0;
-	UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] StartMultiPlay 시작"));
+	UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] StartMultiPlay 시작 — MatchMode=%s, MaxPlayers=%d, ExpectedCount=%d, MapPath=%s"),
+		*PendingConfig.MatchMode, PendingConfig.MaxPlayers, PendingConfig.ExpectedPlayerCount, *PendingConfig.MapPath);
 
 	ShowMatchingPopup(false);
 
@@ -145,7 +149,7 @@ void UExLobbyMatchViewModel::StartSinglePlay()
 	if (bIsMatching) return;
 	if (!CachedOnlineSubsystem)
 	{
-		UE_LOG(LogExLobbyMatchVM, Error, TEXT("[ExLobbyMatchVM] StartSinglePlay: OnlineSubsystem이 없습니다. View(BP)의 OnActivated에서 AutoInitialize가 호출되었는지 확인하세요."));
+		UE_LOG(LogExNetwork, Error, TEXT("[ExLobbyMatchVM] StartSinglePlay: OnlineSubsystem이 없습니다. View(BP)의 OnActivated에서 AutoInitialize가 호출되었는지 확인하세요."));
 		return;
 	}
 
@@ -189,7 +193,7 @@ void UExLobbyMatchViewModel::OnMatchFoundCallback(bool bSuccess, const FString& 
 		if (RetryCount < 2)
 		{
 			RetryCount++;
-			UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] 매칭 타임아웃. 재시도 %d/2"), RetryCount);
+			UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] 매칭 타임아웃. 재시도 %d/2"), RetryCount);
 			
 			if (ActiveMatchingPopup)
 			{
@@ -213,7 +217,8 @@ void UExLobbyMatchViewModel::OnMatchFoundCallback(bool bSuccess, const FString& 
 
 	if (bSuccess)
 	{
-		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] 매칭 완료 — 성공. StartGame 호출."));
+		UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] 매칭 완료 — 성공. StartGame 호출. PendingConfig: MatchMode=%s, MapPath=%s"),
+			*PendingConfig.MatchMode, *PendingConfig.MapPath);
 		ShowResultPopup(
 			FText::FromString(TEXT("매칭 완료!")),
 			FText::FromString(TEXT("상대 플레이어를 찾았습니다!\n게임을 시작합니다..."))
@@ -223,7 +228,7 @@ void UExLobbyMatchViewModel::OnMatchFoundCallback(bool bSuccess, const FString& 
 	}
 	else
 	{
-		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] 매칭 실패 — %s"), *ErrorMessage);
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExLobbyMatchVM] 매칭 실패 — %s"), *ErrorMessage);
 		ShowErrorPopup(
 			FText::FromString(TEXT("매칭 실패")),
 			FText::FromString(FString::Printf(TEXT("다시 시도해 주세요.\n(%s)"), *ErrorMessage))
@@ -240,7 +245,7 @@ void UExLobbyMatchViewModel::OnMatchingPopupResult(EExModalResult Result, const 
 	}
 
 	// 취소 버튼 클릭 = 매칭 중단
-	UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] 사용자가 매칭을 취소했습니다."));
+	UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] 사용자가 매칭을 취소했습니다."));
 
 	bIsMatching = false;
 	
@@ -281,11 +286,11 @@ void UExLobbyMatchViewModel::ShowMatchingPopup(bool bIsSinglePlay)
 	{
 		// 팝업 버튼 클릭(취소) 결과 수신
 		ActiveMatchingPopup->OnPopupResult.AddUniqueDynamic(this, &UExLobbyMatchViewModel::OnMatchingPopupResult);
-		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] 매칭 대기 팝업 표시 완료."));
+		UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] 매칭 대기 팝업 표시 완료."));
 	}
 	else
 	{
-		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] ShowMatchingPopup: UIManager가 팝업을 생성하지 못했습니다."));
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExLobbyMatchVM] ShowMatchingPopup: UIManager가 팝업을 생성하지 못했습니다."));
 	}
 }
 
@@ -297,7 +302,7 @@ void UExLobbyMatchViewModel::CloseMatchingPopup()
 		ActiveMatchingPopup->OnPopupResult.RemoveDynamic(this, &UExLobbyMatchViewModel::OnMatchingPopupResult);
 		ActiveMatchingPopup->DeactivateWidget();
 		ActiveMatchingPopup = nullptr;
-		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] 매칭 대기 팝업 닫힘."));
+		UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] 매칭 대기 팝업 닫힘."));
 	}
 }
 
@@ -326,7 +331,7 @@ UExUIManagerSubsystem* UExLobbyMatchViewModel::GetUIManager() const
 	ULocalPlayer* LP = CachedLocalPlayer.Get();
 	if (!LP)
 	{
-		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] GetUIManager: CachedLocalPlayer가 유효하지 않습니다."));
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExLobbyMatchVM] GetUIManager: CachedLocalPlayer가 유효하지 않습니다."));
 		return nullptr;
 	}
 
@@ -347,7 +352,8 @@ void UExLobbyMatchViewModel::OnLoginCompleteCallback(bool bSuccess, const FStrin
 
 	if (bSuccess)
 	{
-		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] EOS 로그인 완료."));
+		UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] EOS 로그인 완료. bPendingMulti=%d, bPendingSingle=%d"),
+			bPendingStartMultiPlay, bPendingStartSinglePlay);
 
 		if (bPendingStartMultiPlay)
 		{
@@ -364,7 +370,7 @@ void UExLobbyMatchViewModel::OnLoginCompleteCallback(bool bSuccess, const FStrin
 	{
 		bPendingStartMultiPlay = false;
 		bPendingStartSinglePlay = false;
-		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] EOS 로그인 실패 — %s"), *ErrorMessage);
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExLobbyMatchVM] EOS 로그인 실패 — %s"), *ErrorMessage);
 		ShowErrorPopup(
 			FText::FromString(TEXT("연결 실패")),
 			FText::FromString(FString::Printf(TEXT("EOS 서버 연결에 실패했습니다.\n(%s)"), *ErrorMessage))
@@ -388,13 +394,13 @@ void UExLobbyMatchViewModel::OnGameStartedCallback(bool bSuccess, const FString&
 	{
 		// 성공: 서버가 ServerTravel을 수행하거나 클라이언트가 연결 대기 중
 		// 맵 전환이 자동으로 이루어지므로 별도 UI 처리 불필요
-		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] StartGame 성공 — ServerTravel 대기 중."));
+		UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] StartGame 성공 — ServerTravel/ClientTravel 진행 대기 중."));
 	}
 	else
 	{
 		// 실패: 상태 리셋 후 오류 팝업 표시
 		bIsMatching = false;
-		UE_LOG(LogExLobbyMatchVM, Warning, TEXT("[ExLobbyMatchVM] StartGame 실패 — %s"), *ErrorMessage);
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExLobbyMatchVM] StartGame 실패 — %s"), *ErrorMessage);
 		ShowErrorPopup(
 			FText::FromString(TEXT("게임 시작 실패")),
 			FText::FromString(FString::Printf(TEXT("게임을 시작하지 못했습니다.\n(%s)"), *ErrorMessage))
