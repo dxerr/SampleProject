@@ -54,6 +54,36 @@ if not "%CLEAN_FLAG%"==""      echo Options:  CLEAN BUILD (full rebuild includin
 if not "%COOK_CLEAN_FLAG%"=="" echo Options:  COOK CLEAN (shader + asset recook only, skip C++ build)
 echo =======================================================
 
+:: ──────────────────────────────────────────────────────────────────────────────
+:: Dedicated Server Build (Win64Server)
+:: UBT로 서버 타겟만 컴파일 — Cook/Stage/Package 없이 바이너리만 생성
+:: ──────────────────────────────────────────────────────────────────────────────
+if /i "%TARGET_PLATFORM%"=="Win64Server" (
+    echo [DedicatedServer] Building %PROJECT_NAME%Server target ^(Win64^)...
+    call "%ENGINE_DIR%\Engine\Build\BatchFiles\Build.bat" ^
+        %PROJECT_NAME%Server ^
+        Win64 ^
+        %TARGET_CONFIG% ^
+        "%PROJECT_FILE%" ^
+        -waitmutex ^
+        %CLEAN_FLAG%
+
+    if !ERRORLEVEL! NEQ 0 (
+        echo.
+        echo [ERROR] Dedicated Server build failed. Check logs for details.
+        exit /b !ERRORLEVEL!
+    )
+
+    echo.
+    echo [SUCCESS] Dedicated Server build complete^^!
+    echo Binaries: "%PROJECT_DIR%\Binaries\Win64\"
+    exit /b 0
+)
+
+:: ──────────────────────────────────────────────────────────────────────────────
+:: Standard Client Build (Win64 / Android / IOS)
+:: ──────────────────────────────────────────────────────────────────────────────
+
 :: Run UAT BuildCookRun
 :: -cookclean mode: skip C++ compilation entirely, force full recook of shaders and assets
 if not "%COOK_CLEAN_FLAG%"=="" (
@@ -98,7 +128,7 @@ echo.
 echo [Usage]
 echo BuildProject.bat ^<Platform^> ^<Configuration^>
 echo.
-echo Platform: Win64, Android, IOS
+echo Platform: Win64, Android, IOS, Win64Server
 echo Configuration: Development, Debug, Test, Shipping
 echo.
 echo Example:
