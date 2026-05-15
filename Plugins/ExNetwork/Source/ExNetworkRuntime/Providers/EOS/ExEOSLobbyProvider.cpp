@@ -228,11 +228,27 @@ void FExEOSLobbyProvider::HandleFindSessionsComplete(bool bSuccess)
 	if (bIsDestroyed) return; // 소멸 후 EOS SDK 지연 콜백 방지
 	SessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(FindCompleteHandle);
 
+	if (bSuccess && SearchResults.IsValid())
+	{
+		// [중요] 좌비 로비 필터링: OpenConnections==0인 만원임 세션은 접속 가능한 자리가 없으므로 제외
+		// 호스트 종료 후 EOS 서버에 잔류하는 고스트 세션에 클라이언트가 접속을 시도하면 UnknownError가 발생함.
+		SearchResults->SearchResults.RemoveAll([](const FOnlineSessionSearchResult& R)
+		{
+			if (R.Session.NumOpenPublicConnections <= 0)
+			{
+				UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSLobbyProvider] 좌비 로비 필터 — SessionId=%s, OpenConnections=%d (접속 불가)"),
+					*R.Session.GetSessionIdStr(), R.Session.NumOpenPublicConnections);
+				return true; // 제거
+			}
+			return false;
+		});
+	}
+
 	const int32 ResultCount = SearchResults.IsValid() ? SearchResults->SearchResults.Num() : 0;
 
 	if (bSuccess)
 	{
-		UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] Lobby 검색 완료 — 결과 %d개"), ResultCount);
+		UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] Lobby 검색 완료 — 필터 후 %d개"), ResultCount);
 
 		for (int32 i = 0; i < ResultCount; i++)
 		{

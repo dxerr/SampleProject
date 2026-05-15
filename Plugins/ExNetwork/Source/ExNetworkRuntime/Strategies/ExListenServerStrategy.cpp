@@ -80,16 +80,25 @@ void FExListenServerStrategy::StartGameSession(const FString& MapPath, UWorld* W
 		return;
 	}
 
-	// [중요] Host가 여기서 Lobby(Session)를 파괴하면, EOS P2P 라우팅 컨텍스트가 상실되어 Client가 접속할 수 없습니다!
-	// 매칭이 완료되어 게임을 시작할 때는 세션을 파괴하는 대신, bShouldAdvertise를 false로 설정하여 검색 노출만 차단합니다.
-	// 세션 자체는 인게임 중 유지되어야 Client가 Host의 NetId를 통해 P2P 접속을 완료할 수 있습니다.
-	/* 
+	// ServerTravel 실행 먼저, 이후 5초 후에 로비 파괴
+	// 리즘: ServerTravel 직후에 파괴하면 클라이언트가 P2P 핸드쉘이크 완료 전 세션 정보를 잃어버릴 수 있음.
+	// 5초 후에는 코드가 월드에 주보 할당되어 있지 않을 수 있으므로, 럈다 폰소로 진행.
 	if (LobbyProvider && LobbyProvider->IsInLobby())
 	{
-		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] StartGameSession: Lobby 파괴 후 ServerTravel 진행."));
-		LobbyProvider->DestroyLobby();
+		IExLobbyProvider* RawLobbyProvider = LobbyProvider.Get();
+		FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateLambda([RawLobbyProvider](float) -> bool
+			{
+				if (RawLobbyProvider && RawLobbyProvider->IsInLobby())
+				{
+					UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] ServerTravel 후 로비 정리 실행."));
+					RawLobbyProvider->DestroyLobby();
+				}
+				return false; // 일회성
+			}),
+			5.0f // 5초 후 실행 — 클라이언트 P2P 핸드쉘이크 완료 시간 보장
+		);
 	}
-	*/
 
 	const FString TravelURL = MapPath + TEXT("?listen");
 	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] ServerTravel 실행 — URL=%s"), *TravelURL);
@@ -305,10 +314,20 @@ void FExListenServerStrategy::ResetTransientState()
 		LobbyProvider->OnCreateComplete.Clear();
 		LobbyProvider->OnJoinComplete.Clear();
 		
-		if (LobbyProvider->HasLocalSession())
+		const bool bHasSession = LobbyProvider->HasLocalSession();
+		const bool bInLobby = LobbyProvider->IsInLobby();
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] ResetTransientState — HasLocalSession=%d, IsInLobby=%d"),
+			bHasSession, bInLobby);
+		
+		if (bHasSession)
 		{
+			UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] ResetTransientState: 로컈 세션 파괴."));
 			LobbyProvider->DestroyLobby();
 		}
+	}
+	else
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] ResetTransientState: LobbyProvider 없음."));
 	}
 }
 
@@ -321,13 +340,18 @@ void FExListenServerStrategy::CancelMatch()
 		LobbyProvider->OnCreateComplete.Clear();
 		LobbyProvider->OnJoinComplete.Clear();
 
-		if (LobbyProvider->IsInLobby())
+		const bool bInLobby = LobbyProvider->IsInLobby();
+		const bool bHasSession = LobbyProvider->HasLocalSession();
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] CancelMatch — IsInLobby=%d, HasLocalSession=%d"),
+			bInLobby, bHasSession);
+
+		if (bInLobby)
 		{
 			LobbyProvider->DestroyLobby();
 		}
 	}
 	FindRetryCount = 0;
-	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 매칭 취소."));
+	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 매칭 취소 완료."));
 }
 
 void FExListenServerStrategy::ClearWaitLobbyTicker()

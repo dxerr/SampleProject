@@ -20,6 +20,14 @@ void UExOnlineSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] Initialize 시작."));
 
+	// [중요] ClientTravel 후 World가 교체될 때 GameInstanceSubsystem이 재초기화되는 경우가 있음.
+	// 이미 InGame 상태라면 EOS 세션과 Strategy가 살아있으므로 재초기화를 건너뜀.
+	if (CurrentMatchState == EExMatchState::InGame && AuthProvider && ServerStrategy)
+	{
+		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] InGame 상태에서 Initialize 재호출 — 재초기화 건너뜀 (세션 보존)."));
+		return;
+	}
+
 	BuildTransitionMap();
 
 	const UWorld* World = GetWorld();
@@ -99,6 +107,27 @@ void UExOnlineSubsystem::InitAuthProviderAndLogin(IOnlineSubsystem* OSS)
 void UExOnlineSubsystem::Deinitialize()
 {
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] Deinitialize."));
+
+	// [중요] InGame 상태에서 Deinitialize가 호출되면 (ClientTravel/ServerTravel 월드 교체)
+	// EOS 세션과 Strategy를 파괴하지 않고 보존해야 P2P 연결이 유지됩니다.
+	// GameInstance 수명이 끝나는 진짜 종료 시에는 InGame 상태가 아니므로 정상 정리됩니다.
+	if (CurrentMatchState == EExMatchState::InGame)
+	{
+		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] InGame 상태에서 Deinitialize — Strategy/Session 보존 (P2P 연결 유지)."));
+		// 델리게이트 핸들만 정리하고 세션과 Strategy는 유지
+		if (SubsystemCreatedHandle.IsValid())
+		{
+			FOnlineSubsystemDelegates::OnOnlineSubsystemCreated.Remove(SubsystemCreatedHandle);
+			SubsystemCreatedHandle.Reset();
+		}
+		if (PendingMatchStateTickerHandle.IsValid())
+		{
+			FTSTicker::GetCoreTicker().RemoveTicker(PendingMatchStateTickerHandle);
+			PendingMatchStateTickerHandle.Reset();
+		}
+		Super::Deinitialize();
+		return;
+	}
 
 	if (SubsystemCreatedHandle.IsValid())
 	{
@@ -272,22 +301,37 @@ void UExOnlineSubsystem::StartGame(const FExMatchConfig& Config)
 	}
 
 	TransitionMatchState(EExMatchState::InGame, ETransitionReason::UserRequest);
-	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame — MapPath=%s"), *Config.MapPath);
+	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame — MapPath=%s, IsHost=%d, NetMode=%d"),
+		*Config.MapPath, ListenStrategy->IsHost(), (int32)World->GetNetMode());
 	OnGameStarted.Broadcast(true, TEXT(""));
 
 	if (ListenStrategy->IsHost())
 	{
 		// 호스트: 방 생성자이므로 ServerTravel을 통해 게임 맵으로 이동
+		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame [HOST] — ServerTravel 시작. URL=%s?listen"), *Config.MapPath);
 		ListenStrategy->StartGameSession(Config.MapPath, World);
 	}
 	else
 	{
 		// 클라이언트: 로비에 참가한 입장이므로 호스트 세션으로 ClientTravel 수행
 		FString ConnectString = ListenStrategy->GetConnectString();
-		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame: 클라이언트 — ClientTravel 실행 URL=%s"), *ConnectString);
-		World->GetFirstPlayerController()->ClientTravel(ConnectString, TRAVEL_Absolute);
+		if (ConnectString.IsEmpty())
+		{
+			UE_LOG(LogExNetwork, Error, TEXT("[UExOnlineSubsystem] StartGame [CLIENT] — ConnectString이 비어있습니다! 로비 참가 실패 가능성이 있습니다."));
+			return;
+		}
+		APlayerController* PC = World->GetFirstPlayerController();
+		if (!PC)
+		{
+			UE_LOG(LogExNetwork, Error, TEXT("[UExOnlineSubsystem] StartGame [CLIENT] — PlayerController가 없습니다! ClientTravel 실패."));
+			return;
+		}
+		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame [CLIENT] — ClientTravel 실행. URL=%s, PC=%s"),
+			*ConnectString, *PC->GetName());
+		PC->ClientTravel(ConnectString, TRAVEL_Absolute);
 	}
 }
+
 
 void UExOnlineSubsystem::HandleAuthLoginComplete(bool bSuccess, const FString& ErrorMessage)
 {

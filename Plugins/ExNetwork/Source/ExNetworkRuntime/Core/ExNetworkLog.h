@@ -15,4 +15,4 @@
  *
  * DEFINE_LOG_CATEGORY(LogExNetwork) 는 ExNetworkRuntimeModule.cpp 에 배치된다.
  */
-DECLARE_LOG_CATEGORY_EXTERN(LogExNetwork, Log, All);
+EXNETWORKRUNTIME_API DECLARE_LOG_CATEGORY_EXTERN(LogExNetwork, Log, All);
