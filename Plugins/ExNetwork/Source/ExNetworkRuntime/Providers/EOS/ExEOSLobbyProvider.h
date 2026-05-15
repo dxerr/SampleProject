@@ -27,6 +27,7 @@ public:
 	virtual bool IsInLobby() const override;
 	virtual bool HasLocalSession() const override;
 	virtual int32 GetCurrentPlayerCount() const override;
+	virtual FString GetConnectString() const override;
 
 private:
 
@@ -43,6 +44,7 @@ private:
 	TSharedPtr<FOnlineSessionSearch> SearchResults;
 
 	bool bInLobby = false;
+	bool bIsDestroyed = false; // 소멸자 진입 여부 — EOS SDK 지연 콜백의 댕글링 포인터 크래시 방지
 
 	/** 생성 시 설정한 MaxPlayers (참가자 수 비교용) */
 	int32 MaxPlayersCache = 2;
@@ -52,4 +54,7 @@ private:
 	FDelegateHandle JoinCompleteHandle;
 	FDelegateHandle DestroyCompleteHandle;
 	FDelegateHandle ParticipantsChangeHandle;
+
+	/** JoinLobby 성공 시 저장 — Client가 호스트 서버에 접속할 주소 */
+	FString CachedConnectString;
 };

@@ -27,6 +27,9 @@ public:
 	/** 현재 Lobby의 참가 인원 수 반환 */
 	virtual int32 GetCurrentPlayerCount() const = 0;
 
+	/** JoinLobby 성공 후 호스트 서버에 접속하기 위한 ConnectString 반환 */
+	virtual FString GetConnectString() const = 0;
+
 	/** Lobby 생성 완료 */
 	FExOnLobbyCreateCompleteDelegate OnCreateComplete;
 

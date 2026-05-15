@@ -21,6 +21,7 @@ FExEOSLobbyProvider::FExEOSLobbyProvider(IOnlineSubsystem* InOSS)
 
 FExEOSLobbyProvider::~FExEOSLobbyProvider()
 {
+	bIsDestroyed = true; // EOS SDK 지연 콜백이 이 객체에 도달해도 즉시 반환하도록 플래그 설정
 	if (SessionInterface.IsValid())
 	{
 		SessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateCompleteHandle);
@@ -193,8 +194,14 @@ int32 FExEOSLobbyProvider::GetCurrentPlayerCount() const
 	return Session->SessionSettings.NumPublicConnections - Session->NumOpenPublicConnections;
 }
 
+FString FExEOSLobbyProvider::GetConnectString() const
+{
+	return CachedConnectString;
+}
+
 void FExEOSLobbyProvider::HandleCreateSessionComplete(FName SessionName, bool bSuccess)
 {
+	if (bIsDestroyed) return; // 소멸 후 EOS SDK 지연 콜백 방지
 	SessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateCompleteHandle);
 
 	if (bSuccess)
@@ -218,6 +225,7 @@ void FExEOSLobbyProvider::HandleCreateSessionComplete(FName SessionName, bool bS
 
 void FExEOSLobbyProvider::HandleFindSessionsComplete(bool bSuccess)
 {
+	if (bIsDestroyed) return; // 소멸 후 EOS SDK 지연 콜백 방지
 	SessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(FindCompleteHandle);
 
 	const int32 ResultCount = SearchResults.IsValid() ? SearchResults->SearchResults.Num() : 0;
@@ -246,6 +254,7 @@ void FExEOSLobbyProvider::HandleFindSessionsComplete(bool bSuccess)
 
 void FExEOSLobbyProvider::HandleJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result)
 {
+	if (bIsDestroyed) return; // 소멸 후 EOS SDK 지연 콜백 방지
 	SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinCompleteHandle);
 
 	const bool bSuccess = (Result == EOnJoinSessionCompleteResult::Success);
@@ -255,6 +264,7 @@ void FExEOSLobbyProvider::HandleJoinSessionComplete(FName SessionName, EOnJoinSe
 		bInLobby = true;
 		FString ConnectInfo;
 		SessionInterface->GetResolvedConnectString(SessionName, ConnectInfo);
+		CachedConnectString = ConnectInfo; // Client가 MATCH_STARTED 감지 후 ClientTravel에 사용
 		UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] Lobby 참가 완료 — SessionName=%s, ConnectString=%s"),
 			*SessionName.ToString(), *ConnectInfo);
 		OnJoinComplete.Broadcast(true, TEXT(""));
@@ -304,6 +314,7 @@ void FExEOSLobbyProvider::HandleJoinSessionComplete(FName SessionName, EOnJoinSe
 
 void FExEOSLobbyProvider::HandleDestroySessionComplete(FName SessionName, bool bSuccess)
 {
+	if (bIsDestroyed) return; // 소멸 후 EOS SDK 지연 콜백 방지 — 이것이 크래시의 직접 원인
 	SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroyCompleteHandle);
 	bInLobby = false;
 	UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] Lobby 파괴 완료 — bSuccess=%d"), bSuccess);
@@ -312,6 +323,7 @@ void FExEOSLobbyProvider::HandleDestroySessionComplete(FName SessionName, bool b
 
 void FExEOSLobbyProvider::HandleSessionParticipantJoined(FName SessionName, const FUniqueNetId& UniqueId)
 {
+	if (bIsDestroyed) return; // 소멸 후 EOS SDK 지연 콜백 방지
 	if (SessionName != ExMatchSessionName) return;
 
 	const int32 CurrentCount = GetCurrentPlayerCount();

@@ -4,6 +4,7 @@
 #include "Core/ExNetworkLog.h"
 #include "Providers/IExLobbyProvider.h"
 #include "Engine/World.h"
+#include "Engine/Engine.h"
 #include "OnlineSessionSettings.h"
 #include "OnlineSubsystem.h"
 #include "Interfaces/OnlineSessionInterface.h"
@@ -233,6 +234,9 @@ void FExListenServerStrategy::OnJoinComplete(bool bSuccess, const FString& Error
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 참가 성공 — 매치 시작 대기 중."));
 		WaitStartTime = FPlatformTime::Seconds(); // 절대 시간 캡처
+		// ConnectString 캐시 — MATCH_STARTED 감지 후 ClientTravel에 사용
+		CachedConnectString = LobbyProvider ? LobbyProvider->GetConnectString() : TEXT("");
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 클라이언트 ConnectString 캐시 — %s"), *CachedConnectString);
 		CachedOnComplete = OnComplete;
 		WaitLobbyTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
 			FTickerDelegate::CreateRaw(this, &FExListenServerStrategy::CheckLobbyWaitConditions_Client), 1.0f);
@@ -307,16 +311,33 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
 
 	if (CurrentWaitConfig.bIsSinglePlay || CurrentPlayers >= CurrentWaitConfig.ExpectedPlayerCount)
 	{
-		// 정원 충족 — MATCH_STARTED 세션 속성 설정 (클라이언트 감지용)
+		// 정원 충족 — MATCH_STARTED 세션 속성 설정 후 UpdateSession 완료를 기다린 뒤 OnComplete 호출
 		FOnlineSessionSettings* Settings = OSS->GetSessionInterface()->GetSessionSettings(ExMatchSessionName);
 		if (Settings)
 		{
 			Settings->Set(FName("MATCH_STARTED"), 1, EOnlineDataAdvertisementType::ViaOnlineService);
+
+			FDelegateHandle UpdateHandle;
+			UpdateHandle = OSS->GetSessionInterface()->AddOnUpdateSessionCompleteDelegate_Handle(
+				FOnUpdateSessionCompleteDelegate::CreateLambda(
+					[this, OSS, UpdateHandle](FName SessionName, bool bUpdateSuccess) mutable
+					{
+						OSS->GetSessionInterface()->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateHandle);
+						UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Host MATCH_STARTED 업데이트 완료(bSuccess=%d) — 매칭 완료 콜백 호출."), bUpdateSuccess);
+						if (CachedOnComplete) { CachedOnComplete(true, TEXT("")); CachedOnComplete = nullptr; }
+					}
+				)
+			);
 			OSS->GetSessionInterface()->UpdateSession(ExMatchSessionName, *Settings, true);
+		}
+		else
+		{
+			// Settings를 가져올 수 없는 경우 즉시 완료 처리
+			UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] SessionSettings 없음 — 즉시 완료 처리."));
+			if (CachedOnComplete) { CachedOnComplete(true, TEXT("")); CachedOnComplete = nullptr; }
 		}
 		WaitLobbyTickerHandle.Reset();
 		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Host 정원 충족 — 매칭 완료."));
-		if (CachedOnComplete) { CachedOnComplete(true, TEXT("")); CachedOnComplete = nullptr; }
 		return false;
 	}
 
@@ -353,8 +374,27 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Client(float DeltaTime)
 		if (bHasProperty && MatchStarted == 1)
 		{
 			WaitLobbyTickerHandle.Reset();
-			UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Client MATCH_STARTED 감지 — 매칭 완료."));
-			if (CachedOnComplete) { CachedOnComplete(true, TEXT("")); CachedOnComplete = nullptr; }
+			UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Client MATCH_STARTED 감지 — ConnectString=%s 으로 접속 시도."), *CachedConnectString);
+
+			// 호스트 서버(Listen Server)에 직접 접속 — ServerTravel은 이미 호스트에서 완료됨
+			if (!CachedConnectString.IsEmpty())
+			{
+				if (UWorld* ClientWorld = GEngine ? GEngine->GetCurrentPlayWorld() : nullptr)
+				{
+					UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] ClientTravel 실행 — URL=%s"), *CachedConnectString);
+					ClientWorld->GetFirstPlayerController()->ClientTravel(CachedConnectString, TRAVEL_Absolute);
+				}
+				else
+				{
+					UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] ClientWorld 없음 — OnComplete 콜백으로 폴백."));
+					if (CachedOnComplete) { CachedOnComplete(true, TEXT("")); CachedOnComplete = nullptr; }
+				}
+			}
+			else
+			{
+				UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] ConnectString 없음 — OnComplete 콜백으로 폴백."));
+				if (CachedOnComplete) { CachedOnComplete(true, TEXT("")); CachedOnComplete = nullptr; }
+			}
 			return false;
 		}
 	}
