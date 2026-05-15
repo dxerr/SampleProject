@@ -58,8 +58,8 @@ void UExLobbyMatchViewModel::AutoInitialize(UObject* WorldContextObject)
 	// 인게임에서 로비로 돌아온 경우 (MatchState가 Idle이 아닐 때) 상태 초기화
 	if (CachedOnlineSubsystem->GetMatchState() != EExMatchState::Idle)
 	{
-		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] AutoInitialize: 이전 매칭 상태가 남아있어 초기화 (CancelMatch) 진행."));
-		CachedOnlineSubsystem->CancelMatch();
+		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] AutoInitialize: 이전 매칭 상태가 남아있어 초기화 (ResetMatchState) 진행."));
+		CachedOnlineSubsystem->ResetMatchState();
 	}
 
 	// 로그인 미완료 시 OnLoginComplete 구독 — 버튼 클릭 타이밍 문제 대비
