@@ -80,11 +80,16 @@ void FExListenServerStrategy::StartGameSession(const FString& MapPath, UWorld* W
 		return;
 	}
 
+	// [중요] Host가 여기서 Lobby(Session)를 파괴하면, EOS P2P 라우팅 컨텍스트가 상실되어 Client가 접속할 수 없습니다!
+	// 매칭이 완료되어 게임을 시작할 때는 세션을 파괴하는 대신, bShouldAdvertise를 false로 설정하여 검색 노출만 차단합니다.
+	// 세션 자체는 인게임 중 유지되어야 Client가 Host의 NetId를 통해 P2P 접속을 완료할 수 있습니다.
+	/* 
 	if (LobbyProvider && LobbyProvider->IsInLobby())
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] StartGameSession: Lobby 파괴 후 ServerTravel 진행."));
 		LobbyProvider->DestroyLobby();
 	}
+	*/
 
 	const FString TravelURL = MapPath + TEXT("?listen");
 	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] ServerTravel 실행 — URL=%s"), *TravelURL);
@@ -376,6 +381,10 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
 		{
 			// int32(1) 대신 bool(true) 사용 — EOS SDK에서 int32가 int64로 강제 변환되어 클라이언트에서 읽지 못하는 현상 방지
 			Settings->Set(FName("MATCH_STARTED"), true, EOnlineDataAdvertisementType::ViaOnlineService);
+			
+			// 매칭이 완료되었으므로 더 이상 검색에 노출되지 않도록 설정 (로비 파괴 대신 사용)
+			Settings->bShouldAdvertise = false;
+			Settings->bAllowJoinInProgress = false;
 
 			// UpdateSessionHandle을 멤버로 관리 — 소멸자에서 해제하여 ServerTravel 후 댕글링 크래시 방지
 			UpdateSessionHandle = OSS->GetSessionInterface()->AddOnUpdateSessionCompleteDelegate_Handle(
