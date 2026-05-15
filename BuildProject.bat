@@ -56,18 +56,35 @@ echo =======================================================
 
 :: ──────────────────────────────────────────────────────────────────────────────
 :: Dedicated Server Build (Win64Server)
-:: UBT로 서버 타겟만 컴파일 — Cook/Stage/Package 없이 바이너리만 생성
+:: UAT BuildCookRun 서버 모드 — 컴파일 + Cook(Win64) + Stage + Archive
+:: 서버도 Cooked 에셋이 필요하므로 반드시 Cook 단계를 포함해야 함
 :: ──────────────────────────────────────────────────────────────────────────────
 if /i "%TARGET_PLATFORM%"=="Win64Server" (
-    echo [DedicatedServer] Building %PROJECT_NAME%Server target ^(Win64^)...
-    call "%ENGINE_DIR%\Engine\Build\BatchFiles\Build.bat" ^
-        %PROJECT_NAME%Server ^
-        Win64 ^
-        %TARGET_CONFIG% ^
-        "%PROJECT_FILE%" ^
-        -waitmutex ^
-        -UBA ^
-        %CLEAN_FLAG%
+    echo [DedicatedServer] BuildCookRun Server mode ^(Cook + Stage + Archive^)...
+
+    if not "%COOK_CLEAN_FLAG%"=="" (
+        call "%UAT_BAT%" BuildCookRun ^
+            -project="%PROJECT_FILE%" ^
+            -noP4 ^
+            -serverconfig="%TARGET_CONFIG%" ^
+            -utf8output ^
+            -server -serverplatform=Win64 -noclient ^
+            -nocompileeditor -skipbuildeditor -nocompile ^
+            -cook -stage -archive ^
+            -clearcookeddata ^
+            -UBA ^
+            -archivedirectory="%ARCHIVE_DIR%\Win64Server\%TARGET_CONFIG%"
+    ) else (
+        call "%UAT_BAT%" BuildCookRun ^
+            -project="%PROJECT_FILE%" ^
+            -noP4 ^
+            -serverconfig="%TARGET_CONFIG%" ^
+            -utf8output ^
+            -server -serverplatform=Win64 -noclient ^
+            -build -cook -stage -archive ^
+            -UBA %CLEAN_FLAG% ^
+            -archivedirectory="%ARCHIVE_DIR%\Win64Server\%TARGET_CONFIG%"
+    )
 
     if !ERRORLEVEL! NEQ 0 (
         echo.
@@ -77,7 +94,7 @@ if /i "%TARGET_PLATFORM%"=="Win64Server" (
 
     echo.
     echo [SUCCESS] Dedicated Server build complete^^!
-    echo Binaries: "%PROJECT_DIR%\Binaries\Win64\"
+    echo Output: "%ARCHIVE_DIR%\Win64Server\%TARGET_CONFIG%"
     exit /b 0
 )
 
