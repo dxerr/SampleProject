@@ -26,6 +26,20 @@ enum class EExMatchState : uint8
 };
 
 /**
+ * 상태 전이 사유 (우선순위 처리에 사용)
+ */
+UENUM(BlueprintType)
+enum class ETransitionReason : uint8
+{
+	UserRequest,    // 정상 전이 (FindQuickMatch 등)
+	AsyncCallback,  // 정상 전이 (비동기 콜백 결과)
+	Timeout,        // 정상 전이 (대기 시간 만료)
+	Cancel,         // Safety-First (사용자/시스템 매칭 취소)
+	Reset,          // Safety-First (강제 복원)
+	Deinitialize    // Safety-First (Subsystem 종료)
+};
+
+/**
  * FExMatchConfig
  *
  * Quick Match 요청 및 게임 시작 시 전달하는 매칭 설정 구조체.

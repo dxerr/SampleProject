@@ -21,6 +21,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FExOnMatchFoundDynDelegate, bool, b
 /** 게임 전환 시작 BP 델리게이트 */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FExOnGameStartedDynDelegate, bool, bSuccess, const FString&, ErrorMessage);
 
+/** 상태 전환 알림 BP 델리게이트 */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FExOnMatchStateChanged, EExMatchState, OldState, EExMatchState, NewState);
+
 /**
  * UExOnlineSubsystem
  *
@@ -81,9 +84,29 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ExNetwork|Match")
 	void CancelMatch();
 
-	/** 현재 매칭 상태. */
+	/** 로비로 돌아왔을 때 등 상태를 강제로 초기화해야 할 때 사용 */
+	UFUNCTION(BlueprintCallable, Category = "ExNetwork|Match")
+	void ResetMatchState();
+
+	/** 매칭 시작 요청 */
 	UFUNCTION(BlueprintPure, Category = "ExNetwork|Match")
 	EExMatchState GetMatchState() const { return CurrentMatchState; }
+
+	/** 매칭이 진행 중인지 여부 (Idle과 InGame 이외의 상태) */
+	UFUNCTION(BlueprintPure, Category = "ExNetwork|Match")
+	bool IsMatchInProgress() const;
+
+	/** 매칭 완료 후 시작 가능한 Ready 상태인지 여부 */
+	UFUNCTION(BlueprintPure, Category = "ExNetwork|Match")
+	bool IsMatchReadyToStart() const;
+
+	/** 현재 인게임 상태인지 여부 */
+	UFUNCTION(BlueprintPure, Category = "ExNetwork|Match")
+	bool IsMatchActive() const;
+
+	/** 디버그용 강제 매치 상태 전이 */
+	UFUNCTION(BlueprintCallable, Category = "ExNetwork|Match|Debug")
+	void DebugForceMatchState(EExMatchState NewState);
 
 	/**
 	 * 매칭 완료 델리게이트.
@@ -124,12 +147,36 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "ExNetwork|Match")
 	FExOnGameStartedDynDelegate OnGameStarted;
 
+	/** 매칭 상태 변경 시 외부 알림 채널 */
+	UPROPERTY(BlueprintAssignable, Category = "ExNetwork|Match")
+	FExOnMatchStateChanged OnMatchStateChanged;
+
 private:
 
 	IOnlineSubsystem* TryGetEOSSubsystem() const;
 	void HandleOnlineSubsystemCreated(IOnlineSubsystem* NewSubsystem);
 	void InitAuthProviderAndLogin(IOnlineSubsystem* OSS);
 	void HandleAuthLoginComplete(bool bSuccess, const FString& ErrorMessage);
+
+	// --- FSM 핵심 로직 ---
+	void TransitionMatchState(EExMatchState NewState, ETransitionReason Reason);
+	void HandleEnterMatchState(EExMatchState NewState);
+	void HandleExitMatchState(EExMatchState OldState);
+
+	bool TickPendingMatchState(float DeltaTime);
+
+	void BuildTransitionMap();
+	bool IsTransitionAllowed(EExMatchState FromState, EExMatchState ToState) const;
+	bool ShouldHonorCallback(EExMatchState ExpectedState) const;
+
+	TMap<EExMatchState, TArray<EExMatchState>> TransitionMap;
+
+	TOptional<TPair<EExMatchState, ETransitionReason>> PendingMatchStateTransition;
+	FTSTicker::FDelegateHandle PendingMatchStateTickerHandle;
+	bool bIsTransitioningMatchState = false;
+	FString LastTransitionReason;
+	FString LastErrorMessage;
+	FExMatchConfig PendingMatchConfig;
 
 	FDelegateHandle SubsystemCreatedHandle;
 

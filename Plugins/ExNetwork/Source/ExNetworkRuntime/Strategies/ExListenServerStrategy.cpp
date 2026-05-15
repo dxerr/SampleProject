@@ -99,172 +99,211 @@ void FExListenServerStrategy::DestroyMatch()
 
 void FExListenServerStrategy::FindAndJoinOrCreate(const FExMatchConfig& Config, TFunction<void(bool, const FString&)> OnComplete)
 {
-	// Config 파라미터가 외부 지역 변수 참조일 경우를 대비해, 즉시 내부 멤버에 복사합니다.
-	// 이를 통해 지연 콜백(람다) 포획 시 발생할 수 있는 FString 오염(MatchMode 텍스트 깨짐)을 원천 차단합니다.
-	CurrentWaitConfig = Config;
+	UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] FindAndJoinOrCreate는 Deprecated 되었습니다. UExOnlineSubsystem의 FSM을 사용하세요."));
+}
 
-	if (!ensureMsgf(LobbyProvider, TEXT("[ExListenServerStrategy] FindAndJoinOrCreate: LobbyProvider 없음.")))
+void FExListenServerStrategy::BeginSearchPhase(const FExMatchConfig& Config, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnSearchComplete)
+{
+	CurrentWaitConfig = Config;
+	if (!ensureMsgf(LobbyProvider, TEXT("[ExListenServerStrategy] BeginSearchPhase: LobbyProvider 없음.")))
 	{
-		OnComplete(false, TEXT("LobbyProvider not set"));
+		OnSearchComplete(false, TEXT("LobbyProvider not set"));
 		return;
 	}
 
-	if (LobbyProvider->HasLocalSession())
+	if (Config.bIsSinglePlay)
 	{
-		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] 이전 Session이 남아있습니다. 파괴 후 매칭을 재진행합니다."));
-		LobbyProvider->OnDestroyComplete.Clear();
-		LobbyProvider->OnDestroyComplete.AddLambda(
-			[this, OnComplete](bool bDestroySuccess)
-			{
-				LobbyProvider->OnDestroyComplete.Clear();
-				// 복사해 둔 CurrentWaitConfig를 사용하여 재귀 호출
-				this->FindAndJoinOrCreate(this->CurrentWaitConfig, OnComplete);
-			}
-		);
-		LobbyProvider->DestroyLobby();
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Single Play 모드 — 검색 스킵 (Timeout 처리)."));
+		OnSearchComplete(false, TEXT("Timeout"));
 		return;
+	}
+
+	// 검색 첫 시도시점 캐싱 (재시도 중에는 시간 유지)
+	if (FindRetryCount == 0)
+	{
+		WaitStartTime = FPlatformTime::Seconds();
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Search Phase 시작 — Lobby 검색 중..."));
 	}
 
 	LobbyProvider->OnFindComplete.Clear();
-	LobbyProvider->OnCreateComplete.Clear();
-	LobbyProvider->OnJoinComplete.Clear();
-
-	FindRetryCount = 0;
-	WaitStartTime = FPlatformTime::Seconds(); // 매칭 시작 시점 캡처
-
-	if (CurrentWaitConfig.bIsSinglePlay)
-	{
-		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Single Play 모드 — Lobby 즉시 생성."));
-
-		LobbyProvider->OnCreateComplete.AddLambda(
-			[this, OnComplete](bool bCreateSuccess, const FString& ErrorMessage)
+	LobbyProvider->OnFindComplete.AddLambda(
+		[this, ExpectedState, OnSearchComplete](bool bSuccess, int32 ResultCount)
+		{
+			LobbyProvider->OnFindComplete.Clear();
+			if (bSuccess && ResultCount > 0)
 			{
-				LobbyProvider->OnCreateComplete.Clear();
-				OnCreateComplete(bCreateSuccess, ErrorMessage, OnComplete);
+				UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby %d개 발견."), ResultCount);
+				FindRetryCount = 0; // 다음을 위해 초기화
+				OnSearchComplete(true, TEXT(""));
 			}
-		);
-		LobbyProvider->CreateLobby(CurrentWaitConfig);
+			else
+			{
+				const double Elapsed = FPlatformTime::Seconds() - WaitStartTime;
+				if (Elapsed >= CurrentWaitConfig.MaxWaitForPlayersSeconds)
+				{
+					UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] %.1f초 대기 후 Lobby 없음 — Search 타임아웃."), Elapsed);
+					FindRetryCount = 0;
+					OnSearchComplete(false, TEXT("Timeout"));
+				}
+				else
+				{
+					FindRetryCount++;
+					UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 없음 — %.1f초 후 재검색 시도 (%d회). 경과=%.1f/%.1f초"),
+						FindRetryDelay, FindRetryCount, Elapsed, CurrentWaitConfig.MaxWaitForPlayersSeconds);
+
+					FindRetryTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+						FTickerDelegate::CreateLambda([this, ExpectedState, OnSearchComplete](float) -> bool
+						{
+							FindRetryTickerHandle.Reset();
+							this->BeginSearchPhase(CurrentWaitConfig, ExpectedState, OnSearchComplete);
+							return false;
+						}),
+						FindRetryDelay
+					);
+				}
+			}
+		});
+	LobbyProvider->FindLobbies(CurrentWaitConfig);
+}
+
+void FExListenServerStrategy::EndSearchPhase()
+{
+	if (FindRetryTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(FindRetryTickerHandle);
+		FindRetryTickerHandle.Reset();
+	}
+	if (LobbyProvider)
+	{
+		LobbyProvider->OnFindComplete.Clear();
+	}
+}
+
+void FExListenServerStrategy::BeginCreatePhase(const FExMatchConfig& Config, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnCreateComplete)
+{
+	CurrentWaitConfig = Config;
+	bIsHost = true;
+
+	if (!ensureMsgf(LobbyProvider, TEXT("[ExListenServerStrategy] BeginCreatePhase: LobbyProvider 없음.")))
+	{
+		OnCreateComplete(false, TEXT("LobbyProvider not set"));
 		return;
 	}
 
-	// Multi Play: 검색 먼저
-	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Quick Match 시작 — Lobby 검색 중..."));
-
-	LobbyProvider->OnFindComplete.AddLambda(
-		[this, OnComplete](bool bSuccess, int32 ResultCount)
+	LobbyProvider->OnCreateComplete.Clear();
+	LobbyProvider->OnCreateComplete.AddLambda(
+		[this, OnCreateComplete](bool bCreateSuccess, const FString& ErrorMessage)
 		{
-			LobbyProvider->OnFindComplete.Clear();
-			OnFindComplete(bSuccess, ResultCount, OnComplete);
+			LobbyProvider->OnCreateComplete.Clear();
+			if (bCreateSuccess)
+			{
+				UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 생성 성공."));
+				OnCreateComplete(true, TEXT(""));
+			}
+			else
+			{
+				UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] Lobby 생성 실패 — %s"), *ErrorMessage);
+				OnCreateComplete(false, ErrorMessage);
+			}
 		}
 	);
-	LobbyProvider->FindLobbies(Config);
+	LobbyProvider->CreateLobby(CurrentWaitConfig);
 }
 
-void FExListenServerStrategy::OnFindComplete(bool bSuccess, int32 ResultCount, TFunction<void(bool, const FString&)> OnComplete)
+void FExListenServerStrategy::EndCreatePhase()
 {
-	if (bSuccess && ResultCount > 0)
+	if (LobbyProvider)
 	{
-		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby %d개 발견 — 첫 번째 Lobby 참가 시도."), ResultCount);
-		FindRetryCount = 0;
+		LobbyProvider->OnCreateComplete.Clear();
+	}
+}
 
-		LobbyProvider->OnJoinComplete.Clear();
-		LobbyProvider->OnJoinComplete.AddLambda(
-			[this, OnComplete](bool bJoinSuccess, const FString& ErrorMessage)
+void FExListenServerStrategy::BeginJoinPhase(const FExMatchConfig& Config, const FString& SessionId, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnJoinComplete)
+{
+	CurrentWaitConfig = Config;
+	bIsHost = false;
+
+	if (!ensureMsgf(LobbyProvider, TEXT("[ExListenServerStrategy] BeginJoinPhase: LobbyProvider 없음.")))
+	{
+		OnJoinComplete(false, TEXT("LobbyProvider not set"));
+		return;
+	}
+
+	LobbyProvider->OnJoinComplete.Clear();
+	LobbyProvider->OnJoinComplete.AddLambda(
+		[this, OnJoinComplete](bool bJoinSuccess, const FString& ErrorMessage)
+		{
+			LobbyProvider->OnJoinComplete.Clear();
+			if (bJoinSuccess)
 			{
-				LobbyProvider->OnJoinComplete.Clear();
-				OnJoinComplete(bJoinSuccess, ErrorMessage, OnComplete);
+				CachedConnectString = LobbyProvider->GetConnectString();
+				UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 참가 성공 — ConnectString 캐시: %s"), *CachedConnectString);
+				OnJoinComplete(true, TEXT(""));
 			}
-		);
-		LobbyProvider->JoinLobby(0);
-	}
-	else
+			else
+			{
+				UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] Lobby 참가 실패 — %s"), *ErrorMessage);
+				OnJoinComplete(false, ErrorMessage);
+			}
+		}
+	);
+	// SessionId는 현재 0번 인덱스를 의미함 (Lobby 0번 참가)
+	LobbyProvider->JoinLobby(0);
+}
+
+void FExListenServerStrategy::EndJoinPhase()
+{
+	if (LobbyProvider)
 	{
-		// 검색 결과 없음
-		const double Elapsed = FPlatformTime::Seconds() - WaitStartTime;
-
-		if (Elapsed >= CurrentWaitConfig.MaxWaitForPlayersSeconds)
-		{
-			// 전체 대기 시간 소진 → 이 PC가 Host로 Lobby 생성
-			FindRetryCount = 0;
-			UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] %.1f초 대기 후 Lobby 없음 — 이 PC가 Host로 Lobby 생성."), Elapsed);
-
-			LobbyProvider->OnCreateComplete.Clear();
-			LobbyProvider->OnCreateComplete.AddLambda(
-				[this, OnComplete](bool bCreateSuccess, const FString& ErrorMessage)
-				{
-					LobbyProvider->OnCreateComplete.Clear();
-					OnCreateComplete(bCreateSuccess, ErrorMessage, OnComplete);
-				}
-			);
-			LobbyProvider->CreateLobby(CurrentWaitConfig);
-		}
-		else
-		{
-			// 아직 대기 시간 남음 → 계속 재검색
-			FindRetryCount++;
-			UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 없음 — %.1f초 후 재검색 시도 (%d회). 경과=%.1f/%.1f초"),
-				FindRetryDelay, FindRetryCount,
-				Elapsed, CurrentWaitConfig.MaxWaitForPlayersSeconds);
-
-			// 재시도 Ticker 등록 — 핸들을 저장하여 종료/취소 시 안전하게 해제 가능하게 함
-			FindRetryTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
-				FTickerDelegate::CreateLambda([this, OnComplete](float) -> bool
-				{
-					FindRetryTickerHandle.Reset(); // 실행됐으므로 핸들 초기화
-					LobbyProvider->OnFindComplete.Clear();
-					LobbyProvider->OnFindComplete.AddLambda(
-						[this, OnComplete](bool bS, int32 RC)
-						{
-							LobbyProvider->OnFindComplete.Clear();
-							OnFindComplete(bS, RC, OnComplete);
-						}
-					);
-					LobbyProvider->FindLobbies(CurrentWaitConfig);
-					return false;
-				}),
-				FindRetryDelay
-			);
-		}
+		LobbyProvider->OnJoinComplete.Clear();
 	}
 }
 
-void FExListenServerStrategy::OnCreateComplete(bool bSuccess, const FString& ErrorMessage, TFunction<void(bool, const FString&)> OnComplete)
+void FExListenServerStrategy::BeginWaitPhase(const FExMatchConfig& Config, bool bIsHostFlag, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnReadyCallback)
 {
-	bIsHost = true;
-	if (bSuccess)
+	CurrentWaitConfig = Config;
+	WaitStartTime = FPlatformTime::Seconds(); // Wait phase부터 새로 카운트
+	CachedOnComplete = OnReadyCallback;
+
+	if (bIsHostFlag)
 	{
-		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 생성 성공 — 상대 플레이어 대기 중."));
-		WaitStartTime = FPlatformTime::Seconds(); // 절대 시간 캡처
-		CachedOnComplete = OnComplete;
-		// 1초 간격 Ticker
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Host 대기 루프 시작."));
 		WaitLobbyTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
 			FTickerDelegate::CreateRaw(this, &FExListenServerStrategy::CheckLobbyWaitConditions_Host), 1.0f);
 	}
 	else
 	{
-		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] Lobby 생성 실패 — %s"), *ErrorMessage);
-		OnComplete(false, ErrorMessage);
-	}
-}
-
-void FExListenServerStrategy::OnJoinComplete(bool bSuccess, const FString& ErrorMessage, TFunction<void(bool, const FString&)> OnComplete)
-{
-	bIsHost = false;
-	if (bSuccess)
-	{
-		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 참가 성공 — 매치 시작 대기 중."));
-		WaitStartTime = FPlatformTime::Seconds(); // 절대 시간 캡처
-		// ConnectString 캐시 — MATCH_STARTED 감지 후 ClientTravel에 사용
-		CachedConnectString = LobbyProvider ? LobbyProvider->GetConnectString() : TEXT("");
-		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 클라이언트 ConnectString 캐시 — %s"), *CachedConnectString);
-		CachedOnComplete = OnComplete;
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Client 대기 루프 시작."));
 		WaitLobbyTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
 			FTickerDelegate::CreateRaw(this, &FExListenServerStrategy::CheckLobbyWaitConditions_Client), 1.0f);
 	}
-	else
+}
+
+void FExListenServerStrategy::EndWaitPhase()
+{
+	if (WaitLobbyTickerHandle.IsValid())
 	{
-		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] Lobby 참가 실패 — %s"), *ErrorMessage);
-		OnComplete(false, ErrorMessage);
+		FTSTicker::GetCoreTicker().RemoveTicker(WaitLobbyTickerHandle);
+		WaitLobbyTickerHandle.Reset();
+	}
+	CachedOnComplete = nullptr;
+}
+
+void FExListenServerStrategy::ResetTransientState()
+{
+	FindRetryCount = 0;
+	ClearWaitLobbyTicker();
+	
+	if (LobbyProvider)
+	{
+		LobbyProvider->OnFindComplete.Clear();
+		LobbyProvider->OnCreateComplete.Clear();
+		LobbyProvider->OnJoinComplete.Clear();
+		
+		if (LobbyProvider->HasLocalSession())
+		{
+			LobbyProvider->DestroyLobby();
+		}
 	}
 }
 
@@ -345,10 +384,25 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
 					{
 						OSS->GetSessionInterface()->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateSessionHandle);
 						UpdateSessionHandle.Reset();
-						// bIsDestroyed 체크 — ServerTravel로 인해 this가 소멸된 경우 즉시 반환
 						if (bIsDestroyed) return;
 						UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Host MATCH_STARTED 업데이트 완료(bSuccess=%d) — 매칭 완료 콜백 호출."), bUpdateSuccess);
-						if (CachedOnComplete) { CachedOnComplete(true, TEXT("")); CachedOnComplete = nullptr; }
+						
+						if (CachedOnComplete) 
+						{ 
+							// EOS SDK 콜백 스택(TriggerOnUpdateSessionCompleteDelegates) 내부에서
+							// DestroySession이나 ServerTravel이 동기적으로 실행되는 것을 방지하기 위해 다음 틱으로 지연
+							TFunction<void(bool, const FString&)> TempComplete = MoveTemp(CachedOnComplete);
+							CachedOnComplete = nullptr;
+							
+							FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([TempComplete](float) -> bool
+							{
+								if (TempComplete)
+								{
+									TempComplete(true, TEXT(""));
+								}
+								return false;
+							}));
+						}
 					}
 				)
 			);

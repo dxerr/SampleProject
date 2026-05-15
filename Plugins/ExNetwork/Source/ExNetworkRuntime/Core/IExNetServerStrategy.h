@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Core/ExNetworkTypes.h"
+#include "Match/ExMatchTypes.h"
 
 struct FExMatchConfig;
 class UWorld;
@@ -31,4 +32,24 @@ public:
 	 */
 	virtual void StartGameSession(const FString& MapPath, UWorld* World) = 0;
 	virtual void DestroyMatch() = 0;
+	virtual void CancelMatch() = 0;
+
+	// --- FSM 전이용 Phase 메서드 군 ---
+
+	virtual void BeginSearchPhase(const FExMatchConfig& Config, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnSearchComplete) = 0;
+	virtual void EndSearchPhase() = 0;
+
+	virtual void BeginCreatePhase(const FExMatchConfig& Config, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnCreateComplete) = 0;
+	virtual void EndCreatePhase() = 0;
+
+	// Note: SessionId instead of FString as per implementation details (SessionId is the connect string or specific index, we will leave it as FString)
+	virtual void BeginJoinPhase(const FExMatchConfig& Config, const FString& SessionId, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnJoinComplete) = 0;
+	virtual void EndJoinPhase() = 0;
+
+	virtual void BeginWaitPhase(const FExMatchConfig& Config, bool bIsHostFlag, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnReadyCallback) = 0;
+	virtual void EndWaitPhase() = 0;
+
+	virtual void ResetTransientState() = 0;
+	virtual bool IsHost() const = 0;
+	virtual FString GetConnectString() const = 0;
 };

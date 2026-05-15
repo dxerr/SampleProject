@@ -20,6 +20,8 @@ void UExOnlineSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] Initialize 시작."));
 
+	BuildTransitionMap();
+
 	const UWorld* World = GetWorld();
 	const bool bIsDedicatedServer = (World && World->GetNetMode() == NM_DedicatedServer);
 
@@ -112,6 +114,13 @@ void UExOnlineSubsystem::Deinitialize()
 	AuthProvider.Reset();
 	ServerStrategy.Reset();
 
+	TransitionMatchState(EExMatchState::Idle, ETransitionReason::Deinitialize);
+	if (PendingMatchStateTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(PendingMatchStateTickerHandle);
+		PendingMatchStateTickerHandle.Reset();
+	}
+
 	Super::Deinitialize();
 }
 
@@ -125,6 +134,29 @@ FString UExOnlineSubsystem::GetServerTypeString() const
 	if (!ServerStrategy) return TEXT("None");
 	return (ServerStrategy->GetServerType() == EExServerType::ListenServer)
 		? TEXT("ListenServer") : TEXT("DedicatedServer");
+}
+
+bool UExOnlineSubsystem::IsMatchInProgress() const
+{
+	return CurrentMatchState != EExMatchState::Idle && CurrentMatchState != EExMatchState::InGame;
+}
+
+bool UExOnlineSubsystem::IsMatchReadyToStart() const
+{
+	return CurrentMatchState == EExMatchState::Ready;
+}
+
+bool UExOnlineSubsystem::IsMatchActive() const
+{
+	return CurrentMatchState == EExMatchState::InGame;
+}
+
+void UExOnlineSubsystem::DebugForceMatchState(EExMatchState NewState)
+{
+#if !UE_BUILD_SHIPPING
+	UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] DebugForceMatchState 호출됨: %d"), (int32)NewState);
+	TransitionMatchState(NewState, ETransitionReason::UserRequest);
+#endif
 }
 
 void UExOnlineSubsystem::FindQuickMatch(const FExMatchConfig& Config)
@@ -150,35 +182,46 @@ void UExOnlineSubsystem::FindQuickMatch(const FExMatchConfig& Config)
 		return;
 	}
 
-	CurrentMatchState = EExMatchState::Searching;
-	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] FindQuickMatch 시작 — MatchMode=%s"), *Config.MatchMode);
+	PendingMatchConfig = Config;
 
-	ListenStrategy->FindAndJoinOrCreate(Config,
-		[this](bool bSuccess, const FString& ErrorMessage)
-		{
-			CurrentMatchState = bSuccess ? EExMatchState::Ready : EExMatchState::Idle;
-			if (bSuccess)
-			{
-				UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] 매칭 완료 — 성공."));
-			}
-			else
-			{
-				UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] 매칭 실패 — %s"), *ErrorMessage);
-			}
-			OnMatchFound.Broadcast(bSuccess, ErrorMessage);
-		}
-	);
+	if (Config.bIsSinglePlay)
+	{
+		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] FindQuickMatch: SinglePlay 모드 — 즉시 Creating 진입."));
+		TransitionMatchState(EExMatchState::Creating, ETransitionReason::UserRequest);
+	}
+	else
+	{
+		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] FindQuickMatch 시작 — MatchMode=%s"), *Config.MatchMode);
+		TransitionMatchState(EExMatchState::Searching, ETransitionReason::UserRequest);
+	}
 }
 
 void UExOnlineSubsystem::CancelMatch()
 {
+	if (CurrentMatchState == EExMatchState::InGame)
+	{
+		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] CancelMatch: 이미 게임(InGame) 상태이므로 매칭 취소를 무시합니다."));
+		return;
+	}
+
 	FExListenServerStrategy* ListenStrategy = static_cast<FExListenServerStrategy*>(ServerStrategy.Get());
 	if (ListenStrategy)
 	{
 		ListenStrategy->CancelMatch();
 	}
-	CurrentMatchState = EExMatchState::Idle;
+	TransitionMatchState(EExMatchState::Idle, ETransitionReason::Cancel);
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] CancelMatch 완료."));
+}
+
+void UExOnlineSubsystem::ResetMatchState()
+{
+	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] ResetMatchState: 매칭 상태를 강제로 초기화합니다."));
+	FExListenServerStrategy* ListenStrategy = static_cast<FExListenServerStrategy*>(ServerStrategy.Get());
+	if (ListenStrategy)
+	{
+		ListenStrategy->CancelMatch();
+	}
+	TransitionMatchState(EExMatchState::Idle, ETransitionReason::Reset);
 }
 
 void UExOnlineSubsystem::StartGame(const FExMatchConfig& Config)
@@ -220,7 +263,7 @@ void UExOnlineSubsystem::StartGame(const FExMatchConfig& Config)
 		return;
 	}
 
-	CurrentMatchState = EExMatchState::InGame;
+	TransitionMatchState(EExMatchState::InGame, ETransitionReason::UserRequest);
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame — MapPath=%s"), *Config.MapPath);
 	OnGameStarted.Broadcast(true, TEXT(""));
 
@@ -249,4 +292,255 @@ void UExOnlineSubsystem::HandleAuthLoginComplete(bool bSuccess, const FString& E
 		UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] 로그인 완료 — 실패. Error=%s"), *ErrorMessage);
 	}
 	OnLoginComplete.Broadcast(bSuccess, ErrorMessage);
+}
+
+// ------------------------------------------------------------------
+// FSM 로직
+// ------------------------------------------------------------------
+
+void UExOnlineSubsystem::BuildTransitionMap()
+{
+	TransitionMap.Empty();
+
+	// Phase A 골격이므로, 허용 가능한 전이 목록만 정의 (엄격한 검사 가능)
+	TransitionMap.Add(EExMatchState::Idle, { EExMatchState::Searching, EExMatchState::Creating });
+	TransitionMap.Add(EExMatchState::Searching, { EExMatchState::Idle, EExMatchState::Creating, EExMatchState::Joining });
+	TransitionMap.Add(EExMatchState::Creating, { EExMatchState::Idle, EExMatchState::Waiting });
+	TransitionMap.Add(EExMatchState::Waiting, { EExMatchState::Idle, EExMatchState::Ready });
+	TransitionMap.Add(EExMatchState::Joining, { EExMatchState::Idle, EExMatchState::Ready });
+	TransitionMap.Add(EExMatchState::Ready, { EExMatchState::Idle, EExMatchState::InGame });
+	TransitionMap.Add(EExMatchState::InGame, { EExMatchState::Idle });
+}
+
+bool UExOnlineSubsystem::IsTransitionAllowed(EExMatchState FromState, EExMatchState ToState) const
+{
+	if (FromState == ToState) return true; // Self-transition 허용 (동일 상태는 무시됨)
+	if (ToState == EExMatchState::Idle) return true; // Idle로의 복귀는 항상 허용
+
+	const TArray<EExMatchState>* AllowedTransitions = TransitionMap.Find(FromState);
+	return AllowedTransitions && AllowedTransitions->Contains(ToState);
+}
+
+bool UExOnlineSubsystem::ShouldHonorCallback(EExMatchState ExpectedState) const
+{
+	if (CurrentMatchState != ExpectedState)
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[UExMatchFSM] Stale callback ignored. Expected: %d, Current: %d"), (int32)ExpectedState, (int32)CurrentMatchState);
+		return false;
+	}
+	return true;
+}
+
+void UExOnlineSubsystem::TransitionMatchState(EExMatchState NewState, ETransitionReason Reason)
+{
+	// 우선순위 판별 (Safety-First vs Normal)
+	bool bIsNewReasonSafetyFirst = (Reason == ETransitionReason::Cancel || Reason == ETransitionReason::Reset || Reason == ETransitionReason::Deinitialize);
+	
+	if (bIsTransitioningMatchState)
+	{
+		// 재진입 감지됨
+		if (PendingMatchStateTransition.IsSet())
+		{
+			bool bIsPendingSafetyFirst = (PendingMatchStateTransition.GetValue().Value == ETransitionReason::Cancel || 
+										  PendingMatchStateTransition.GetValue().Value == ETransitionReason::Reset || 
+										  PendingMatchStateTransition.GetValue().Value == ETransitionReason::Deinitialize);
+			
+			if (bIsPendingSafetyFirst && !bIsNewReasonSafetyFirst)
+			{
+				UE_LOG(LogExNetwork, Warning, TEXT("[UExMatchFSM] 무시됨: 안전 전이가 대기 중인데 일반 전이가 요청됨. (Req=%d)"), (int32)NewState);
+				return;
+			}
+		}
+		
+		PendingMatchStateTransition = TPair<EExMatchState, ETransitionReason>(NewState, Reason);
+		UE_LOG(LogExNetwork, Verbose, TEXT("[UExMatchFSM] 재진입 전이 대기열 등록 (Req=%d, Reason=%d)"), (int32)NewState, (int32)Reason);
+		return;
+	}
+
+	if (CurrentMatchState == NewState)
+	{
+		return; // 이미 같은 상태
+	}
+
+	if (!IsTransitionAllowed(CurrentMatchState, NewState))
+	{
+		UE_LOG(LogExNetwork, Error, TEXT("[UExMatchFSM] 잘못된 상태 전이 시도: %d -> %d"), (int32)CurrentMatchState, (int32)NewState);
+		return;
+	}
+
+	bIsTransitioningMatchState = true;
+
+	EExMatchState OldState = CurrentMatchState;
+	
+	UE_LOG(LogExNetwork, Log, TEXT("[ExMatchFSM] [%d -> %d] reason=%d"), (int32)OldState, (int32)NewState, (int32)Reason);
+
+	HandleExitMatchState(OldState);
+	CurrentMatchState = NewState;
+	HandleEnterMatchState(NewState);
+
+	bIsTransitioningMatchState = false;
+
+	OnMatchStateChanged.Broadcast(OldState, NewState);
+
+	// 펜딩 처리
+	if (PendingMatchStateTransition.IsSet() && !PendingMatchStateTickerHandle.IsValid())
+	{
+		PendingMatchStateTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateUObject(this, &UExOnlineSubsystem::TickPendingMatchState), 0.0f
+		);
+	}
+}
+
+bool UExOnlineSubsystem::TickPendingMatchState(float DeltaTime)
+{
+	PendingMatchStateTickerHandle.Reset();
+
+	if (PendingMatchStateTransition.IsSet())
+	{
+		TPair<EExMatchState, ETransitionReason> Pending = PendingMatchStateTransition.GetValue();
+		PendingMatchStateTransition.Reset();
+		
+		UE_LOG(LogExNetwork, Log, TEXT("[UExMatchFSM] 지연된 전이 실행."));
+		TransitionMatchState(Pending.Key, Pending.Value);
+	}
+	return false; // 일회성
+}
+
+void UExOnlineSubsystem::HandleEnterMatchState(EExMatchState NewState)
+{
+	switch (NewState)
+	{
+	case EExMatchState::Idle:
+		if (ServerStrategy)
+		{
+			ServerStrategy->ResetTransientState();
+			ServerStrategy->CancelMatch();
+		}
+		// Idle 진입 시 실패/취소 에러 브로드캐스트 (빈 문자열이 아니면 실패로 간주)
+		if (!LastErrorMessage.IsEmpty())
+		{
+			OnMatchFound.Broadcast(false, LastErrorMessage);
+			LastErrorMessage.Empty();
+		}
+		break;
+
+	case EExMatchState::Searching:
+		if (ServerStrategy)
+		{
+			ServerStrategy->BeginSearchPhase(PendingMatchConfig, EExMatchState::Searching,
+				[this](bool bSuccess, const FString& ErrorMessage)
+				{
+					if (!ShouldHonorCallback(EExMatchState::Searching)) return;
+
+					if (bSuccess)
+					{
+						TransitionMatchState(EExMatchState::Joining, ETransitionReason::AsyncCallback);
+					}
+					else if (ErrorMessage == TEXT("Timeout"))
+					{
+						TransitionMatchState(EExMatchState::Creating, ETransitionReason::Timeout);
+					}
+					else
+					{
+						LastErrorMessage = ErrorMessage;
+						TransitionMatchState(EExMatchState::Idle, ETransitionReason::AsyncCallback);
+					}
+				});
+		}
+		break;
+
+	case EExMatchState::Creating:
+		if (ServerStrategy)
+		{
+			ServerStrategy->BeginCreatePhase(PendingMatchConfig, EExMatchState::Creating,
+				[this](bool bSuccess, const FString& ErrorMessage)
+				{
+					if (!ShouldHonorCallback(EExMatchState::Creating)) return;
+
+					if (bSuccess)
+					{
+						TransitionMatchState(EExMatchState::Waiting, ETransitionReason::AsyncCallback);
+					}
+					else
+					{
+						LastErrorMessage = ErrorMessage;
+						TransitionMatchState(EExMatchState::Idle, ETransitionReason::AsyncCallback);
+					}
+				});
+		}
+		break;
+
+	case EExMatchState::Joining:
+		if (ServerStrategy)
+		{
+			// SessionId는 LobbyIndex 용도로 "0"을 전달 (Phase B 내부 구현에 맡김)
+			ServerStrategy->BeginJoinPhase(PendingMatchConfig, TEXT("0"), EExMatchState::Joining,
+				[this](bool bSuccess, const FString& ErrorMessage)
+				{
+					if (!ShouldHonorCallback(EExMatchState::Joining)) return;
+
+					if (bSuccess)
+					{
+						TransitionMatchState(EExMatchState::Waiting, ETransitionReason::AsyncCallback);
+					}
+					else
+					{
+						LastErrorMessage = ErrorMessage;
+						TransitionMatchState(EExMatchState::Idle, ETransitionReason::AsyncCallback);
+					}
+				});
+		}
+		break;
+
+	case EExMatchState::Waiting:
+		if (ServerStrategy)
+		{
+			ServerStrategy->BeginWaitPhase(PendingMatchConfig, ServerStrategy->IsHost(), EExMatchState::Waiting,
+				[this](bool bSuccess, const FString& ErrorMessage)
+				{
+					if (!ShouldHonorCallback(EExMatchState::Waiting)) return;
+
+					if (bSuccess)
+					{
+						TransitionMatchState(EExMatchState::Ready, ETransitionReason::AsyncCallback);
+					}
+					else
+					{
+						LastErrorMessage = ErrorMessage;
+						TransitionMatchState(EExMatchState::Idle, ETransitionReason::AsyncCallback);
+					}
+				});
+		}
+		break;
+
+	case EExMatchState::Ready:
+		UE_LOG(LogExNetwork, Log, TEXT("[UExMatchFSM] 매칭 완료 — 성공 (Ready 진입)."));
+		OnMatchFound.Broadcast(true, TEXT(""));
+		break;
+
+	case EExMatchState::InGame:
+		// StartGame에서 처리됨
+		break;
+	}
+}
+
+void UExOnlineSubsystem::HandleExitMatchState(EExMatchState OldState)
+{
+	switch (OldState)
+	{
+	case EExMatchState::Searching:
+		if (ServerStrategy) ServerStrategy->EndSearchPhase();
+		break;
+	case EExMatchState::Creating:
+		if (ServerStrategy) ServerStrategy->EndCreatePhase();
+		break;
+	case EExMatchState::Joining:
+		if (ServerStrategy) ServerStrategy->EndJoinPhase();
+		break;
+	case EExMatchState::Waiting:
+		if (ServerStrategy) ServerStrategy->EndWaitPhase();
+		break;
+	default:
+		break;
+	}
 }

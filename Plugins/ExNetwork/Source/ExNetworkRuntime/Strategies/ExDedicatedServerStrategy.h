@@ -24,4 +24,21 @@ public:
 	virtual void JoinMatch(const FString& SessionId) override;
 	virtual void StartGameSession(const FString& MapPath, UWorld* World) override;
 	virtual void DestroyMatch() override;
+	virtual void CancelMatch() override;
+
+	virtual void BeginSearchPhase(const FExMatchConfig& Config, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnSearchComplete) override;
+	virtual void EndSearchPhase() override;
+
+	virtual void BeginCreatePhase(const FExMatchConfig& Config, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnCreateComplete) override;
+	virtual void EndCreatePhase() override;
+
+	virtual void BeginJoinPhase(const FExMatchConfig& Config, const FString& SessionId, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnJoinComplete) override;
+	virtual void EndJoinPhase() override;
+
+	virtual void BeginWaitPhase(const FExMatchConfig& Config, bool bIsHostFlag, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnReadyCallback) override;
+	virtual void EndWaitPhase() override;
+
+	virtual void ResetTransientState() override;
+	virtual bool IsHost() const override;
+	virtual FString GetConnectString() const override;
 };

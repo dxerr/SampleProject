@@ -43,11 +43,11 @@ public:
 	virtual void StartGameSession(const FString& MapPath, UWorld* World) override;
 	virtual void DestroyMatch() override;
 
-	/** Quick Match: Lobby 검색 후 참가 또는 생성 자동 처리 */
+	/** Quick Match: Lobby 검색 후 참가 또는 생성 자동 처리 (Phase B 이후 deprecated, 내부 호출용으로 분리됨) */
 	void FindAndJoinOrCreate(const FExMatchConfig& Config, TFunction<void(bool, const FString&)> OnComplete);
 
 	/** 진행 중인 매칭 취소 */
-	void CancelMatch();
+	virtual void CancelMatch() override;
 
 	/** Lobby Provider 주입 */
 	void SetLobbyProvider(TUniquePtr<IExLobbyProvider> InLobbyProvider);
@@ -56,16 +56,28 @@ public:
 	IExLobbyProvider* GetLobbyProvider() const { return LobbyProvider.Get(); }
 
 	/** 현재 인스턴스가 Host로 동작 중인지 여부 반환 */
-	bool IsHost() const { return bIsHost; }
+	virtual bool IsHost() const override { return bIsHost; }
 
 	/** Client가 서버에 접속하기 위한 ConnectString 반환 */
-	FString GetConnectString() const { return CachedConnectString; }
+	virtual FString GetConnectString() const override { return CachedConnectString; }
+
+	// --- FSM 전이용 Phase 메서드 군 ---
+
+	virtual void BeginSearchPhase(const FExMatchConfig& Config, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnSearchComplete) override;
+	virtual void EndSearchPhase() override;
+
+	virtual void BeginCreatePhase(const FExMatchConfig& Config, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnCreateComplete) override;
+	virtual void EndCreatePhase() override;
+
+	virtual void BeginJoinPhase(const FExMatchConfig& Config, const FString& SessionId, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnJoinComplete) override;
+	virtual void EndJoinPhase() override;
+
+	virtual void BeginWaitPhase(const FExMatchConfig& Config, bool bIsHostFlag, EExMatchState ExpectedState, TFunction<void(bool, const FString&)> OnReadyCallback) override;
+	virtual void EndWaitPhase() override;
+
+	virtual void ResetTransientState() override;
 
 private:
-
-	void OnFindComplete(bool bSuccess, int32 ResultCount, TFunction<void(bool, const FString&)> OnComplete);
-	void OnCreateComplete(bool bSuccess, const FString& ErrorMessage, TFunction<void(bool, const FString&)> OnComplete);
-	void OnJoinComplete(bool bSuccess, const FString& ErrorMessage, TFunction<void(bool, const FString&)> OnComplete);
 
 	TUniquePtr<IExLobbyProvider> LobbyProvider;
 
