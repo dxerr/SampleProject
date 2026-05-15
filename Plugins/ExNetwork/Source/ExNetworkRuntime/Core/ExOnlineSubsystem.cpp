@@ -170,9 +170,17 @@ void UExOnlineSubsystem::FindQuickMatch(const FExMatchConfig& Config)
 
 	if (CurrentMatchState != EExMatchState::Idle)
 	{
-		UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] FindQuickMatch: 이미 매칭 진행 중. State=%d"), (int32)CurrentMatchState);
-		OnMatchFound.Broadcast(false, TEXT("Already matching"));
-		return;
+		if (CurrentMatchState == EExMatchState::InGame)
+		{
+			UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] FindQuickMatch: 이전 게임 상태가 남아있어 Idle로 초기화 후 진행합니다."));
+			ResetMatchState();
+		}
+		else
+		{
+			UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] FindQuickMatch: 이미 매칭 진행 중. State=%d"), (int32)CurrentMatchState);
+			OnMatchFound.Broadcast(false, TEXT("Already matching"));
+			return;
+		}
 	}
 
 	FExListenServerStrategy* ListenStrategy = static_cast<FExListenServerStrategy*>(ServerStrategy.Get());

@@ -61,12 +61,8 @@ void UExLobbyMatchViewModel::AutoInitialize(UObject* WorldContextObject)
 		return;
 	}
 
-	// 인게임에서 로비로 돌아온 경우 (MatchState가 Idle이 아닐 때) 상태 초기화
-	if (CachedOnlineSubsystem->GetMatchState() != EExMatchState::Idle)
-	{
-		UE_LOG(LogExLobbyMatchVM, Log, TEXT("[ExLobbyMatchVM] AutoInitialize: 이전 매칭 상태가 남아있어 초기화 (ResetMatchState) 진행."));
-		CachedOnlineSubsystem->ResetMatchState();
-	}
+	// 인게임에서 로비로 돌아온 경우의 상태 초기화는 FindQuickMatch 등 매칭 시작 시점에 지연 처리하거나,
+	// 별도의 맵 로드 델리게이트를 통해 수행하도록 하여 ClientTravel 도중 UI 재활성화로 인한 매칭 강제 취소를 방지합니다.
 
 	// 로그인 미완료 시 OnLoginComplete 구독 — 버튼 클릭 타이밍 문제 대비
 	if (!CachedOnlineSubsystem->IsLoggedIn())
