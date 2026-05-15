@@ -66,6 +66,7 @@ if /i "%TARGET_PLATFORM%"=="Win64Server" (
         %TARGET_CONFIG% ^
         "%PROJECT_FILE%" ^
         -waitmutex ^
+        -UBA ^
         %CLEAN_FLAG%
 
     if !ERRORLEVEL! NEQ 0 (
