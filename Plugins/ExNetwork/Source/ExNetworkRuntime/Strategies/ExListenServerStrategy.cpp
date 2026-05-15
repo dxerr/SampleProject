@@ -18,6 +18,21 @@ FExListenServerStrategy::FExListenServerStrategy()
 
 FExListenServerStrategy::~FExListenServerStrategy()
 {
+	bIsDestroyed = true; // UpdateSession 지연 콜백이 도달해도 즉시 반환하도록 플래그 설정
+
+	// UpdateSession 핸들 해제 — ServerTravel 후 비동기 콜백이 소멸된 this를 역참조하는 크래시 방지
+	if (UpdateSessionHandle.IsValid())
+	{
+		if (IOnlineSubsystem* OSS = IOnlineSubsystem::Get())
+		{
+			if (OSS->GetSessionInterface().IsValid())
+			{
+				OSS->GetSessionInterface()->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateSessionHandle);
+			}
+		}
+		UpdateSessionHandle.Reset();
+	}
+
 	ClearWaitLobbyTicker();
 	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 소멸됨 — Ticker 핸들 해제."));
 }
@@ -84,6 +99,10 @@ void FExListenServerStrategy::DestroyMatch()
 
 void FExListenServerStrategy::FindAndJoinOrCreate(const FExMatchConfig& Config, TFunction<void(bool, const FString&)> OnComplete)
 {
+	// Config 파라미터가 외부 지역 변수 참조일 경우를 대비해, 즉시 내부 멤버에 복사합니다.
+	// 이를 통해 지연 콜백(람다) 포획 시 발생할 수 있는 FString 오염(MatchMode 텍스트 깨짐)을 원천 차단합니다.
+	CurrentWaitConfig = Config;
+
 	if (!ensureMsgf(LobbyProvider, TEXT("[ExListenServerStrategy] FindAndJoinOrCreate: LobbyProvider 없음.")))
 	{
 		OnComplete(false, TEXT("LobbyProvider not set"));
@@ -95,10 +114,11 @@ void FExListenServerStrategy::FindAndJoinOrCreate(const FExMatchConfig& Config, 
 		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] 이전 Session이 남아있습니다. 파괴 후 매칭을 재진행합니다."));
 		LobbyProvider->OnDestroyComplete.Clear();
 		LobbyProvider->OnDestroyComplete.AddLambda(
-			[this, Config, OnComplete](bool bDestroySuccess)
+			[this, OnComplete](bool bDestroySuccess)
 			{
 				LobbyProvider->OnDestroyComplete.Clear();
-				this->FindAndJoinOrCreate(Config, OnComplete);
+				// 복사해 둔 CurrentWaitConfig를 사용하여 재귀 호출
+				this->FindAndJoinOrCreate(this->CurrentWaitConfig, OnComplete);
 			}
 		);
 		LobbyProvider->DestroyLobby();
@@ -112,10 +132,9 @@ void FExListenServerStrategy::FindAndJoinOrCreate(const FExMatchConfig& Config, 
 	FindRetryCount = 0;
 	WaitStartTime = FPlatformTime::Seconds(); // 매칭 시작 시점 캡처
 
-	if (Config.bIsSinglePlay)
+	if (CurrentWaitConfig.bIsSinglePlay)
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Single Play 모드 — Lobby 즉시 생성."));
-		CurrentWaitConfig = Config;
 
 		LobbyProvider->OnCreateComplete.AddLambda(
 			[this, OnComplete](bool bCreateSuccess, const FString& ErrorMessage)
@@ -124,13 +143,12 @@ void FExListenServerStrategy::FindAndJoinOrCreate(const FExMatchConfig& Config, 
 				OnCreateComplete(bCreateSuccess, ErrorMessage, OnComplete);
 			}
 		);
-		LobbyProvider->CreateLobby(Config);
+		LobbyProvider->CreateLobby(CurrentWaitConfig);
 		return;
 	}
 
 	// Multi Play: 검색 먼저
 	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Quick Match 시작 — Lobby 검색 중..."));
-	CurrentWaitConfig = Config;
 
 	LobbyProvider->OnFindComplete.AddLambda(
 		[this, OnComplete](bool bSuccess, int32 ResultCount)
@@ -212,6 +230,7 @@ void FExListenServerStrategy::OnFindComplete(bool bSuccess, int32 ResultCount, T
 
 void FExListenServerStrategy::OnCreateComplete(bool bSuccess, const FString& ErrorMessage, TFunction<void(bool, const FString&)> OnComplete)
 {
+	bIsHost = true;
 	if (bSuccess)
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 생성 성공 — 상대 플레이어 대기 중."));
@@ -230,6 +249,7 @@ void FExListenServerStrategy::OnCreateComplete(bool bSuccess, const FString& Err
 
 void FExListenServerStrategy::OnJoinComplete(bool bSuccess, const FString& ErrorMessage, TFunction<void(bool, const FString&)> OnComplete)
 {
+	bIsHost = false;
 	if (bSuccess)
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 참가 성공 — 매치 시작 대기 중."));
@@ -315,14 +335,18 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
 		FOnlineSessionSettings* Settings = OSS->GetSessionInterface()->GetSessionSettings(ExMatchSessionName);
 		if (Settings)
 		{
-			Settings->Set(FName("MATCH_STARTED"), 1, EOnlineDataAdvertisementType::ViaOnlineService);
+			// int32(1) 대신 bool(true) 사용 — EOS SDK에서 int32가 int64로 강제 변환되어 클라이언트에서 읽지 못하는 현상 방지
+			Settings->Set(FName("MATCH_STARTED"), true, EOnlineDataAdvertisementType::ViaOnlineService);
 
-			FDelegateHandle UpdateHandle;
-			UpdateHandle = OSS->GetSessionInterface()->AddOnUpdateSessionCompleteDelegate_Handle(
+			// UpdateSessionHandle을 멤버로 관리 — 소멸자에서 해제하여 ServerTravel 후 댕글링 크래시 방지
+			UpdateSessionHandle = OSS->GetSessionInterface()->AddOnUpdateSessionCompleteDelegate_Handle(
 				FOnUpdateSessionCompleteDelegate::CreateLambda(
-					[this, OSS, UpdateHandle](FName SessionName, bool bUpdateSuccess) mutable
+					[this, OSS](FName SessionName, bool bUpdateSuccess) mutable
 					{
-						OSS->GetSessionInterface()->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateHandle);
+						OSS->GetSessionInterface()->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateSessionHandle);
+						UpdateSessionHandle.Reset();
+						// bIsDestroyed 체크 — ServerTravel로 인해 this가 소멸된 경우 즉시 반환
+						if (bIsDestroyed) return;
 						UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Host MATCH_STARTED 업데이트 완료(bSuccess=%d) — 매칭 완료 콜백 호출."), bUpdateSuccess);
 						if (CachedOnComplete) { CachedOnComplete(true, TEXT("")); CachedOnComplete = nullptr; }
 					}
@@ -345,7 +369,8 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
 	{
 		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] Host 대기 타임아웃 (%.1f초)."), Elapsed);
 		WaitLobbyTickerHandle.Reset();
-		if (LobbyProvider) LobbyProvider->DestroyLobby();
+		// DestroyLobby는 여기서 직접 호출하지 않음 — 이중 파괴 방지.
+		// HasLocalSession 경로에서 다음 FindAndJoinOrCreate 시 처리.
 		if (CachedOnComplete) { CachedOnComplete(false, TEXT("Timeout")); CachedOnComplete = nullptr; }
 		return false;
 	}
@@ -366,34 +391,43 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Client(float DeltaTime)
 	FOnlineSessionSettings* Settings = OSS->GetSessionInterface()->GetSessionSettings(ExMatchSessionName);
 	if (Settings)
 	{
-		int32 MatchStarted = 0;
-		const bool bHasProperty = Settings->Get(FName("MATCH_STARTED"), MatchStarted);
-		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Client 폴링 — MATCH_STARTED 존재=%d 값=%d 경과=%.1f초"),
-			bHasProperty, MatchStarted, Elapsed);
+		bool bMatchStarted = false;
+		bool bHasProperty = false;
+		const FOnlineSessionSetting* SettingInfo = Settings->Settings.Find(FName("MATCH_STARTED"));
+		if (SettingInfo)
+		{
+			bHasProperty = true;
+			const FVariantData& SettingData = SettingInfo->Data;
+			if (SettingData.GetType() == EOnlineKeyValuePairDataType::Bool)
+			{
+				SettingData.GetValue(bMatchStarted);
+			}
+			else if (SettingData.GetType() == EOnlineKeyValuePairDataType::Int32)
+			{
+				int32 Val = 0;
+				SettingData.GetValue(Val);
+				bMatchStarted = (Val == 1);
+			}
+			else if (SettingData.GetType() == EOnlineKeyValuePairDataType::Int64)
+			{
+				int64 Val = 0;
+				SettingData.GetValue(Val);
+				bMatchStarted = (Val == 1);
+			}
+		}
 
-		if (bHasProperty && MatchStarted == 1)
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Client 폴링 — MATCH_STARTED 존재=%d 값=%d 경과=%.1f초"),
+			bHasProperty, bMatchStarted, Elapsed);
+
+		if (bHasProperty && bMatchStarted)
 		{
 			WaitLobbyTickerHandle.Reset();
-			UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Client MATCH_STARTED 감지 — ConnectString=%s 으로 접속 시도."), *CachedConnectString);
-
-			// 호스트 서버(Listen Server)에 직접 접속 — ServerTravel은 이미 호스트에서 완료됨
-			if (!CachedConnectString.IsEmpty())
-			{
-				if (UWorld* ClientWorld = GEngine ? GEngine->GetCurrentPlayWorld() : nullptr)
-				{
-					UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] ClientTravel 실행 — URL=%s"), *CachedConnectString);
-					ClientWorld->GetFirstPlayerController()->ClientTravel(CachedConnectString, TRAVEL_Absolute);
-				}
-				else
-				{
-					UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] ClientWorld 없음 — OnComplete 콜백으로 폴백."));
-					if (CachedOnComplete) { CachedOnComplete(true, TEXT("")); CachedOnComplete = nullptr; }
-				}
-			}
-			else
-			{
-				UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] ConnectString 없음 — OnComplete 콜백으로 폴백."));
-				if (CachedOnComplete) { CachedOnComplete(true, TEXT("")); CachedOnComplete = nullptr; }
+			UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Client MATCH_STARTED 감지 — UExOnlineSubsystem으로 제어권 위임 (ConnectString=%s)"), *CachedConnectString);
+			
+			if (CachedOnComplete) 
+			{ 
+				CachedOnComplete(true, CachedConnectString); 
+				CachedOnComplete = nullptr; 
 			}
 			return false;
 		}
@@ -406,7 +440,9 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Client(float DeltaTime)
 	if (Elapsed >= CurrentWaitConfig.MaxWaitForPlayersSeconds)
 	{
 		WaitLobbyTickerHandle.Reset();
-		if (LobbyProvider) LobbyProvider->DestroyLobby();
+		// DestroyLobby는 여기서 직접 호출하지 않음.
+		// CachedOnComplete → FindQuickMatch → FindAndJoinOrCreate → HasLocalSession 경로에서 처리.
+		// 여기서 호출하면 이중 파괴(double destroy)가 발생하여 MatchMode 문자열 오염의 원인이 됨.
 		if (CachedOnComplete) { CachedOnComplete(false, TEXT("Timeout")); CachedOnComplete = nullptr; }
 		return false;
 	}

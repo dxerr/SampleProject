@@ -55,6 +55,12 @@ public:
 	/** Lobby Provider 참조 */
 	IExLobbyProvider* GetLobbyProvider() const { return LobbyProvider.Get(); }
 
+	/** 현재 인스턴스가 Host로 동작 중인지 여부 반환 */
+	bool IsHost() const { return bIsHost; }
+
+	/** Client가 서버에 접속하기 위한 ConnectString 반환 */
+	FString GetConnectString() const { return CachedConnectString; }
+
 private:
 
 	void OnFindComplete(bool bSuccess, int32 ResultCount, TFunction<void(bool, const FString&)> OnComplete);
@@ -69,6 +75,15 @@ private:
 	double WaitStartTime = 0.0;   // FPlatformTime::Seconds() 절대 시간 기반
 	FExMatchConfig CurrentWaitConfig;
 	TFunction<void(bool, const FString&)> CachedOnComplete;
+
+	/** UpdateSession(MATCH_STARTED=1) 핸들 — 소멸자에서 해제하여 ServerTravel 후 댕글링 콜백 크래시 방지 */
+	FDelegateHandle UpdateSessionHandle;
+
+	/** 소멸자 진입 여부 — UpdateSession 지연 콜백의 댕글링 this 접근 크래시 방지 */
+	bool bIsDestroyed = false;
+
+	/** 현재 인스턴스가 Host로 동작하는지 여부 */
+	bool bIsHost = false;
 
 	// 검색 재시도 관련
 	// MaxWaitForPlayersSeconds 동안 FindRetryDelay 간격으로 재검색

@@ -213,14 +213,8 @@ void UExOnlineSubsystem::StartGame(const FExMatchConfig& Config)
 		return;
 	}
 
-	// 클라이언트는 StartGame 호출 무시 (ServerTravel은 서버만)
-	if (World->GetNetMode() == NM_Client)
-	{
-		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame: 클라이언트 — 서버의 ServerTravel을 기다립니다."));
-		return;
-	}
-
-	if (!ensureMsgf(ServerStrategy, TEXT("[UExOnlineSubsystem] StartGame: ServerStrategy 없음.")))
+	FExListenServerStrategy* ListenStrategy = static_cast<FExListenServerStrategy*>(ServerStrategy.Get());
+	if (!ensureMsgf(ListenStrategy, TEXT("[UExOnlineSubsystem] StartGame: ListenServerStrategy 없음.")))
 	{
 		OnGameStarted.Broadcast(false, TEXT("ServerStrategy not available"));
 		return;
@@ -228,9 +222,20 @@ void UExOnlineSubsystem::StartGame(const FExMatchConfig& Config)
 
 	CurrentMatchState = EExMatchState::InGame;
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame — MapPath=%s"), *Config.MapPath);
-
 	OnGameStarted.Broadcast(true, TEXT(""));
-	ServerStrategy->StartGameSession(Config.MapPath, World);
+
+	if (ListenStrategy->IsHost())
+	{
+		// 호스트: 방 생성자이므로 ServerTravel을 통해 게임 맵으로 이동
+		ListenStrategy->StartGameSession(Config.MapPath, World);
+	}
+	else
+	{
+		// 클라이언트: 로비에 참가한 입장이므로 호스트 세션으로 ClientTravel 수행
+		FString ConnectString = ListenStrategy->GetConnectString();
+		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame: 클라이언트 — ClientTravel 실행 URL=%s"), *ConnectString);
+		World->GetFirstPlayerController()->ClientTravel(ConnectString, TRAVEL_Absolute);
+	}
 }
 
 void UExOnlineSubsystem::HandleAuthLoginComplete(bool bSuccess, const FString& ErrorMessage)
