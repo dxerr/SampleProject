@@ -307,7 +307,7 @@ void UExOnlineSubsystem::BuildTransitionMap()
 	TransitionMap.Add(EExMatchState::Searching, { EExMatchState::Idle, EExMatchState::Creating, EExMatchState::Joining });
 	TransitionMap.Add(EExMatchState::Creating, { EExMatchState::Idle, EExMatchState::Waiting });
 	TransitionMap.Add(EExMatchState::Waiting, { EExMatchState::Idle, EExMatchState::Ready });
-	TransitionMap.Add(EExMatchState::Joining, { EExMatchState::Idle, EExMatchState::Ready });
+	TransitionMap.Add(EExMatchState::Joining, { EExMatchState::Idle, EExMatchState::Ready, EExMatchState::Waiting });
 	TransitionMap.Add(EExMatchState::Ready, { EExMatchState::Idle, EExMatchState::InGame });
 	TransitionMap.Add(EExMatchState::InGame, { EExMatchState::Idle });
 }
