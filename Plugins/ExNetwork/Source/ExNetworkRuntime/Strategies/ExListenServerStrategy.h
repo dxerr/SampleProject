@@ -110,6 +110,10 @@ private:
 	/** JoinLobby 성공 시 저장 — MATCH_STARTED 감지 후 ClientTravel에 사용 */
 	FString CachedConnectString;
 
+	FTSTicker::FDelegateHandle SearchPhaseTickerHandle;
+	FTSTicker::FDelegateHandle CreatePhaseTickerHandle;
+	FTSTicker::FDelegateHandle JoinPhaseTickerHandle;
+
 	void ClearWaitLobbyTicker();
 	bool CheckLobbyWaitConditions_Host(float DeltaTime);
 	bool CheckLobbyWaitConditions_Client(float DeltaTime);

@@ -162,39 +162,51 @@ void FExListenServerStrategy::BeginSearchPhase(const FExMatchConfig& Config, EEx
 	LobbyProvider->OnFindComplete.AddLambda(
 		[this, ExpectedState, OnSearchComplete](bool bSuccess, int32 ResultCount)
 		{
-			LobbyProvider->OnFindComplete.Clear();
-			if (bSuccess && ResultCount > 0)
-			{
-				UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby %d개 발견."), ResultCount);
-				FindRetryCount = 0; // 다음을 위해 초기화
-				OnSearchComplete(true, TEXT(""));
-			}
-			else
-			{
-				const double Elapsed = FPlatformTime::Seconds() - WaitStartTime;
-				if (Elapsed >= CurrentWaitConfig.MaxWaitForPlayersSeconds)
+			// [경쟁 조건 해결 및 크래시 방지] 
+			// 델리게이트 완료 이벤트를 다음 틱으로 지연하여 안전하게 브로드캐스트를 종료하고 
+			// 현재 람다의 실행 및 델리게이트 인스턴스 할당 해제(UAF) 크래시를 완벽히 방지합니다.
+			SearchPhaseTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+				FTickerDelegate::CreateLambda([this, ExpectedState, OnSearchComplete, bSuccess, ResultCount](float) -> bool
 				{
-					UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] %.1f초 대기 후 Lobby 없음 — Search 타임아웃."), Elapsed);
-					FindRetryCount = 0;
-					OnSearchComplete(false, TEXT("Timeout"));
-				}
-				else
-				{
-					FindRetryCount++;
-					UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 없음 — %.1f초 후 재검색 시도 (%d회). 경과=%.1f/%.1f초"),
-						FindRetryDelay, FindRetryCount, Elapsed, CurrentWaitConfig.MaxWaitForPlayersSeconds);
+					SearchPhaseTickerHandle.Reset();
+					if (bIsDestroyed) return false;
 
-					FindRetryTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
-						FTickerDelegate::CreateLambda([this, ExpectedState, OnSearchComplete](float) -> bool
+					if (bSuccess && ResultCount > 0)
+					{
+						UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby %d개 발견."), ResultCount);
+						FindRetryCount = 0; // 다음을 위해 초기화
+						OnSearchComplete(true, TEXT(""));
+					}
+					else
+					{
+						const double Elapsed = FPlatformTime::Seconds() - WaitStartTime;
+						if (Elapsed >= CurrentWaitConfig.MaxWaitForPlayersSeconds)
 						{
-							FindRetryTickerHandle.Reset();
-							this->BeginSearchPhase(CurrentWaitConfig, ExpectedState, OnSearchComplete);
-							return false;
-						}),
-						FindRetryDelay
-					);
-				}
-			}
+							UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] %.1f초 대기 후 Lobby 없음 — Search 타임아웃."), Elapsed);
+							FindRetryCount = 0;
+							OnSearchComplete(false, TEXT("Timeout"));
+						}
+						else
+						{
+							FindRetryCount++;
+							UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 없음 — %.1f초 후 재검색 시도 (%d회). 경과=%.1f/%.1f초"),
+								FindRetryDelay, FindRetryCount, Elapsed, CurrentWaitConfig.MaxWaitForPlayersSeconds);
+
+							FindRetryTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+								FTickerDelegate::CreateLambda([this, ExpectedState, OnSearchComplete](float) -> bool
+								{
+									FindRetryTickerHandle.Reset();
+									this->BeginSearchPhase(CurrentWaitConfig, ExpectedState, OnSearchComplete);
+									return false;
+								}),
+								FindRetryDelay
+							);
+						}
+					}
+					return false; // 일회성
+				}),
+				0.0f // 즉시 다음 틱에 실행
+			);
 		});
 	LobbyProvider->FindLobbies(CurrentWaitConfig);
 }
@@ -227,17 +239,29 @@ void FExListenServerStrategy::BeginCreatePhase(const FExMatchConfig& Config, EEx
 	LobbyProvider->OnCreateComplete.AddLambda(
 		[this, OnCreateComplete](bool bCreateSuccess, const FString& ErrorMessage)
 		{
-			LobbyProvider->OnCreateComplete.Clear();
-			if (bCreateSuccess)
-			{
-				UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 생성 성공."));
-				OnCreateComplete(true, TEXT(""));
-			}
-			else
-			{
-				UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] Lobby 생성 실패 — %s"), *ErrorMessage);
-				OnCreateComplete(false, ErrorMessage);
-			}
+			// [경쟁 조건 해결 및 크래시 방지]
+			// 델리게이트 완료 이벤트를 다음 틱으로 지연하여 안전하게 브로드캐스트를 종료하고
+			// 현재 람다의 실행 및 델리게이트 인스턴스 할당 해제(UAF) 크래시를 완벽히 방지합니다.
+			CreatePhaseTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+				FTickerDelegate::CreateLambda([this, OnCreateComplete, bCreateSuccess, ErrorMessage](float) -> bool
+				{
+					CreatePhaseTickerHandle.Reset();
+					if (bIsDestroyed) return false;
+
+					if (bCreateSuccess)
+					{
+						UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 생성 성공."));
+						OnCreateComplete(true, TEXT(""));
+					}
+					else
+					{
+						UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] Lobby 생성 실패 — %s"), *ErrorMessage);
+						OnCreateComplete(false, ErrorMessage);
+					}
+					return false; // 일회성
+				}),
+				0.0f
+			);
 		}
 	);
 	LobbyProvider->CreateLobby(CurrentWaitConfig);
@@ -266,18 +290,30 @@ void FExListenServerStrategy::BeginJoinPhase(const FExMatchConfig& Config, const
 	LobbyProvider->OnJoinComplete.AddLambda(
 		[this, OnJoinComplete](bool bJoinSuccess, const FString& ErrorMessage)
 		{
-			LobbyProvider->OnJoinComplete.Clear();
-			if (bJoinSuccess)
-			{
-				CachedConnectString = LobbyProvider->GetConnectString();
-				UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 참가 성공 — ConnectString 캐시: %s"), *CachedConnectString);
-				OnJoinComplete(true, TEXT(""));
-			}
-			else
-			{
-				UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] Lobby 참가 실패 — %s"), *ErrorMessage);
-				OnJoinComplete(false, ErrorMessage);
-			}
+			// [경쟁 조건 해결 및 크래시 방지]
+			// 델리게이트 완료 이벤트를 다음 틱으로 지연하여 안전하게 브로드캐스트를 종료하고
+			// 현재 람다의 실행 및 델리게이트 인스턴스 할당 해제(UAF) 크래시를 완벽히 방지합니다.
+			JoinPhaseTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+				FTickerDelegate::CreateLambda([this, OnJoinComplete, bJoinSuccess, ErrorMessage](float) -> bool
+				{
+					JoinPhaseTickerHandle.Reset();
+					if (bIsDestroyed) return false;
+
+					if (bJoinSuccess)
+					{
+						CachedConnectString = LobbyProvider->GetConnectString();
+						UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 참가 성공 — ConnectString 캐시: %s"), *CachedConnectString);
+						OnJoinComplete(true, TEXT(""));
+					}
+					else
+					{
+						UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] Lobby 참가 실패 — %s"), *ErrorMessage);
+						OnJoinComplete(false, ErrorMessage);
+					}
+					return false; // 일회성
+				}),
+				0.0f
+			);
 		}
 	);
 	// SessionId는 현재 0번 인덱스를 의미함 (Lobby 0번 참가)
@@ -386,6 +422,22 @@ void FExListenServerStrategy::ClearWaitLobbyTicker()
 	{
 		FTSTicker::GetCoreTicker().RemoveTicker(FindRetryTickerHandle);
 		FindRetryTickerHandle.Reset();
+	}
+	// 비동기 Phase 지연 완료 Ticker 해제
+	if (SearchPhaseTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(SearchPhaseTickerHandle);
+		SearchPhaseTickerHandle.Reset();
+	}
+	if (CreatePhaseTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(CreatePhaseTickerHandle);
+		CreatePhaseTickerHandle.Reset();
+	}
+	if (JoinPhaseTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(JoinPhaseTickerHandle);
+		JoinPhaseTickerHandle.Reset();
 	}
 }
 
