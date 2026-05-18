@@ -13,7 +13,7 @@
  * IExLobbyProvider의 EOS 구현체.
  * UE 표준 IOnlineSession API를 통해 EOS Lobby를 생성/검색/참가한다.
  */
-class FExEOSLobbyProvider : public IExLobbyProvider
+class FExEOSLobbyProvider : public IExLobbyProvider, public TSharedFromThis<FExEOSLobbyProvider>
 {
 public:
 

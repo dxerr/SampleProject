@@ -74,11 +74,11 @@ void FExEOSLobbyProvider::CreateLobby(const FExMatchConfig& Config)
 
 	// 참가자 변경 감지 등록 — 호스트가 상대방 입장을 감지하기 위해 CreateLobby 전에 바인딩
 	ParticipantsChangeHandle = SessionInterface->AddOnSessionParticipantJoinedDelegate_Handle(
-		FOnSessionParticipantJoinedDelegate::CreateRaw(this, &FExEOSLobbyProvider::HandleSessionParticipantJoined)
+		FOnSessionParticipantJoinedDelegate::CreateSP(AsShared(), &FExEOSLobbyProvider::HandleSessionParticipantJoined)
 	);
 
 	CreateCompleteHandle = SessionInterface->AddOnCreateSessionCompleteDelegate_Handle(
-		FOnCreateSessionCompleteDelegate::CreateRaw(this, &FExEOSLobbyProvider::HandleCreateSessionComplete)
+		FOnCreateSessionCompleteDelegate::CreateSP(AsShared(), &FExEOSLobbyProvider::HandleCreateSessionComplete)
 	);
 
 	SessionInterface->CreateSession(0, ExMatchSessionName, SessionSettings);
@@ -117,7 +117,7 @@ void FExEOSLobbyProvider::FindLobbies(const FExMatchConfig& Config)
 		SearchResults->MaxSearchResults, SearchResults->bIsLanQuery, *Config.MatchMode);
 
 	FindCompleteHandle = SessionInterface->AddOnFindSessionsCompleteDelegate_Handle(
-		FOnFindSessionsCompleteDelegate::CreateRaw(this, &FExEOSLobbyProvider::HandleFindSessionsComplete)
+		FOnFindSessionsCompleteDelegate::CreateSP(AsShared(), &FExEOSLobbyProvider::HandleFindSessionsComplete)
 	);
 
 	SessionInterface->FindSessions(0, SearchResults.ToSharedRef());
@@ -143,7 +143,7 @@ void FExEOSLobbyProvider::JoinLobby(int32 ResultIndex)
 		ResultIndex, *Result.Session.GetSessionIdStr(), Result.PingInMs);
 
 	JoinCompleteHandle = SessionInterface->AddOnJoinSessionCompleteDelegate_Handle(
-		FOnJoinSessionCompleteDelegate::CreateRaw(this, &FExEOSLobbyProvider::HandleJoinSessionComplete)
+		FOnJoinSessionCompleteDelegate::CreateSP(AsShared(), &FExEOSLobbyProvider::HandleJoinSessionComplete)
 	);
 
 	SessionInterface->JoinSession(0, ExMatchSessionName, Result);
@@ -163,7 +163,7 @@ void FExEOSLobbyProvider::DestroyLobby()
 	UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] DestroyLobby 시작."));
 
 	DestroyCompleteHandle = SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(
-		FOnDestroySessionCompleteDelegate::CreateRaw(this, &FExEOSLobbyProvider::HandleDestroySessionComplete)
+		FOnDestroySessionCompleteDelegate::CreateSP(AsShared(), &FExEOSLobbyProvider::HandleDestroySessionComplete)
 	);
 
 	SessionInterface->DestroySession(ExMatchSessionName);
@@ -294,25 +294,29 @@ void FExEOSLobbyProvider::HandleJoinSessionComplete(FName SessionName, EOnJoinSe
 		const TSharedPtr<FOnlineSessionSearch> CachedSearch = SearchResults;
 		const int32 CachedResultIndex = 0; // 항상 첫 번째 결과
 
+		TWeakPtr<FExEOSLobbyProvider> WeakSelf = AsShared();
 		FDelegateHandle CleanupHandle = SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(
 			FOnDestroySessionCompleteDelegate::CreateLambda(
-				[this, CachedSearch, CachedResultIndex](FName DestroyedName, bool bDestroySuccess)
+				[WeakSelf, CachedSearch, CachedResultIndex](FName DestroyedName, bool bDestroySuccess)
 				{
-					SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroyCompleteHandle);
-					bInLobby = false;
+					TSharedPtr<FExEOSLobbyProvider> SharedThis = WeakSelf.Pin();
+					if (!SharedThis.IsValid()) return;
+
+					SharedThis->SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(SharedThis->DestroyCompleteHandle);
+					SharedThis->bInLobby = false;
 
 					if (bDestroySuccess && CachedSearch.IsValid() && CachedSearch->SearchResults.IsValidIndex(CachedResultIndex))
 					{
 						UE_LOG(LogExNetwork, Log, TEXT("[ExEOSLobbyProvider] 기존 세션 파괴 완료 — 재참가 시도."));
-						JoinCompleteHandle = SessionInterface->AddOnJoinSessionCompleteDelegate_Handle(
-							FOnJoinSessionCompleteDelegate::CreateRaw(this, &FExEOSLobbyProvider::HandleJoinSessionComplete)
+						SharedThis->JoinCompleteHandle = SharedThis->SessionInterface->AddOnJoinSessionCompleteDelegate_Handle(
+							FOnJoinSessionCompleteDelegate::CreateSP(SharedThis.ToSharedRef(), &FExEOSLobbyProvider::HandleJoinSessionComplete)
 						);
-						SessionInterface->JoinSession(0, ExMatchSessionName, CachedSearch->SearchResults[CachedResultIndex]);
+						SharedThis->SessionInterface->JoinSession(0, ExMatchSessionName, CachedSearch->SearchResults[CachedResultIndex]);
 					}
 					else
 					{
 						UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSLobbyProvider] 기존 세션 파괴 후 재참가 불가."));
-						OnJoinComplete.Broadcast(false, TEXT("AlreadyInSession cleanup failed"));
+						SharedThis->OnJoinComplete.Broadcast(false, TEXT("AlreadyInSession cleanup failed"));
 					}
 				}
 			)

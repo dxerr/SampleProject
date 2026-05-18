@@ -23,7 +23,16 @@ FExListenServerStrategy::~FExListenServerStrategy()
 	// UpdateSession 핸들 해제 — ServerTravel 후 비동기 콜백이 소멸된 this를 역참조하는 크래시 방지
 	if (UpdateSessionHandle.IsValid())
 	{
-		if (IOnlineSubsystem* OSS = IOnlineSubsystem::Get())
+		IOnlineSubsystem* OSS = OSSInstance;
+		if (!OSS)
+		{
+			OSS = IOnlineSubsystem::Get(FName(TEXT("EOS")));
+			if (!OSS)
+			{
+				OSS = IOnlineSubsystem::Get();
+			}
+		}
+		if (OSS)
 		{
 			if (OSS->GetSessionInterface().IsValid())
 			{
@@ -42,9 +51,9 @@ EExServerType FExListenServerStrategy::GetServerType() const
 	return EExServerType::ListenServer;
 }
 
-void FExListenServerStrategy::SetLobbyProvider(TUniquePtr<IExLobbyProvider> InLobbyProvider)
+void FExListenServerStrategy::SetLobbyProvider(TSharedPtr<IExLobbyProvider> InLobbyProvider)
 {
-	LobbyProvider = MoveTemp(InLobbyProvider);
+	LobbyProvider = InLobbyProvider;
 	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] LobbyProvider 주입 완료."));
 }
 
@@ -85,14 +94,15 @@ void FExListenServerStrategy::StartGameSession(const FString& MapPath, UWorld* W
 	// 5초 후에는 코드가 월드에 주보 할당되어 있지 않을 수 있으므로, 럈다 폰소로 진행.
 	if (LobbyProvider && LobbyProvider->IsInLobby())
 	{
-		IExLobbyProvider* RawLobbyProvider = LobbyProvider.Get();
+		TWeakPtr<IExLobbyProvider> WeakLobbyProvider = LobbyProvider;
 		FTSTicker::GetCoreTicker().AddTicker(
-			FTickerDelegate::CreateLambda([RawLobbyProvider](float) -> bool
+			FTickerDelegate::CreateLambda([WeakLobbyProvider](float) -> bool
 			{
-				if (RawLobbyProvider && RawLobbyProvider->IsInLobby())
+				TSharedPtr<IExLobbyProvider> SharedLobbyProvider = WeakLobbyProvider.Pin();
+				if (SharedLobbyProvider && SharedLobbyProvider->IsInLobby())
 				{
 					UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] ServerTravel 후 로비 정리 실행."));
-					RawLobbyProvider->DestroyLobby();
+					SharedLobbyProvider->DestroyLobby();
 				}
 				return false; // 일회성
 			}),
@@ -375,7 +385,15 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
 	// 절대 시간 기반 경과 계산 — DeltaTime 누적 오차 없음
 	const double Elapsed = FPlatformTime::Seconds() - WaitStartTime;
 
-	IOnlineSubsystem* OSS = IOnlineSubsystem::Get();
+	IOnlineSubsystem* OSS = OSSInstance;
+	if (!OSS)
+	{
+		OSS = IOnlineSubsystem::Get(FName(TEXT("EOS")));
+		if (!OSS)
+		{
+			OSS = IOnlineSubsystem::Get();
+		}
+	}
 	if (!OSS || !OSS->GetSessionInterface().IsValid())
 	{
 		return true;
@@ -401,6 +419,10 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
 	{
 		// 정원 충족 — MATCH_STARTED 세션 속성 설정 후 UpdateSession 완료를 기다린 뒤 OnComplete 호출
 		FOnlineSessionSettings* Settings = OSS->GetSessionInterface()->GetSessionSettings(ExMatchSessionName);
+		if (!Settings && Session)
+		{
+			Settings = &Session->SessionSettings;
+		}
 		if (Settings)
 		{
 			// int32(1) 대신 bool(true) 사용 — EOS SDK에서 int32가 int64로 강제 변환되어 클라이언트에서 읽지 못하는 현상 방지
@@ -434,7 +456,7 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
 									TempComplete(true, TEXT(""));
 								}
 								return false;
-							}));
+							}), 0.5f);
 						}
 					}
 				)
@@ -469,13 +491,47 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Client(float DeltaTime)
 {
 	const double Elapsed = FPlatformTime::Seconds() - WaitStartTime;
 
-	IOnlineSubsystem* OSS = IOnlineSubsystem::Get();
+	IOnlineSubsystem* OSS = OSSInstance;
+	if (!OSS)
+	{
+		OSS = IOnlineSubsystem::Get(FName(TEXT("EOS")));
+		if (!OSS)
+		{
+			OSS = IOnlineSubsystem::Get();
+		}
+	}
 	if (!OSS || !OSS->GetSessionInterface().IsValid())
 	{
 		return true;
 	}
 
+	// [진단 로그] 주인님을 위한 고유 세션 진단 정보 출력
+	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] [진단] SubsystemName=%s"), *OSS->GetSubsystemName().ToString());
+	
+	FNamedOnlineSession* NamedSession = OSS->GetSessionInterface()->GetNamedSession(ExMatchSessionName);
+	if (NamedSession)
+	{
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] [진단] NamedSession 'ExMatch' 발견! State=%s, SessionId=%s"),
+			EOnlineSessionState::ToString(NamedSession->SessionState),
+			NamedSession->SessionInfo.IsValid() ? *NamedSession->SessionInfo->GetSessionId().ToString() : TEXT("INVALID"));
+		
+		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] [진단] SessionSettings의 설정 개수: %d"), NamedSession->SessionSettings.Settings.Num());
+		for (const auto& KVP : NamedSession->SessionSettings.Settings)
+		{
+			UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] [진단]   Key=%s, AdvType=%d, ValueType=%d, Value=%s"),
+				*KVP.Key.ToString(), (int)KVP.Value.AdvertisementType, (int)KVP.Value.Data.GetType(), *KVP.Value.Data.ToString());
+		}
+	}
+	else
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] [진단] NamedSession 'ExMatch' 없음!"));
+	}
+
 	FOnlineSessionSettings* Settings = OSS->GetSessionInterface()->GetSessionSettings(ExMatchSessionName);
+	if (!Settings && NamedSession)
+	{
+		Settings = &NamedSession->SessionSettings;
+	}
 	if (Settings)
 	{
 		bool bMatchStarted = false;

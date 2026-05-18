@@ -10,9 +10,11 @@
 #include "Strategies/ExListenServerStrategy.h"
 #include "Strategies/ExDedicatedServerStrategy.h"
 #include "OnlineSubsystem.h"
+#include "OnlineSubsystemUtils.h"
 #include "OnlineDelegates.h"
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
+#include "Containers/Ticker.h"
 
 void UExOnlineSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -48,7 +50,7 @@ void UExOnlineSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		this, &UExOnlineSubsystem::HandleOnlineSubsystemCreated
 	);
 
-	IOnlineSubsystem* OSS = IOnlineSubsystem::Get(TEXT("EOS"));
+	IOnlineSubsystem* OSS = TryGetEOSSubsystem();
 	if (OSS && OSS->GetSubsystemName() != FName("NULL") && !AuthProvider)
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] EOS OSS 즉시 획득 — 직접 초기화 진행."));
@@ -60,7 +62,11 @@ void UExOnlineSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 IOnlineSubsystem* UExOnlineSubsystem::TryGetEOSSubsystem() const
 {
-	IOnlineSubsystem* OSS = IOnlineSubsystem::Get(TEXT("EOS"));
+	IOnlineSubsystem* OSS = Online::GetSubsystem(GetWorld(), FName(TEXT("EOS")));
+	if (!OSS)
+	{
+		OSS = IOnlineSubsystem::Get(TEXT("EOS"));
+	}
 	if (OSS && OSS->GetSubsystemName() != FName("NULL"))
 	{
 		return OSS;
@@ -75,6 +81,15 @@ void UExOnlineSubsystem::HandleOnlineSubsystemCreated(IOnlineSubsystem* NewSubsy
 		return;
 	}
 
+	if (IOnlineSubsystem* WorldOSS = Online::GetSubsystem(GetWorld(), FName(TEXT("EOS"))))
+	{
+		if (WorldOSS != NewSubsystem)
+		{
+			UE_LOG(LogExNetwork, Verbose, TEXT("[UExOnlineSubsystem] 생성된 EOS OSS(%p)가 현재 월드 OSS(%p)와 달라 무시합니다."), NewSubsystem, WorldOSS);
+			return;
+		}
+	}
+
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] OnOnlineSubsystemCreated 콜백 — EOS OSS 생성 확인."));
 	FOnlineSubsystemDelegates::OnOnlineSubsystemCreated.Remove(SubsystemCreatedHandle);
 	SubsystemCreatedHandle.Reset();
@@ -86,14 +101,15 @@ void UExOnlineSubsystem::InitAuthProviderAndLogin(IOnlineSubsystem* OSS)
 	check(OSS);
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] OSS 확정 — 서브시스템명: %s"), *OSS->GetSubsystemName().ToString());
 
-	AuthProvider = MakeUnique<FExEOSAuthProvider>();
+	AuthProvider = MakeUnique<FExEOSAuthProvider>(OSS);
 	UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] AuthProvider 선택: EOS"));
 
 	if (FExListenServerStrategy* ListenStrategy = static_cast<FExListenServerStrategy*>(ServerStrategy.Get()))
 	{
 		if (ListenStrategy->GetServerType() == EExServerType::ListenServer)
 		{
-			ListenStrategy->SetLobbyProvider(MakeUnique<FExEOSLobbyProvider>(OSS));
+			ListenStrategy->SetOnlineSubsystem(OSS);
+			ListenStrategy->SetLobbyProvider(MakeShared<FExEOSLobbyProvider>(OSS));
 			UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] LobbyProvider 주입 완료: ExEOSLobbyProvider"));
 		}
 	}
@@ -320,15 +336,36 @@ void UExOnlineSubsystem::StartGame(const FExMatchConfig& Config)
 			UE_LOG(LogExNetwork, Error, TEXT("[UExOnlineSubsystem] StartGame [CLIENT] — ConnectString이 비어있습니다! 로비 참가 실패 가능성이 있습니다."));
 			return;
 		}
-		APlayerController* PC = World->GetFirstPlayerController();
-		if (!PC)
-		{
-			UE_LOG(LogExNetwork, Error, TEXT("[UExOnlineSubsystem] StartGame [CLIENT] — PlayerController가 없습니다! ClientTravel 실패."));
-			return;
-		}
-		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame [CLIENT] — ClientTravel 실행. URL=%s, PC=%s"),
-			*ConnectString, *PC->GetName());
-		PC->ClientTravel(ConnectString, TRAVEL_Absolute);
+		
+		// [경쟁 조건 해결] 호스트가 ServerTravel을 완료하고 신규 NetDriverEOS를 띄울 시간을 보장하기 위해 3.0초 대기 후 ClientTravel 실행
+		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame [CLIENT] — 호스트의 맵 로드 및 NetDriver 가동 대기를 위해 3.0초 후 ClientTravel을 지연 실행합니다."));
+		
+		TWeakObjectPtr<UExOnlineSubsystem> WeakSelf = this;
+		FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateLambda([WeakSelf, ConnectString](float) -> bool
+			{
+				if (UExOnlineSubsystem* Self = WeakSelf.Get())
+				{
+					UWorld* CurrentWorld = Self->GetWorld();
+					if (CurrentWorld)
+					{
+						APlayerController* PC = CurrentWorld->GetFirstPlayerController();
+						if (PC)
+						{
+							UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame [CLIENT] — 지연 대기 완료. ClientTravel 실행. URL=%s, PC=%s"),
+								*ConnectString, *PC->GetName());
+							PC->ClientTravel(ConnectString, TRAVEL_Absolute);
+						}
+						else
+						{
+							UE_LOG(LogExNetwork, Error, TEXT("[UExOnlineSubsystem] StartGame [CLIENT] — PlayerController를 찾을 수 없어 지연 ClientTravel 실패."));
+						}
+					}
+				}
+				return false; // 일회성
+			}),
+			3.0f
+		);
 	}
 }
 

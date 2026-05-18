@@ -41,6 +41,7 @@ public class ExNetworkRuntime : ModuleRules
 				"OnlineBase",
 				"EOSShared",
 				"OnlineSubsystemEOS",
+				"SocketSubsystemEOS",
 				"EOSSDK",
 			}
 		);

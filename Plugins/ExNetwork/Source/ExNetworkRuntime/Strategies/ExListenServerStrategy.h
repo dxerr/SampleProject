@@ -50,7 +50,10 @@ public:
 	virtual void CancelMatch() override;
 
 	/** Lobby Provider 주입 */
-	void SetLobbyProvider(TUniquePtr<IExLobbyProvider> InLobbyProvider);
+	void SetLobbyProvider(TSharedPtr<IExLobbyProvider> InLobbyProvider);
+
+	/** Online Subsystem 주입 */
+	void SetOnlineSubsystem(class IOnlineSubsystem* InOSS) { OSSInstance = InOSS; }
 
 	/** Lobby Provider 참조 */
 	IExLobbyProvider* GetLobbyProvider() const { return LobbyProvider.Get(); }
@@ -79,7 +82,8 @@ public:
 
 private:
 
-	TUniquePtr<IExLobbyProvider> LobbyProvider;
+	TSharedPtr<IExLobbyProvider> LobbyProvider;
+	class IOnlineSubsystem* OSSInstance = nullptr;
 
 	// 매치 대기 관련
 	FTSTicker::FDelegateHandle WaitLobbyTickerHandle;

@@ -5,20 +5,23 @@
 #include "OnlineSubsystem.h"
 #include "Interfaces/OnlineIdentityInterface.h"
 #include "IEOSSDKManager.h"
+#include "Containers/Ticker.h"
+#include "HAL/PlatformTime.h"
 
 #if WITH_EOS_SDK
 #include "eos_sdk.h"
 #include "eos_connect.h"
 #endif
 
-FExEOSAuthProvider::FExEOSAuthProvider()
+FExEOSAuthProvider::FExEOSAuthProvider(IOnlineSubsystem* InOSS)
+	: OSS(InOSS)
 {
+	ensureMsgf(OSS != nullptr, TEXT("[ExEOSAuthProvider] 생성 시 OSS가 nullptr입니다."));
 	UE_LOG(LogExNetwork, Log, TEXT("[ExEOSAuthProvider] 생성됨 — IOnlineIdentity::Login() EOS Connect Device ID 방식."));
 }
 
 FExEOSAuthProvider::~FExEOSAuthProvider()
 {
-	IOnlineSubsystem* OSS = IOnlineSubsystem::Get(TEXT("EOS"));
 	if (OSS)
 	{
 		IOnlineIdentityPtr Identity = OSS->GetIdentityInterface();
@@ -28,11 +31,17 @@ FExEOSAuthProvider::~FExEOSAuthProvider()
 			Identity->ClearOnLogoutCompleteDelegate_Handle(0, LogoutCompleteHandle);
 		}
 	}
+
+	// PUID 검증 Ticker 정리
+	if (PuidValidationTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(PuidValidationTickerHandle);
+		PuidValidationTickerHandle.Reset();
+	}
 }
 
 void FExEOSAuthProvider::Login(int32 LocalUserNum)
 {
-	IOnlineSubsystem* OSS = IOnlineSubsystem::Get(TEXT("EOS"));
 	if (!ensureMsgf(OSS, TEXT("[ExEOSAuthProvider] EOS OSS 없음.")))
 	{
 		OnLoginComplete.Broadcast(false, TEXT("EOS OSS not found"));
@@ -127,7 +136,6 @@ void FExEOSAuthProvider::Login(int32 LocalUserNum)
 
 void FExEOSAuthProvider::Logout(int32 LocalUserNum)
 {
-	IOnlineSubsystem* OSS = IOnlineSubsystem::Get(TEXT("EOS"));
 	if (!OSS)
 	{
 		OnLogoutComplete.Broadcast(false);
@@ -156,7 +164,6 @@ bool FExEOSAuthProvider::IsLoggedIn(int32 LocalUserNum) const
 
 void FExEOSAuthProvider::HandleLoginComplete(int32 LocalUserNum, bool bSuccess, const FUniqueNetId& UserId, const FString& ErrorStr)
 {
-	IOnlineSubsystem* OSS = IOnlineSubsystem::Get(TEXT("EOS"));
 	if (OSS)
 	{
 		IOnlineIdentityPtr Identity = OSS->GetIdentityInterface();
@@ -177,12 +184,92 @@ void FExEOSAuthProvider::HandleLoginComplete(int32 LocalUserNum, bool bSuccess, 
 		UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSAuthProvider] Login 실패 — LocalUserNum=%d, Error=%s"), LocalUserNum, *ErrorStr);
 	}
 
-	OnLoginComplete.Broadcast(bSuccess, ErrorStr);
+	if (bSuccess)
+	{
+		// 성공 — PUID 매핑 대기 폴링 시작 (즉시 Broadcast 안 함)
+		StartPuidValidationPolling(LocalUserNum, ErrorStr);
+	}
+	else
+	{
+		// 실패 — 즉시 Broadcast
+		OnLoginComplete.Broadcast(false, ErrorStr);
+	}
+}
+
+void FExEOSAuthProvider::StartPuidValidationPolling(int32 LocalUserNum, const FString& CachedErrorStr)
+{
+	// 이미 폴링 중이면 기존 Ticker 정리
+	if (PuidValidationTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(PuidValidationTickerHandle);
+		PuidValidationTickerHandle.Reset();
+	}
+
+	PuidValidationStartTime = FPlatformTime::Seconds();
+	UE_LOG(LogExNetwork, Log, TEXT("[ExEOSAuthProvider] PUID 매핑 폴링 시작 ? LocalUserNum=%d, MaxWait=%.1fs"),
+		LocalUserNum, MaxPuidValidationSeconds);
+
+	// 즉시 한 번 확인 (이미 매핑됐을 수도 있음)
+	if (IsLocalPuidValid(LocalUserNum))
+	{
+		UE_LOG(LogExNetwork, Log, TEXT("[ExEOSAuthProvider] PUID 즉시 매핑 확인됨 ? LocalUserNum=%d"), LocalUserNum);
+		OnLoginComplete.Broadcast(true, CachedErrorStr);
+		return;
+	}
+
+	PuidValidationTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateRaw(this, &FExEOSAuthProvider::TickPuidValidation, LocalUserNum, CachedErrorStr),
+		PuidValidationPollInterval);
+}
+
+bool FExEOSAuthProvider::IsLocalPuidValid(int32 LocalUserNum) const
+{
+	if (!OSS) return false;
+
+	IOnlineIdentityPtr Identity = OSS->GetIdentityInterface();
+	if (!Identity.IsValid()) return false;
+
+	TSharedPtr<const FUniqueNetId> Id = Identity->GetUniquePlayerId(LocalUserNum);
+	if (!Id.IsValid() || !Id->IsValid()) return false;
+
+	// EOS UniqueNetId 형식: "<EpicAccountId>|<ProductUserId>" 또는 "|<ProductUserId>"
+	const FString Str = Id->ToString();
+	int32 PipeIdx = INDEX_NONE;
+	if (!Str.FindChar(TEXT('|'), PipeIdx)) return false;
+
+	const FString PuidPart = Str.RightChop(PipeIdx + 1);
+	// EOS ProductUserId는 32자 hex
+	return PuidPart.Len() >= 16;
+}
+
+bool FExEOSAuthProvider::TickPuidValidation(float DeltaTime, int32 LocalUserNum, FString CachedErrorStr)
+{
+	const double Elapsed = FPlatformTime::Seconds() - PuidValidationStartTime;
+
+	if (IsLocalPuidValid(LocalUserNum))
+	{
+		UE_LOG(LogExNetwork, Log, TEXT("[ExEOSAuthProvider] PUID 매핑 확인됨 ? LocalUserNum=%d, 경과=%.2fs"),
+			LocalUserNum, Elapsed);
+		PuidValidationTickerHandle.Reset();
+		OnLoginComplete.Broadcast(true, CachedErrorStr);
+		return false; // Ticker 종료
+	}
+
+	if (Elapsed >= MaxPuidValidationSeconds)
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSAuthProvider] PUID 매핑 타임아웃 ? LocalUserNum=%d, 경과=%.2fs"),
+			LocalUserNum, Elapsed);
+		PuidValidationTickerHandle.Reset();
+		bLoggedIn = false;
+		OnLoginComplete.Broadcast(false, TEXT("PUID validation timeout"));
+		return false;
+	}
+
+	return true; // 계속 폴링
 }
 
 void FExEOSAuthProvider::HandleLogoutComplete(int32 LocalUserNum, bool bSuccess)
 {
-	IOnlineSubsystem* OSS = IOnlineSubsystem::Get(TEXT("EOS"));
 	if (OSS)
 	{
 		IOnlineIdentityPtr Identity = OSS->GetIdentityInterface();
