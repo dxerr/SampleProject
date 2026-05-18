@@ -324,8 +324,15 @@ void UExOnlineSubsystem::StartGame(const FExMatchConfig& Config)
 	if (ListenStrategy->IsHost())
 	{
 		// 호스트: 방 생성자이므로 ServerTravel을 통해 게임 맵으로 이동
-		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame [HOST] — ServerTravel 시작. URL=%s?listen"), *Config.MapPath);
-		ListenStrategy->StartGameSession(Config.MapPath, World);
+		FString TravelURL = Config.MapPath;
+		if (Config.ExpectedPlayerCount > 0)
+		{
+			int32 TargetExpectedCount = Config.bIsSinglePlay ? 1 : Config.ExpectedPlayerCount;
+			TravelURL += FString::Printf(TEXT("?ExpectedPlayers=%d"), TargetExpectedCount);
+		}
+
+		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame [HOST] — ServerTravel 시작. URL=%s?listen"), *TravelURL);
+		ListenStrategy->StartGameSession(TravelURL, World);
 	}
 	else
 	{
