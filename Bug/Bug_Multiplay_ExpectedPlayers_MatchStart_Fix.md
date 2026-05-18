@@ -6,11 +6,14 @@
 
 ## 1. 해결 요약 (Concise Summary)
 - **키워드**: `ExpectedPlayerCount`, `Late Join Blocked`, `CheckAndStartMatch`, `URL Options Option Parsing`
-- **문제**: 멀티플레이 PIE 세션 기동 시 매치 시작에 필요한 총 예상 플레이어 수(`GetExpectedPlayerCount()`)가 기본 데이터 에셋의 설정값인 `1`로 고정되어 있었습니다. 이로 인해 호스트가 맵에 진입하는 순간 1인 매치가 즉시 카운트다운을 시작하고 `Match_Playing`으로 페이즈를 전환하였습니다. 이후 클라이언트가 접속할 때는 매치 페이즈가 이미 시작되었으므로 "Late Join"으로 오인되어 캐릭터 스폰이 차단되고 강제 무시 정체 현상이 발생하였습니다.
+- **문제**: 
+  1. 멀티플레이 PIE 세션 기동 시 매치 시작에 필요한 총 예상 플레이어 수(`GetExpectedPlayerCount()`)가 기본 데이터 에셋의 설정값인 `1`로 고정되어 대기하지 못하는 문제가 있었습니다.
+  2. 이를 URL 파라미터 파싱으로 해결하더라도, `CheckAndStartMatch()` 내부의 기존 준비성 체크 코드에서 단순히 `LoadedPlayers == TotalPlayers` 및 `ReadyPlayers == TotalPlayers` 조건만 검사하고 있었습니다. 이로 인해 호스트 혼자 들어왔을 때(`TotalPlayers = 1`) 기대 인원(`ExpectedPlayerCount = 2`)보다 적음에도 불구하고 **조건 만족으로 판단하여 즉시 게임을 시작해버리는 두 번째 결정적 버그**가 존재하였습니다.
+  3. 결국 클라이언트가 뒤늦게 접속할 때는 매치 페이즈가 이미 `Match_Playing`으로 넘어간 뒤여서 "Late Join" 차단막에 걸려 스폰에 실패하게 되었습니다.
 - **해결**:
-  1. `UExOnlineSubsystem::StartGame`에서 호스트가 `ServerTravel`을 실행하기 전에 URL 매개변수에 명시적으로 `?ExpectedPlayers=N` 옵션을 동적으로 추가하여 게임모드에 전달하도록 구조를 개선하였습니다.
-  2. `AExGameModeBase`에서 `InitGame` 수명 주기를 오버라이드하여 URL 옵션의 `ExpectedPlayers` 키값을 동적으로 파싱하고 `DynamicExpectedPlayerCount` 임시 멤버 변수에 캐싱하도록 하였습니다.
-  3. `AExRunnerGameMode::GetExpectedPlayerCount` 및 `AExGameModeBase::GetExpectedPlayerCount`에서 URL 옵션에서 파싱한 동적 플레이어 수가 존재할 경우 데이터 에셋의 기본값(1)보다 이를 **최우선**으로 반환하도록 바인딩을 전면 정비하였습니다.
+  1. `UExOnlineSubsystem::StartGame`에서 호스트 `ServerTravel` 주입 URL에 `?ExpectedPlayers=N` 옵션을 동적으로 추가하였습니다.
+  2. `AExGameModeBase::InitGame`에서 해당 옵션을 파싱해 `DynamicExpectedPlayerCount` 변수에 캐싱하고, 각 GameMode의 `GetExpectedPlayerCount()`가 이 값을 최우선 반환하도록 정비하였습니다.
+  3. **[핵심 추가 조치]** `AExGameModeBase::CheckAndStartMatch()` 내부 판정 로직을 `TotalPlayers >= GetExpectedPlayerCount()` 조건을 함께 검사하도록 개정하여, 기대 인원이 모두 모일 때까지 호스트가 절대 먼저 시작하지 않고 대기하도록 수정 완료하였습니다.
 
 ---
 
@@ -19,12 +22,13 @@
 ### 2.1 원인 분석 (Root Cause)
 1. **P2P 연결 및 맵 이동은 대성공**:
    - 주인님께서 주신 로그를 정밀 판독한 결과, P2P 채널을 통한 접속 자체는 `Connection established` 및 `Welcomed by server`, `Pending net game travel completed` 순으로 지연 없이 완벽하게 진행되고 있었습니다.
-2. **매치 시작 4-AND 조건의 즉각 만료**:
-   - `BP_ExRunnerGameMode`는 `GetExpectedPlayerCount()`에서 기본적으로 전역 데이터 에셋인 `DA_ExConfig_Runner`의 설정을 기반으로 리턴하며, 이 값은 싱글 플레이 위주이기 때문에 기본값이 `1`로 세팅되어 있습니다.
-   - 호스트가 `/ExRunnerPlay/Map/L_ExRunnerTest?listen`으로 이동하는 순간 `TotalPlayers` = 1, `LoadedPlayers` = 1, `ReadyPlayers` = 1, `ExpectedPlayerCount` = 1이 되면서 **4-AND 조건이 즉시 100% 충족**되어 게임이 바로 시작 상태로 전환됩니다.
+2. **매치 시작 4-AND 조건 및 CheckAndStartMatch()의 논리적 버그**:
+   - `BP_ExRunnerGameMode`는 `GetExpectedPlayerCount()`에서 기본적으로 전역 데이터 에셋인 `DA_ExConfig_Runner`의 설정을 기반으로 리턴하며, 이 값은 기본적으로 `1`이었습니다.
+   - 하지만 더 심각한 논리적 버그로, `AExGameModeBase::CheckAndStartMatch()` 내부에서 플레이어들이 준비 완료되었는지 판정할 때 단순히 `LoadedPlayers == TotalPlayers`와 `ReadyPlayers == TotalPlayers` 조건만 체크하고 있었습니다.
+   - 이로 인해 호스트 혼자 맵에 진입(`TotalPlayers = 1`)한 직후 `CheckAndStartMatch()`가 호출되었을 때, `ExpectedPlayerCount`가 `2`임에도 불구하고 **단순히 현재 들어와 있는 플레이어 전원(1명)이 로딩 및 준비 완료되었기 때문에 `bAllLoaded`와 `bAllReady`가 참(True)이 되어 카운트다운 및 플레이 단계로 즉각 강제 진행**되었습니다.
 3. **클라이언트의 늦은 진입(Late Join)으로 인한 조기 차단**:
-   - 이후 클라이언트가 접속을 시도하여 `HandleStartingNewPlayer_Implementation`이 서버 권한으로 불립니다.
-   - 이때 매치 페이즈가 이미 `Match_Playing` 상태이므로 아래 방어 코드에 걸리게 됩니다:
+   - 호스트 단독 시작으로 인해 매치 페이즈가 이미 `Match_Playing` 또는 `Match_Countdown` 상태로 변경되어 버렸습니다.
+   - 이후 클라이언트가 접속을 시도하여 `HandleStartingNewPlayer_Implementation`이 불렸을 때 아래 방어 코드에 의해 차단당했습니다:
      ```cpp
      AExGameStateBase* GS = GetGameState<AExGameStateBase>();
      if (GS && GS->GetCurrentMatchPhase() != ExMatchTags::Match_WaitingForPlayers)
@@ -34,7 +38,7 @@
          return; // Pawn 스폰 처리 스킵!
      }
      ```
-   - 이로 인해 클라이언트 플레이어 컨트롤러의 Pawn이 전혀 스폰되지 않아, 클라이언트 화면은 검은색 또는 대기 화면으로 멈추고 게임이 시작하지 않는 것이 본질적인 원인이었습니다.
+   - 이로 인해 클라이언트는 정상 접속 완료 후에도 캐릭터가 월드에 생성되지 않고 뷰포트 정체 현상을 겪게 되었습니다.
 
 ### 2.2 해결 설계 (Resolution Architecture)
 - **주인님 지시 사항 준수**: 데이터 에셋을 직접 수정하는 것은 싱글 플레이 환경과의 호환성을 깨뜨릴 위험이 크므로, 로비에서 매칭이 완료될 때의 실제 인원(`ExpectedPlayerCount`)을 **URL 쿼리 매개변수 형태로 안전하고 독립적으로 넘겨주도록** 연동하였습니다.
@@ -102,6 +106,19 @@ int32 AExGameModeBase::GetExpectedPlayerCount() const
 		return DynamicExpectedPlayerCount;
 	}
 	return 1;
+}
+
+void AExGameModeBase::CheckAndStartMatch()
+{
+...
+		// [수정 전]: 단순히 현재 들어와 있는 플레이어 전원이 준비되었는지만 검사 (호스트 단독 시작 유발)
+		// bool bAllLoaded = (LoadedPlayers == TotalPlayers) && (TotalPlayers > 0);
+		// bool bAllReady = (ReadyPlayers == TotalPlayers) && (TotalPlayers > 0);
+
+		// [수정 후]: 기대 대기 인원수(ExpectedPlayerCount) 조건을 추가하여 동적 대기 보장
+		bool bAllLoaded = (LoadedPlayers == TotalPlayers) && (TotalPlayers >= GetExpectedPlayerCount());
+		bool bAllReady = (ReadyPlayers == TotalPlayers) && (TotalPlayers >= GetExpectedPlayerCount());
+...
 }
 ```
 
