@@ -147,7 +147,7 @@ void FExListenServerStrategy::BeginSearchPhase(const FExMatchConfig& Config, EEx
 	if (Config.bIsSinglePlay)
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Single Play 모드 — 검색 스킵 (Timeout 처리)."));
-		OnSearchComplete(false, TEXT("Timeout"));
+		if (OnSearchComplete) OnSearchComplete(false, TEXT("Timeout"));
 		return;
 	}
 
@@ -165,6 +165,8 @@ void FExListenServerStrategy::BeginSearchPhase(const FExMatchConfig& Config, EEx
 			// [경쟁 조건 해결 및 크래시 방지] 
 			// 델리게이트 완료 이벤트를 다음 틱으로 지연하여 안전하게 브로드캐스트를 종료하고 
 			// 현재 람다의 실행 및 델리게이트 인스턴스 할당 해제(UAF) 크래시를 완벽히 방지합니다.
+			if (bIsDestroyed) return;
+
 			SearchPhaseTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
 				FTickerDelegate::CreateLambda([this, ExpectedState, OnSearchComplete, bSuccess, ResultCount](float) -> bool
 				{
@@ -175,7 +177,7 @@ void FExListenServerStrategy::BeginSearchPhase(const FExMatchConfig& Config, EEx
 					{
 						UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby %d개 발견."), ResultCount);
 						FindRetryCount = 0; // 다음을 위해 초기화
-						OnSearchComplete(true, TEXT(""));
+						if (OnSearchComplete) OnSearchComplete(true, TEXT(""));
 					}
 					else
 					{
@@ -184,7 +186,7 @@ void FExListenServerStrategy::BeginSearchPhase(const FExMatchConfig& Config, EEx
 						{
 							UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] %.1f초 대기 후 Lobby 없음 — Search 타임아웃."), Elapsed);
 							FindRetryCount = 0;
-							OnSearchComplete(false, TEXT("Timeout"));
+							if (OnSearchComplete) OnSearchComplete(false, TEXT("Timeout"));
 						}
 						else
 						{
@@ -196,6 +198,8 @@ void FExListenServerStrategy::BeginSearchPhase(const FExMatchConfig& Config, EEx
 								FTickerDelegate::CreateLambda([this, ExpectedState, OnSearchComplete](float) -> bool
 								{
 									FindRetryTickerHandle.Reset();
+									if (bIsDestroyed) return false;
+									if (!OnSearchComplete) return false;
 									this->BeginSearchPhase(CurrentWaitConfig, ExpectedState, OnSearchComplete);
 									return false;
 								}),
