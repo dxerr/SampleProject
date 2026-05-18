@@ -459,11 +459,20 @@ APawn* AExRunnerGameMode::SpawnDefaultPawnAtTransform_Implementation(AController
 
 int32 AExRunnerGameMode::GetExpectedPlayerCount() const
 {
+	// 1. URL 옵션 등 동적으로 정의된 예상 플레이어 수가 있으면 최우선 적용
+	int32 DynamicCount = Super::GetExpectedPlayerCount();
+	if (DynamicCount > 0)
+	{
+		return DynamicCount;
+	}
+
+	// 2. 데이터 에셋 설정 적용
 	if (RunnerConfig.IsValid())
 	{
 		return RunnerConfig->MatchFlow.ExpectedPlayerCount;
 	}
-	return Super::GetExpectedPlayerCount();
+
+	return 1;
 }
 
 int32 AExRunnerGameMode::GetCountdownDuration() const
