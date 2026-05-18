@@ -1,0 +1,1 @@
+$content = Get-Content -Path "c:\wz\ExFrameWork\Config\DefaultEngine.ini"; $inTarget = $false; foreach ($line in $content) { if ($line -match "^\[OnlineSubsystem") { $inTarget = $true; Write-Output $line; } elseif ($line -match "^\[") { $inTarget = $false; } elseif ($inTarget) { Write-Output $line; } }
