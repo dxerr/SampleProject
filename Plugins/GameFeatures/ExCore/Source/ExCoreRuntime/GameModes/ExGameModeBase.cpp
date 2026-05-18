@@ -2,6 +2,7 @@
 
 #include "GameModes/ExGameModeBase.h"
 #include "GameModes/ExGameStateBase.h"
+#include "GameModes/ExGameSession.h"
 #include "Tags/ExMatchTags.h"
 #include "Subsystems/ExGameFlowSubsystem.h"
 #include "../Data/ExCoreSpawnDataAsset.h"
@@ -29,6 +30,9 @@ AExGameModeBase::AExGameModeBase()
 	
 	// 매치 시작 자동화 여부 기본값 
 	bAutoStartOnReady = false;
+
+	// 주인님, 자동 로그인 오동작으로 인한 세션 파괴 문제를 프로젝트 레벨에서 우회하기 위해 커스텀 게임 세션 클래스로 지정합니다.
+	GameSessionClass = AExGameSession::StaticClass();
 }
 
 void AExGameModeBase::BeginPlay()
