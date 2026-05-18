@@ -230,8 +230,8 @@ void AExGameModeBase::CheckAndStartMatch()
 			}
 		}
 
-		bool bAllLoaded = (LoadedPlayers == TotalPlayers) && (TotalPlayers > 0);
-		bool bAllReady = (ReadyPlayers == TotalPlayers) && (TotalPlayers > 0);
+		bool bAllLoaded = (LoadedPlayers == TotalPlayers) && (TotalPlayers >= GetExpectedPlayerCount());
+		bool bAllReady = (ReadyPlayers == TotalPlayers) && (TotalPlayers >= GetExpectedPlayerCount());
 
 		// [ExRunnerStartDiag] 4-AND 조건 현황 로그 (매 CheckAndStartMatch 호출 시 출력)
 		UE_LOG(LogExCoreGM, Log,
