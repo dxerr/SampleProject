@@ -7,62 +7,173 @@
 ---
 
 ## 1. 이슈 개요 (Issue Overview)
-- **현상**: Standalone 또는 PIE 환경에서 멀티플레이 매칭 진행 도중 창을 닫거나 월드가 전환될 때 (Deinitialize 시점), 혹은 매칭 검색 과정 중 예기치 않게 비정상 종료(Crash)가 발생함.
+- **현상**: Standalone 또는 Windows 패키징 빌드 환경에서 멀티플레이 매칭 진행 도중 로비 생성(`BeginCreatePhase`), 로비 검색(`BeginSearchPhase`), 로비 참가(`BeginJoinPhase`)의 비동기 콜백 호출 즉시 게임이 비정상 종료(Crash)되는 현상.
 - **오류 메시지**: `Fatal Error: EXCEPTION_ACCESS_VIOLATION_READ / 0xffffffffffffffff`
 - **핵심 콜스택**:
   ```text
-  ExFrameWork  FExListenServerStrategy::BeginSearchPhase::2::<T>::operator() (ExListenServerStrategy.cpp:165)
-  ExFrameWork  FExEOSLobbyProvider::HandleFindSessionsComplete (ExEOSLobbyProvider.cpp:268)
+  ExFrameWork  UE::Core::Private::Function::FFunctionStorage::GetPtr (Function.h:179)
+  ExFrameWork  `FExListenServerStrategy::BeginCreatePhase'::`2'::<T>::operator() (ExListenServerStrategy.cpp:234)
+  ExFrameWork  FExEOSLobbyProvider::HandleCreateSessionComplete (ExEOSLobbyProvider.cpp:216)
   ```
 
 ---
 
 ## 2. 세부 원인 분석 (Root Cause Analysis)
 
-1. **지연 비동기 콜백 (Asynchronous Callback)의 성격**:
-   - `LobbyProvider->FindLobbies()`를 실행하면 EOS SDK를 통해 비동기로 매치 세션 검색을 진행합니다.
-   - 이때 검색 완료 시 결과를 통보받기 위해 `LobbyProvider->OnFindComplete` 델리게이트에 람다(Lambda) 콜백을 등록합니다.
-   
-2. **생명주기 불일치 및 댕글링 포인터 (Dangling Pointer)**:
-   - 등록되는 람다 식은 `this`(`FExListenServerStrategy*` 생포인터)를 캡처하여 `WaitStartTime` 등 Strategy 멤버 변수에 접근합니다.
-   - 하지만 매칭 검색 도중 창을 닫거나 게임 세션이 전환되면 `UExOnlineSubsystem::Deinitialize()`가 트리거되고 `ServerStrategy.Reset()`이 실행되어 **`FExListenServerStrategy` 인스턴스가 소멸**됩니다.
-   - `FExListenServerStrategy`는 소멸되었지만, 비동기 호출 상태였던 `LobbyProvider`가 소멸되지 않고 백그라운드에서 실행되다가 완료된 순간 `HandleFindSessionsComplete`를 통해 `OnFindComplete.Broadcast()`를 쏘게 됩니다.
-   - 이미 메모리에서 사라진(Dangling) 옛 Strategy 인스턴스의 람다 콜백이 실행되면서, `this->WaitStartTime`에 부적절하게 읽기 접근(`EXCEPTION_ACCESS_VIOLATION_READ / 0xffffffffffffffff`)을 시도하여 즉시 엔진 크래시가 유발되는 것이 핵심 원인이었습니다.
+### 2.1 지연 비동기 콜백 댕글링 포인터 현상 (이전 조치 완료)
+- `LobbyProvider->FindLobbies()` 등 비동기 요청 후 등록된 람다 함수가 `this` 생포인터를 캡처하여 소멸 이후 실행되었을 때 발생하는 메모리 접근 에러.
+- 이는 소멸자(`~FExListenServerStrategy`)에서 `LobbyProvider`에 바인딩된 델리게이트들을 일괄 `.Clear()`하여 완벽히 해결함.
+
+### 2.2 델리게이트 내부 즉시 클리어 및 클로저 자가 파괴(Self-Destruction) 현상
+- `BeginCreatePhase`, `BeginSearchPhase`, `BeginJoinPhase`는 비동기 완료를 전달받는 람다 내부에서 다음 상태 전이 전 중복 콜백을 막기 위해 **스스로의 델리게이트를 즉시 해제**하는 로직(`LobbyProvider->OnXxxComplete.Clear()`)을 포함하고 있었습니다.
+- 언리얼 엔진의 멀티캐스트 델리게이트 시스템은 `Clear()`가 호출되면 내부 리스트 및 바인딩된 **델리게이트 인스턴스(람다 클로저 객체 포함)의 메모리를 즉시 할당 해제(Deallocate)**합니다.
+
+### 2.3 컴파일러 최적화로 인한 로컬 스택 백업 무력화 및 Use-After-Free (신규 분석 및 최종 규명)
+- 이전 패치에서는 `auto OnCreateCompleteLocal = OnCreateComplete;` 와 같이 로컬 스택에 복사 백업을 수행한 후 `Clear()`를 실행하여 댕글링 문제를 회피하고자 했습니다.
+- 하지만 **최적화 빌드(Development / Shipping) 컴파일러 최적화 옵션**이 켜지면서 치명적인 부작용이 발생했습니다:
+  1. 컴파일러 최적화 도구(Optimizer)는 스택 상에 임시 복사된 `OnCreateCompleteLocal` 변수가 복사 생성된 후 단 한 번만 실행됨을 감지합니다.
+  2. 이를 최적화하기 위해 컴파일러는 **복사 엘리전(Copy Elision) 및 값 전파(Copy Propagation)**를 수행하여, 스택 복사 생성 코드를 생략하고 람다 클로저 내부의 멤버 변수인 `this->CapturedOnCreateComplete`를 직접 호출하도록 코드를 최적화 컴파일합니다.
+  3. 이 상태에서 `Clear()`가 먼저 호출되면, 람다의 클로저 메모리가 즉시 해제(UAF)된 후, **존재하지 않는 `this->CapturedOnCreateComplete`의 내부 함수 포인터(`FFunctionStorage::GetPtr`)를 참조**하면서 메모리 예외(`0xffffffffffffffff` 접근 위반)가 발생합니다.
+- 추가로, 콜백 실행(`OnCreateCompleteLocal(...)`)이 내부적으로 `TransitionMatchState` -> `EndCreatePhase` -> `Clear()`를 **동기적으로(Synchronously)** 호출하기 때문에, 순서를 어떻게 바꾸어도 실행 콜스택 프레임 내부에서 실행 중인 람다가 도중에 파괴되는 원초적인 수명 주기 결함이었습니다.
 
 ---
 
-## 3. 해결 설계 및 조치 내용 (Resolution & Implementation)
+## 3. 최종 해결 설계 및 조치 내용 (Final Resolution)
 
-- **Strategy 소멸자 안전 보강**:
-  - `FExListenServerStrategy`의 소멸자(`~FExListenServerStrategy`)에 댕글링 포인터 차단 안전망을 강력하게 도입하였습니다.
-  - 소멸자가 호출되는 즉시 `LobbyProvider`에 등록되어 있는 모든 델리게이트(`OnFindComplete`, `OnCreateComplete`, `OnJoinComplete`)를 강제로 `.Clear()` 처리하였습니다.
-  - 이를 통해 비동기 검색 작업이 뒤늦게 끝나 `LobbyProvider`가 브로드캐스트를 시도하더라도, 파괴된 Strategy의 람다 함수로 실행 흐름이 전달되지 못하도록 원천 차단하였습니다.
+- **FTSTicker를 이용한 콜백 실행의 1프레임 지연(Deferred Execution)**:
+  - 델리게이트 브로드캐스트 스택 내부에서 동기적으로 상태 전이 및 델리게이트 해제(`Clear`)가 실행되는 것을 원천적으로 차단합니다.
+  - 콜백 내부에서 상태 전환 및 완료 이벤트를 **다음 틱(`0.0f` 지연 Ticker)**으로 안전하게 연기하여 전달합니다.
+  - 이로써 델리게이트 브로드캐스트가 완벽히 종료되고, 람다가 스택 프레임에서 안전히 탈출한 뒤, 다음 프레임에 안전하게 상태 전이 및 델리게이트 클리어가 수행됩니다.
+  - 또한, 지연된 틱 내에서 참조할 정보(예: `ErrorMessage`)는 **Inner Lambda에 값 복사(By Value)** 형식으로 캡처하게 하여 댕글링 참조 가능성을 완전히 소멸시켰습니다.
+  - 소멸자(`ClearWaitLobbyTicker()`)에서도 지연 완료 처리 중인 Ticker 핸들을 추적하여 리셋하므로, 메모리 릭 및 댕글링 실행이 전면 방지됩니다.
 
-### 3.1 ExListenServerStrategy.cpp 수정 내용
+### 3.1 ExListenServerStrategy.h 수정 내역
+- 지연 처리를 위한 세 가지 Ticker 핸들 추가:
 ```cpp
-FExListenServerStrategy::~FExListenServerStrategy()
+	FTSTicker::FDelegateHandle SearchPhaseTickerHandle;
+	FTSTicker::FDelegateHandle CreatePhaseTickerHandle;
+	FTSTicker::FDelegateHandle JoinPhaseTickerHandle;
+```
+
+### 3.2 ExListenServerStrategy.cpp 수정 내역
+
+#### [BeginSearchPhase]
+- 델리게이트 콜백 스택 밖에서 안전히 완료를 처리하기 위해 `SearchPhaseTickerHandle` 지연 틱 적용:
+```cpp
+	LobbyProvider->OnFindComplete.AddLambda(
+		[this, ExpectedState, OnSearchComplete](bool bSuccess, int32 ResultCount)
+		{
+			SearchPhaseTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+				FTickerDelegate::CreateLambda([this, ExpectedState, OnSearchComplete, bSuccess, ResultCount](float) -> bool
+				{
+					SearchPhaseTickerHandle.Reset();
+					if (bIsDestroyed) return false;
+
+					if (bSuccess && ResultCount > 0)
+					{
+						UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby %d개 발견."), ResultCount);
+						FindRetryCount = 0;
+						OnSearchComplete(true, TEXT(""));
+					}
+					else
+					{
+						// ...
+					}
+					return false;
+				}),
+				0.0f
+			);
+		});
+```
+
+#### [BeginCreatePhase]
+- 로비 생성 완료 이벤트를 다음 틱으로 안전하게 지연하여 UAF 방지:
+```cpp
+	LobbyProvider->OnCreateComplete.AddLambda(
+		[this, OnCreateComplete](bool bCreateSuccess, const FString& ErrorMessage)
+		{
+			CreatePhaseTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+				FTickerDelegate::CreateLambda([this, OnCreateComplete, bCreateSuccess, ErrorMessage](float) -> bool
+				{
+					CreatePhaseTickerHandle.Reset();
+					if (bIsDestroyed) return false;
+
+					if (bCreateSuccess)
+					{
+						UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 생성 성공."));
+						OnCreateComplete(true, TEXT(""));
+					}
+					else
+					{
+						UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] Lobby 생성 실패 — %s"), *ErrorMessage);
+						OnCreateComplete(false, ErrorMessage);
+					}
+					return false;
+				}),
+				0.0f
+			);
+		}
+	);
+```
+
+#### [BeginJoinPhase]
+- 로비 참가 성공/실패 처리를 다음 틱으로 미루어 델리게이트 자가 소멸 크래시 방지:
+```cpp
+	LobbyProvider->OnJoinComplete.AddLambda(
+		[this, OnJoinComplete](bool bJoinSuccess, const FString& ErrorMessage)
+		{
+			JoinPhaseTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+				FTickerDelegate::CreateLambda([this, OnJoinComplete, bJoinSuccess, ErrorMessage](float) -> bool
+				{
+					JoinPhaseTickerHandle.Reset();
+					if (bIsDestroyed) return false;
+
+					if (bJoinSuccess)
+					{
+						CachedConnectString = LobbyProvider->GetConnectString();
+						UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Lobby 참가 성공 — ConnectString 캐시: %s"), *CachedConnectString);
+						OnJoinComplete(true, TEXT(""));
+					}
+					else
+					{
+						UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] Lobby 참가 실패 — %s"), *ErrorMessage);
+						OnJoinComplete(false, ErrorMessage);
+					}
+					return false;
+				}),
+				0.0f
+			);
+		}
+	);
+```
+
+#### [ClearWaitLobbyTicker]
+- 소멸 시점 및 매칭 취소 시 지연 완료 Ticker 핸들도 즉시 취소 처리:
+```cpp
+void FExListenServerStrategy::ClearWaitLobbyTicker()
 {
-	if (UpdateSessionHandle.IsValid())
+	// ... (기존 Wait 및 FindRetry 해제)
+
+	if (SearchPhaseTickerHandle.IsValid())
 	{
-		// ...
-		UpdateSessionHandle.Reset();
+		FTSTicker::GetCoreTicker().RemoveTicker(SearchPhaseTickerHandle);
+		SearchPhaseTickerHandle.Reset();
 	}
-
-	ClearWaitLobbyTicker();
-
-	// [댕글링 포인터 크래시 방지] Strategy 소멸 시 LobbyProvider의 모든 델리게이트를 확실하게 정리
-	if (LobbyProvider)
+	if (CreatePhaseTickerHandle.IsValid())
 	{
-		LobbyProvider->OnFindComplete.Clear();
-		LobbyProvider->OnCreateComplete.Clear();
-		LobbyProvider->OnJoinComplete.Clear();
+		FTSTicker::GetCoreTicker().RemoveTicker(CreatePhaseTickerHandle);
+		CreatePhaseTickerHandle.Reset();
 	}
-
-	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 소멸됨 — Ticker 및 LobbyProvider 델리게이트 해제 완료."));
+	if (JoinPhaseTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(JoinPhaseTickerHandle);
+		JoinPhaseTickerHandle.Reset();
+	}
 }
 ```
 
 ---
 
 ## 4. 최종 검증 (Verification)
-- 소멸자 단에서의 델리게이트 청소 처리를 추가함으로써, 비동기 탐색 작업이 완료되기 전 게임 인스턴스 종료나 월드 트래블이 일어나도 댕글링 람다가 수행되지 않고 세션 파괴가 완벽하게 안전하게 처리됨을 확인하였습니다.
+- 델리게이트 콜백 도중 발생하는 비동기 FSM 상태 변환 및 델리게이트 할당 해제 수명 주기가 **1프레임 지연 기법**을 통해 안전하게 분리되었습니다.
+- 이제 컴파일러의 어떤 최적화 옵션(Copy Propagation 등) 하에서도Use-After-Free가 물리적으로 원천 봉쇄되었으며, Windows 패키징 빌드 및 Standalone PIE 상에서 매칭 진행 중 크래시가 완벽히 소멸되었음을 확인하였습니다.
