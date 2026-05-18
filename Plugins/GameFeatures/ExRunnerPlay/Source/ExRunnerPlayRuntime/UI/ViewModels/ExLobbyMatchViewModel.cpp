@@ -130,6 +130,12 @@ void UExLobbyMatchViewModel::StartMultiPlay()
 				{
 					PendingConfig.ExpectedPlayerCount = Config->MatchFlow.ExpectedPlayerCount;
 					PendingConfig.MaxWaitForPlayersSeconds = Config->MatchFlow.MaxWaitForPlayersSeconds;
+					
+					// [검토 반영] ExpectedPlayerCount에 맞춰서 방의 최대 수용 인원(MaxPlayers)도 자동으로 동기화되도록 안전장치 마련
+					if (PendingConfig.ExpectedPlayerCount > PendingConfig.MaxPlayers)
+					{
+						PendingConfig.MaxPlayers = PendingConfig.ExpectedPlayerCount;
+					}
 				}
 			}
 		}

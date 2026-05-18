@@ -43,7 +43,16 @@ FExListenServerStrategy::~FExListenServerStrategy()
 	}
 
 	ClearWaitLobbyTicker();
-	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 소멸됨 — Ticker 핸들 해제."));
+
+	// [댕글링 포인터 크래시 방지] Strategy 소멸 시 LobbyProvider의 모든 델리게이트를 확실하게 정리
+	if (LobbyProvider)
+	{
+		LobbyProvider->OnFindComplete.Clear();
+		LobbyProvider->OnCreateComplete.Clear();
+		LobbyProvider->OnJoinComplete.Clear();
+	}
+
+	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 소멸됨 — Ticker 및 LobbyProvider 델리게이트 해제 완료."));
 }
 
 EExServerType FExListenServerStrategy::GetServerType() const
