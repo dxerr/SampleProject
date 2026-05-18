@@ -5,6 +5,7 @@
 #include "GameModes/ExGameSession.h"
 #include "Tags/ExMatchTags.h"
 #include "Subsystems/ExGameFlowSubsystem.h"
+#include "Kismet/GameplayStatics.h"
 #include "../Data/ExCoreSpawnDataAsset.h"
 #include "Experience/ExExperienceManagerComponent.h"
 #include "Experience/ExExperienceDefinition.h"
@@ -33,6 +34,19 @@ AExGameModeBase::AExGameModeBase()
 
 	// 주인님, 자동 로그인 오동작으로 인한 세션 파괴 문제를 프로젝트 레벨에서 우회하기 위해 커스텀 게임 세션 클래스로 지정합니다.
 	GameSessionClass = AExGameSession::StaticClass();
+}
+
+void AExGameModeBase::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
+{
+	Super::InitGame(MapName, Options, ErrorMessage);
+
+	// URL 옵션에서 ExpectedPlayers 파싱
+	int32 ParsedCount = UGameplayStatics::GetIntOption(Options, TEXT("ExpectedPlayers"), -1);
+	if (ParsedCount > 0)
+	{
+		DynamicExpectedPlayerCount = ParsedCount;
+		UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] URL 옵션 파싱 완료 — ExpectedPlayers=%d (주인님, 동적 플레이어 수를 정상 반영합니다!)"), DynamicExpectedPlayerCount);
+	}
 }
 
 void AExGameModeBase::BeginPlay()
@@ -163,6 +177,10 @@ void AExGameModeBase::OnPlayerReady(APlayerController* PC)
 
 int32 AExGameModeBase::GetExpectedPlayerCount() const
 {
+	if (DynamicExpectedPlayerCount > 0)
+	{
+		return DynamicExpectedPlayerCount;
+	}
 	// Default to 1 for basic games, can be overridden by specific GameModes
 	return 1;
 }

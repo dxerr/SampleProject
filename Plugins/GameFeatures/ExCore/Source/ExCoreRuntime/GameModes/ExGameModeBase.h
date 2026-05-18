@@ -21,6 +21,7 @@ class EXCORERUNTIME_API AExGameModeBase : public AGameModeBase
 public:
 	AExGameModeBase();
 
+	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaTime) override;
@@ -109,6 +110,10 @@ public:
 	void OnFlowSubsystemRequestTravel(const FString& MapURL);
 
 protected:
+	/** URL 옵션 등에서 동적으로 지정된 매치 대기 인원수 */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "ExMatch|Flow")
+	int32 DynamicExpectedPlayerCount = -1;
+
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
 	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
