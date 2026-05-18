@@ -496,29 +496,41 @@ bool FExListenServerStrategy::CheckLobbyWaitConditions_Host(float DeltaTime)
 			// UpdateSessionHandle을 멤버로 관리 — 소멸자에서 해제하여 ServerTravel 후 댕글링 크래시 방지
 			UpdateSessionHandle = OSS->GetSessionInterface()->AddOnUpdateSessionCompleteDelegate_Handle(
 				FOnUpdateSessionCompleteDelegate::CreateLambda(
-					[this, OSS](FName SessionName, bool bUpdateSuccess) mutable
+					[this, OSS](FName SessionName, bool bUpdateSuccess)
 					{
-						OSS->GetSessionInterface()->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateSessionHandle);
-						UpdateSessionHandle.Reset();
-						if (bIsDestroyed) return;
-						UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Host MATCH_STARTED 업데이트 완료(bSuccess=%d) — 매칭 완료 콜백 호출."), bUpdateSuccess);
-						
-						if (CachedOnComplete) 
-						{ 
-							// EOS SDK 콜백 스택(TriggerOnUpdateSessionCompleteDelegates) 내부에서
-							// DestroySession이나 ServerTravel이 동기적으로 실행되는 것을 방지하기 위해 다음 틱으로 지연
-							TFunction<void(bool, const FString&)> TempComplete = MoveTemp(CachedOnComplete);
-							CachedOnComplete = nullptr;
-							
-							FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([TempComplete](float) -> bool
+						// [경쟁 조건 및 UAF 크래시 방지]
+						// 델리게이트 완료 핸들 해제 및 후속 처리를 다음 틱으로 지연하여 
+						// 현재 실행 중인 람다 클로저가 브로드캐스트 스택 내부에서 동기적으로 소멸(Use-After-Free)되는 것을 원천 방지합니다.
+						FTSTicker::GetCoreTicker().AddTicker(
+							FTickerDelegate::CreateLambda([this, OSS, SessionName, bUpdateSuccess](float) -> bool
 							{
-								if (TempComplete)
-								{
-									TempComplete(true, TEXT(""));
+								if (bIsDestroyed) return false;
+
+								OSS->GetSessionInterface()->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateSessionHandle);
+								UpdateSessionHandle.Reset();
+
+								UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Host MATCH_STARTED 업데이트 완료(bSuccess=%d) — 매칭 완료 콜백 호출."), bUpdateSuccess);
+								
+								if (CachedOnComplete) 
+								{ 
+									// EOS SDK 콜백 스택(TriggerOnUpdateSessionCompleteDelegates) 내부에서
+									// DestroySession이나 ServerTravel이 동기적으로 실행되는 것을 방지하기 위해 지연 호출 실행
+									TFunction<void(bool, const FString&)> TempComplete = MoveTemp(CachedOnComplete);
+									CachedOnComplete = nullptr;
+									
+									FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([TempComplete](float) -> bool
+									{
+										if (TempComplete)
+										{
+											TempComplete(true, TEXT(""));
+										}
+										return false;
+									}), 0.5f);
 								}
-								return false;
-							}), 0.5f);
-						}
+								return false; // 일회성
+							}),
+							0.0f
+						);
 					}
 				)
 			);
