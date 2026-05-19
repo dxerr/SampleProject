@@ -123,6 +123,7 @@
     - 예: `MotionMatching_Guide_KR.md`, `PythonBridge_Documentation.md`
 - **Bug/**: 개발 중 발생한 크리티컬 이슈와 해결 방법을 기록합니다.
   - 파일명: `[이슈키워드]_[원인].md` (예: `Constructor_Crash_NewObject.md`)
+  - 경로 : /Bug 폴더 하위 경로에서 해당 사항에 맞는 분류된 경로 폴더로 지정
   - 비슷한 이슈 발생 시 우선 검색하여 해결책을 찾습니다.
 - **Legacy/**: 오래된 보고서, 더 이상 유효하지 않지만 참고용으로 남겨둔 문서들을 보관합니다.
   - 예: `Legacy_Spawner_Implementation_Report.md`
@@ -157,7 +158,7 @@
 ### 3.4 멀티플레이어 버그 트래킹 정책 (Multiplayer Bug Tracking)
 
 - **민감성 인지**: 멀티플레이(MultiPlay) 관련 동기화 이슈는 구조적으로 복잡하며 다른 로직에 미치는 영향이 매우 큽니다.
-- **분리 보관 원칙**: 멀티플레이 관련 모든 버그 레포트 및 수정 내역 문서(Troubleshooting)는 반드시 `/Md/Bug/MultiPlay/` 하위 디렉토리에 분리하여 특별 관리합니다.
+- **분리 보관 원칙**: 멀티플레이 관련 모든 버그 레포트 및 수정 내역 문서(Troubleshooting)는 반드시 `Bug/Network/` 하위 디렉토리에 분리하여 특별 관리합니다.
 - **상세 기록**: 클라이언트/서버 간 불일치 원인, 동기화 누락 지점, 해결 방안(RPC, Replication 등)을 명확하게 기록하여 추후 아키텍처 설계 시 기준으로 삼습니다.
 
 ## 4. 아키텍처 및 모듈화 규칙 (Architecture & Modularization)
