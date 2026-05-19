@@ -133,6 +133,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="ExUI|Toast")
 	UExToastWidget* ShowToastFromDescriptor(const FExToastDescriptor& Descriptor);
 
+	/** 현재 화면에 떠 있는 모든 토스트를 즉시 또는 애니메이션과 함께 강제 종료합니다. */
+	UFUNCTION(BlueprintCallable, Category="ExUI|Toast")
+	void ClearAllToasts(bool bForceImmediate = false);
+
 	void HandleToastClosed(UExToastWidget* ClosedToast);
 
 	// --- 데이터 드리븐(Data-Driven) UI 제어 API ---

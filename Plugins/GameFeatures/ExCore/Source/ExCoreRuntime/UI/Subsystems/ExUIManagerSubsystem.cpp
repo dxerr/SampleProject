@@ -502,6 +502,29 @@ UExToastWidget* UExUIManagerSubsystem::ShowLoadingToast(const FText& Message)
 	return ShowToastFromDescriptor(Desc);
 }
 
+void UExUIManagerSubsystem::ClearAllToasts(bool bForceImmediate)
+{
+	UE_LOG(LogTemp, Log, TEXT("[ExUIManagerSubsystem] 모든 활성 토스트(현재 %d개)를 %s 닫습니다."), 
+		ActiveToasts.Num(), bForceImmediate ? TEXT("즉시") : TEXT("애니메이션과 함께"));
+
+	// 소멸 콜백(HandleToastClosed) 동기 호출 시 ActiveToasts가 수정되어 Iterator 무효화 에러가 발생하는 것을 방지하기 위해 사본 생성
+	TArray<TWeakObjectPtr<UExToastWidget>> ToastsCopy = ActiveToasts;
+
+	for (TWeakObjectPtr<UExToastWidget>& WeakToast : ToastsCopy)
+	{
+		if (UExToastWidget* Toast = WeakToast.Get())
+		{
+			Toast->CloseToast(bForceImmediate);
+		}
+	}
+	// 애니메이션(Outro) 후 소멸 콜백이 HandleToastClosed로 오겠지만, 즉시 비우기를 위해 큐도 정리
+	PendingToastsQueue.Empty();
+	if (bForceImmediate)
+	{
+		ActiveToasts.Empty();
+	}
+}
+
 void UExUIManagerSubsystem::HandleToastClosed(UExToastWidget* ClosedToast)
 {
 	ActiveToasts.RemoveAll([ClosedToast](const TWeakObjectPtr<UExToastWidget>& Weak)
