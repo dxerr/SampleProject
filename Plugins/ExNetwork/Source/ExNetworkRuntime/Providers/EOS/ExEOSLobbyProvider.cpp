@@ -234,12 +234,40 @@ void FExEOSLobbyProvider::HandleFindSessionsComplete(bool bSuccess)
 		// 호스트 종료 후 EOS 서버에 잔류하는 고스트 세션에 클라이언트가 접속을 시도하면 UnknownError가 발생함.
 		SearchResults->SearchResults.RemoveAll([](const FOnlineSessionSearchResult& R)
 		{
+			// 1. 호스트 유효성 체크
+			if (!R.Session.OwningUserId.IsValid() || !R.Session.OwningUserId->IsValid())
+			{
+				UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSLobbyProvider] 고스트 방 필터 — SessionId=%s, 호스트 ID 유효하지 않음"),
+					*R.Session.GetSessionIdStr());
+				return true;
+			}
+
+			// 2. 참여자 수 0명인 방 체크 (호스트가 비정상 종료 시 백엔드에 남은 빈 방)
+			int32 CurrentPlayers = R.Session.SessionSettings.NumPublicConnections - R.Session.NumOpenPublicConnections;
+			if (CurrentPlayers <= 0)
+			{
+				UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSLobbyProvider] 고스트 방 필터 — SessionId=%s, 참여자 0명 (좀비 로비)"),
+					*R.Session.GetSessionIdStr());
+				return true;
+			}
+
+			// 3. 접속 인원이 꽉 찬 방 필터 (기존 로직)
 			if (R.Session.NumOpenPublicConnections <= 0)
 			{
-				UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSLobbyProvider] 좌비 로비 필터 — SessionId=%s, OpenConnections=%d (접속 불가)"),
-					*R.Session.GetSessionIdStr(), R.Session.NumOpenPublicConnections);
+				UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSLobbyProvider] 접속 불가 필터 — SessionId=%s, 꽉 찬 방"),
+					*R.Session.GetSessionIdStr());
 				return true; // 제거
 			}
+
+			// 4. 이미 인게임이 시작된 방 필터
+			bool bMatchStarted = false;
+			if (R.Session.SessionSettings.Get(FName("MATCH_STARTED"), bMatchStarted) && bMatchStarted)
+			{
+				UE_LOG(LogExNetwork, Warning, TEXT("[ExEOSLobbyProvider] 진행 중 필터 — SessionId=%s, 이미 매치 시작됨"),
+					*R.Session.GetSessionIdStr());
+				return true;
+			}
+
 			return false;
 		});
 	}

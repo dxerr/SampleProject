@@ -144,6 +144,44 @@ void FExListenServerStrategy::BeginSearchPhase(const FExMatchConfig& Config, EEx
 		return;
 	}
 
+	// [개선] 델리게이트 누적 바인딩 및 동기식 제거로 인한 크래시(UAF)를 완전히 방어하기 위해 폴링(Polling) 대기 방식으로 전환합니다.
+	if (LobbyProvider->HasLocalSession())
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] BeginSearchPhase 진입 시 로컬 세션 존재. 비동기 파괴 대기를 시작합니다."));
+		LobbyProvider->DestroyLobby();
+		
+		// 기존 타이머/틱커를 정리하고 폴링 틱커를 등록합니다.
+		ClearWaitLobbyTicker();
+		
+		FindRetryTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateLambda([this, Config, ExpectedState, OnSearchComplete](float) -> bool
+			{
+				if (bIsDestroyed) return false;
+
+				if (LobbyProvider && LobbyProvider->HasLocalSession())
+				{
+					// 아직 파괴가 완료되지 않음: 대기 지속 (다음 틱에 재호출)
+					return true;
+				}
+
+				UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 비동기 세션 파괴 확인 완료. SearchPhase를 재시작합니다."));
+				FindRetryTickerHandle.Reset();
+				
+				// 안전한 재진입을 위해 다음 틱에 실행
+				FTSTicker::GetCoreTicker().AddTicker(
+					FTickerDelegate::CreateLambda([this, Config, ExpectedState, OnSearchComplete](float) -> bool
+					{
+						if (bIsDestroyed) return false;
+						BeginSearchPhase(Config, ExpectedState, OnSearchComplete);
+						return false;
+					}), 0.01f);
+
+				return false; // 본 폴링 틱커 종료
+			}), 0.1f); // 0.1초 간격으로 유효성 체크
+		
+		return;
+	}
+
 	if (Config.bIsSinglePlay)
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] Single Play 모드 — 검색 스킵 (Timeout 처리)."));
@@ -236,6 +274,44 @@ void FExListenServerStrategy::BeginCreatePhase(const FExMatchConfig& Config, EEx
 	if (!ensureMsgf(LobbyProvider, TEXT("[ExListenServerStrategy] BeginCreatePhase: LobbyProvider 없음.")))
 	{
 		OnCreateComplete(false, TEXT("LobbyProvider not set"));
+		return;
+	}
+
+	// [개선] 델리게이트 누적 바인딩 및 동기식 제거로 인한 크래시(UAF)를 완전히 방어하기 위해 폴링(Polling) 대기 방식으로 전환합니다.
+	if (LobbyProvider->HasLocalSession())
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExListenServerStrategy] BeginCreatePhase 진입 시 로컬 세션 존재. 비동기 파괴 대기를 시작합니다."));
+		LobbyProvider->DestroyLobby();
+		
+		// 기존 타이머/틱커를 정리하고 폴링 틱커를 등록합니다.
+		ClearWaitLobbyTicker();
+		
+		FindRetryTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateLambda([this, Config, ExpectedState, OnCreateComplete](float) -> bool
+			{
+				if (bIsDestroyed) return false;
+
+				if (LobbyProvider && LobbyProvider->HasLocalSession())
+				{
+					// 아직 파괴가 완료되지 않음: 대기 지속
+					return true;
+				}
+
+				UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 비동기 세션 파괴 확인 완료. CreatePhase를 재시작합니다."));
+				FindRetryTickerHandle.Reset();
+				
+				// 안전한 재진입을 위해 다음 틱에 실행
+				FTSTicker::GetCoreTicker().AddTicker(
+					FTickerDelegate::CreateLambda([this, Config, ExpectedState, OnCreateComplete](float) -> bool
+					{
+						if (bIsDestroyed) return false;
+						BeginCreatePhase(Config, ExpectedState, OnCreateComplete);
+						return false;
+					}), 0.01f);
+
+				return false; // 본 폴링 틱커 종료
+			}), 0.1f); // 0.1초 간격으로 유효성 체크
+		
 		return;
 	}
 
