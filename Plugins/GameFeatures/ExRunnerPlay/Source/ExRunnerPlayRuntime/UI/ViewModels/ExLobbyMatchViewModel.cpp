@@ -317,8 +317,12 @@ void UExLobbyMatchViewModel::ShowResultPopup(const FText& Title, const FText& Bo
 	UExUIManagerSubsystem* UIMgr = GetUIManager();
 	if (!UIMgr) return;
 
-	// Info 타입: 버튼 없이 3초 자동 닫힘
-	UIMgr->ShowInfoBP(Title, Body, 3.0f);
+	// 기존 InfoPopup 대신 Toast 위젯으로 표시하여 생명 주기를 능동적으로 제어합니다.
+	// 토스트 팝업은 메시지 하나를 표시하므로 포맷팅하여 병합합니다.
+	FText CombinedMsg = FText::Format(FText::FromString(TEXT("{0}\n{1}")), Title, Body);
+	
+	// 지속 시간을 길게 주어 자연 소멸(엇박자)을 막고, OnGameStartedCallback에서 다음 스텝 진행 시 강제로 닫게 합니다.
+	UIMgr->ShowToast(CombinedMsg, 10.0f);
 }
 
 void UExLobbyMatchViewModel::ShowErrorPopup(const FText& Title, const FText& Body)
@@ -401,6 +405,12 @@ void UExLobbyMatchViewModel::OnGameStartedCallback(bool bSuccess, const FString&
 		// 성공: 서버가 ServerTravel을 수행하거나 클라이언트가 연결 대기 중
 		// 맵 전환이 자동으로 이루어지므로 별도 UI 처리 불필요
 		UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] StartGame 성공 — ServerTravel/ClientTravel 진행 대기 중."));
+		
+		// [신규] 확실하게 다음 스텝(맵 트래블)에 진입하므로, 유지 중이던 토스트를 명시적이고 능동적으로 닫음
+		if (UExUIManagerSubsystem* UIMgr = GetUIManager())
+		{
+			UIMgr->ClearAllToasts(true);
+		}
 	}
 	else
 	{
