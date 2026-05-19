@@ -15,6 +15,7 @@
 #include "GameFramework/PlayerController.h"
 
 #include "Core/ExNetworkLog.h"
+#include "Subsystems/ExAssetPreloadSubsystem.h"
 
 
 const FString UExLobbyMatchViewModel::DefaultMatchMode = TEXT("Runner");
@@ -76,6 +77,54 @@ void UExLobbyMatchViewModel::AutoInitialize(UObject* WorldContextObject)
 
 	UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] AutoInitialize 완료. 로그인 상태: %s"),
 		CachedOnlineSubsystem->IsLoggedIn() ? TEXT("로그인됨") : TEXT("대기 중"));
+
+	// 로비 입장 즉시 인게임 에셋 백그라운드 프리로드 발주 (LoadPriority=0, 최하위)
+	RequestIngamePreload(GI);
+}
+
+void UExLobbyMatchViewModel::RequestIngamePreload(UGameInstance* InGameInstance)
+{
+	if (!InGameInstance)
+	{
+		return;
+	}
+
+	UExDataCenterSubsystem* DataCenter = InGameInstance->GetSubsystem<UExDataCenterSubsystem>();
+	if (!ensureMsgf(DataCenter, TEXT("[ExLobbyMatchVM] RequestIngamePreload: DataCenterSubsystem이 없습니다.")))
+	{
+		return;
+	}
+
+	const UExRunnerConfig* RunnerConfig = DataCenter->GetConfig<UExRunnerConfig>();
+	if (!RunnerConfig)
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[ExLobbyMatchVM] RequestIngamePreload: ExRunnerConfig가 DataCenter에 등록되어 있지 않습니다."));
+		return;
+	}
+
+	if (RunnerConfig->IngamePreloadAssets.Num() == 0)
+	{
+		UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] RequestIngamePreload: 프리로드 에셋 목록이 비어있습니다."));
+		return;
+	}
+
+	UExAssetPreloadSubsystem* Preloader = InGameInstance->GetSubsystem<UExAssetPreloadSubsystem>();
+	if (!ensureMsgf(Preloader, TEXT("[ExLobbyMatchVM] RequestIngamePreload: ExAssetPreloadSubsystem이 없습니다.")))
+	{
+		return;
+	}
+
+	FExPreloadOptions Options;
+	Options.LoadPriority = 0; // 최하위 우선순위 — 로비 UI 렌더링에 영향 없음
+
+	Preloader->PreloadAssets(
+		FName(TEXT("RunnerIngame")),
+		RunnerConfig->IngamePreloadAssets,
+		Options
+	);
+
+	UE_LOG(LogExNetwork, Log, TEXT("[ExLobbyMatchVM] RequestIngamePreload: 인게임 에셋 %d개 프리로드 발주 완료."),
+		RunnerConfig->IngamePreloadAssets.Num());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

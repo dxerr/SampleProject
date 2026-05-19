@@ -91,6 +91,9 @@ private:
 	/** UIManagerSubsystem 안전 반환 */
 	class UExUIManagerSubsystem* GetUIManager() const;
 
+	/** 로비 입장 시 인게임 에셋 프리로드 발주 — ExRunnerConfig.IngamePreloadAssets 기반 */
+	void RequestIngamePreload(class UGameInstance* InGameInstance);
+
 	// ── 상태 ──────────────────────────────────────────────────────────
 
 	/** 매칭 진행 중 여부 — 중복 호출 방지 */

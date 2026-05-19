@@ -58,6 +58,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner Config|MatchFlow", meta = (ShowOnlyInnerProperties))
 	FExMatchFlowSettings MatchFlow;
 
+	/**
+	 * 로비 입장 시 백그라운드 프리로드(캐시 워밍) 대상 인게임 에셋 목록.
+	 * UExAssetPreloadSubsystem이 로비 진입 즉시 LoadPriority=0 (최하위)으로 비동기 로드한다.
+	 * 맵 트래블 후 GC에 의해 캐시가 소실될 수 있으므로, 인게임에서 사용하는 시스템이
+	 * 직접 강참조를 확보해야 한다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runner Config|Preload",
+		meta = (DisplayName = "인게임 프리로드 에셋 목록"))
+	TArray<TSoftObjectPtr<UObject>> IngamePreloadAssets;
+
 #if WITH_EDITOR
 	/** 에디터 상에서 데이터의 유효성을 검증합니다. */
 	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override;
