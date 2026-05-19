@@ -127,7 +127,10 @@ void UExOnlineSubsystem::Deinitialize()
 	// [중요] InGame 상태에서 Deinitialize가 호출되면 (ClientTravel/ServerTravel 월드 교체)
 	// EOS 세션과 Strategy를 파괴하지 않고 보존해야 P2P 연결이 유지됩니다.
 	// GameInstance 수명이 끝나는 진짜 종료 시에는 InGame 상태가 아니므로 정상 정리됩니다.
-	if (CurrentMatchState == EExMatchState::InGame)
+	// [예외] PIE 종료 시: PIE 컨텍스트에서는 세션 보존이 불필요하므로 완전 정리합니다.
+	const bool bIsPIESession = GetGameInstance() && GetGameInstance()->GetWorld()
+		&& GetGameInstance()->GetWorld()->IsPlayInEditor();
+	if (CurrentMatchState == EExMatchState::InGame && !bIsPIESession)
 	{
 		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] InGame 상태에서 Deinitialize — Strategy/Session 보존 (P2P 연결 유지)."));
 		// 델리게이트 핸들만 정리하고 세션과 Strategy는 유지
