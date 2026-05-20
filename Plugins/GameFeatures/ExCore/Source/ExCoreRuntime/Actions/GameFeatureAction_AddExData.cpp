@@ -34,8 +34,7 @@ void UGameFeatureAction_AddExData::OnGameFeatureActivating(FGameFeatureActivatin
 
 	UE_LOG(LogTemp, Warning, TEXT("[AddExData] OnGameFeatureActivating — ConfigAsset=%s"), *GetNameSafe(ConfigAsset));
 
-	// ── 1. 이미 존재하는 WorldContext 즉시 처리 ──
-	// 에디터 PIE 등 이미 GameInstance가 살아있는 경우를 처리한다.
+	// ── 1. 이미 존재하는 WorldContext 즉시 처리 (PIE 등) ──
 	int32 AppliedCount = 0;
 	if (GEngine)
 	{
@@ -54,26 +53,17 @@ void UGameFeatureAction_AddExData::OnGameFeatureActivating(FGameFeatureActivatin
 	}
 	UE_LOG(LogTemp, Warning, TEXT("[AddExData] 즉시 처리 완료 — 적용 수: %d"), AppliedCount);
 
-	// ── 2. OnWorldBeginPlay 구독 ──
-	// 패키징 빌드에서는 FWorldDelegates::OnStartGameInstance 가 GameFeature 활성화보다
-	// 먼저 발화하여 핸들러 등록이 늦어지는 Race Condition이 발생한다.
-	// OnWorldBeginPlay 는 각 게임 월드의 BeginPlay 진입 시점에 발화하므로
-	// DataCenter 초기화(UExDataCenterSubsystem::Initialize) 이후가 보장된다.
+	// ── 2. OnWorldInitializedActors 구독 ──
+	// 패키징 빌드에서 FWorldDelegates::OnStartGameInstance 는 GameFeature 활성화 전에
+	// 이미 발화하여 Race Condition 이 발생한다.
+	// OnWorldInitializedActors 는 각 게임 월드의 Actor 초기화 완료 시 발화하므로
+	// DataCenter (UGameInstanceSubsystem) 초기화 이후가 보장된다.
 	{
-		FDelegateHandle Handle = FWorldDelegates::OnWorldBeginPlay.AddUObject(
+		FDelegateHandle Handle = FWorldDelegates::OnWorldInitializedActors.AddUObject(
 			this,
-			&UGameFeatureAction_AddExData::HandleWorldBeginPlay,
+			&UGameFeatureAction_AddExData::HandleWorldInitializedActors,
 			FGameFeatureStateChangeContext(Context));
-		WorldBeginPlayHandles.Add(Handle);
-	}
-
-	// ── 3. OnStartGameInstance 구독 (PIE 다중 인스턴스 보조) ──
-	{
-		FDelegateHandle Handle = FWorldDelegates::OnStartGameInstance.AddUObject(
-			this,
-			&UGameFeatureAction_AddExData::HandleGameInstanceStart,
-			FGameFeatureStateChangeContext(Context));
-		GameInstanceStartHandles.Add(Handle);
+		WorldInitializedHandles.Add(Handle);
 	}
 }
 
@@ -81,18 +71,11 @@ void UGameFeatureAction_AddExData::OnGameFeatureDeactivating(FGameFeatureDeactiv
 {
 	Super::OnGameFeatureDeactivating(Context);
 
-	// 바인딩 해제
-	for (FDelegateHandle Handle : WorldBeginPlayHandles)
+	for (FDelegateHandle Handle : WorldInitializedHandles)
 	{
-		FWorldDelegates::OnWorldBeginPlay.Remove(Handle);
+		FWorldDelegates::OnWorldInitializedActors.Remove(Handle);
 	}
-	WorldBeginPlayHandles.Empty();
-
-	for (FDelegateHandle Handle : GameInstanceStartHandles)
-	{
-		FWorldDelegates::OnStartGameInstance.Remove(Handle);
-	}
-	GameInstanceStartHandles.Empty();
+	WorldInitializedHandles.Empty();
 
 	// 존재하는 GameInstance들에서 등록 취소
 	if (GEngine)
@@ -114,11 +97,12 @@ void UGameFeatureAction_AddExData::OnGameFeatureDeactivating(FGameFeatureDeactiv
 //  이벤트 핸들러
 // ─────────────────────────────────────────────────
 
-void UGameFeatureAction_AddExData::HandleWorldBeginPlay(UWorld* World, FGameFeatureStateChangeContext ChangeContext)
+void UGameFeatureAction_AddExData::HandleWorldInitializedActors(const FActorsInitializedParams& Params, FGameFeatureStateChangeContext ChangeContext)
 {
+	UWorld* World = Params.World;
 	if (!World) { return; }
 
-	// 게임 월드(독립 실행 / PIE)만 처리한다
+	// 게임 월드(독립 실행 / PIE)만 처리
 	if (World->WorldType != EWorldType::Game && World->WorldType != EWorldType::PIE)
 	{
 		return;
@@ -130,23 +114,9 @@ void UGameFeatureAction_AddExData::HandleWorldBeginPlay(UWorld* World, FGameFeat
 	FWorldContext* WorldContext = GameInstance->GetWorldContext();
 	if (!WorldContext) { return; }
 
-	UE_LOG(LogTemp, Warning, TEXT("[AddExData] HandleWorldBeginPlay — World=%s, WorldType=%d"),
-		*World->GetName(), (int32)World->WorldType);
+	UE_LOG(LogTemp, Warning, TEXT("[AddExData] HandleWorldInitializedActors — World=%s"), *World->GetName());
 
 	if (ChangeContext.ShouldApplyToWorldContext(*WorldContext))
-	{
-		AddToDataCenter(GameInstance, ChangeContext);
-	}
-}
-
-void UGameFeatureAction_AddExData::HandleGameInstanceStart(UGameInstance* GameInstance, FGameFeatureStateChangeContext ChangeContext)
-{
-	FWorldContext* WorldContext = GameInstance ? GameInstance->GetWorldContext() : nullptr;
-	UE_LOG(LogTemp, Warning, TEXT("[AddExData] HandleGameInstanceStart — GameInstance=%s, WorldContext=%s"),
-		*GetNameSafe(GameInstance),
-		WorldContext ? TEXT("VALID") : TEXT("NULL"));
-
-	if (WorldContext && ChangeContext.ShouldApplyToWorldContext(*WorldContext))
 	{
 		AddToDataCenter(GameInstance, ChangeContext);
 	}
