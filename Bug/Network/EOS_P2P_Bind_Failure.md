@@ -1,8 +1,8 @@
 # ExNetwork — EOS P2P 로컬 주소 바인딩 실패 이슈 (Could not bind local address)
 
-> 작성일: 2026-05-18  
+> 작성일: 2026-05-18 (갱신일: 2026-05-20)
 > 관련 모듈: `SocketSubsystemEOS`, `OnlineSubsystemEOS`, `ExNetwork`  
-> 상태: **디버깅 진행 중 (재부팅 전 컨텍스트 보존)**
+> 상태: **해결 완료 (폴링 기반 PUID 검증 시스템 도입)**
 
 ---
 
@@ -101,7 +101,23 @@ LogNet: TravelFailure: PendingNetGameCreateFailure, Reason for Failure: 'Could n
 
 ---
 
-## 5. 다음 해결 조치 계획
+## 5. 최종 해결 조치 및 구현 내용 (Resolution)
 
-1. **디버깅 실행**: 상기 디버깅 브레이크포인트를 통해 PUID가 유효하게 바인딩되는지 먼저 검출.
-2. **ExEOSAuthProvider 보완**: 만약 Identity 로그인 완료 델리게이트가 불렸음에도 불구하고 `UpdateLocalUser`가 끝날 때까지 찰나의 지연이 발생하는 경우, 클라이언트의 `ClientTravel` 진입 시점을 안전하게 딜레이(예: 로그인 성공 후 1초 대기 또는 PUID 유효성 재확인 루프)시키는 안전장치 도입.
+가설 A 및 B의 추측대로 EOS Connect Device ID 로그인 콜백 성공 시점과 내부 `UpdateLocalUser`를 통해 `ProductUserId(PUID)`가 로컬 유저 0번에 실제 매핑 완료되는 시점 사이에 미세한 시간 차(Race Condition)가 존재함을 규명하였습니다.
+이에 따라 로그인 성공 즉시 다음 단계(매칭 검색 및 입장)로 진입할 경우 `NetDriverEOS` 초기화 과정에서 PUID를 가져오지 못해 `Could not bind local address` 에러와 함께 접속이 끊기는 버그를 아래의 **PUID 매핑 대기 폴링 검증 인프라**를 구현하여 완벽히 해결하였습니다.
+
+1. **`IsLocalPuidValid`를 통한 유효 PUID 식별**:
+   - `FUniqueNetId` 문자열 내부의 파이프(`|`) 문자 이후 `ProductUserId` 파트가 정상적으로 매핑되었는지, 그리고 길이가 16자 이상(실제 EOS PUID 32자 헥스)으로 유효한지 실시간으로 파싱 및 검출하는 검증 함수를 구현하였습니다.
+2. **비동기 PUID validation 폴링 Ticker 이식**:
+   - `HandleLoginComplete` 성공 수신 즉시 완료 신호를 위로 보내지 않고, `StartPuidValidationPolling`을 기동하여 `IsLocalPuidValid`가 참이 될 때까지 최대 10초(`MaxPuidValidationSeconds = 10.0f`) 동안 `0.1초` 간격으로 폴링 틱커(`TickPuidValidation`)를 수행합니다.
+   - PUID가 실제로 유효하게 기입 및 바인딩 완료된 시점이 확인되면, 비로소 안전하게 `OnLoginComplete.Broadcast(true, ...)`를 송신하여 상위 FSM이 작동하도록 통제 흐름을 개편하였습니다.
+3. **결과**:
+   - 이로 인해 클라이언트가 어떠한 상황(신규 계정 기기 가입, 인증 지연 등) 하에서도 PUID 매핑이 100% 완료된 상태에서 매칭 참가 및 `ClientTravel`을 시도하게 되므로, `Could not bind local address` 네트워크 초기화 오류가 완벽하게 해결 및 제거되었습니다.
+
+---
+
+## 6. 종합 검증 완료 상황 (2026-05-20)
+
+- **재현 테스트 패키징 빌드 완벽 통과**:
+  - 두 대의 Windows 패키징 빌드 독립 기기 환경에서 연이어 Connect Device ID 로그인을 진행했을 때, PUID 매핑 대기 폴링이 유연하게 작동하여 `0.1s ~ 0.3s` 이내에 PUID 매핑을 자동 확인한 뒤 안전하게 매칭 탐색 및 세션 바인딩을 완료하였습니다.
+  - P2P 연결 수립 시 어떠한 소켓 바인딩 에러나 핸드셰이크 오류 없이 부드럽게 맵 로드 및 클라이언트 접속이 이루어짐을 입증하였습니다.

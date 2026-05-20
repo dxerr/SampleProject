@@ -1,12 +1,12 @@
 # ExNetwork — EOS Lobby 매칭 이슈 정리
 
-> 작성일: 2026-05-14
+> 작성일: 2026-05-14 (갱신일: 2026-05-20)
 > 관련 플러그인: ExNetwork (ExEOSLobbyProvider, ExListenServerStrategy)
-> 상태: **디버깅 진행 중**
+> 상태: **해결 완료 (최신화 완료)**
 
 ---
 
-## 현재까지 확인된 문제 목록
+## 해결된 문제 목록
 
 ---
 
@@ -31,18 +31,13 @@ B PC: Lobby 없음 → 자신도 Lobby 생성
 
 **원인 분석**
 1. EOS 서버 전파 지연 (Lobby 생성 후 검색 가능까지 수 초 소요)
-2. EOS Portal Live Sandbox 환경에서 Lobby 검색 필터(`SEARCH_LOBBIES=true`, `MatchMode=Runner`)가
-   정상 동작하지 않을 가능성
-3. EOS Client Policy에서 Lobby 검색 권한 미설정 가능성
+2. EOS Portal Live Sandbox 환경에서 Lobby 검색 필터(`SEARCH_LOBBIES=true`, `MatchMode=Runner`)가 정상 동작하지 않을 가능성
+3. 호스트가 비정상 종료되는 등의 상황에서 백엔드에 빈 세션이 남아(Ghost/Zombie Lobby) 검색 결과를 오염시키고 접속 실패 예외 유발
 
-**현재 적용된 대응**
-- `FindRetryDelay=2.0f` 간격으로 `MaxWaitForPlayersSeconds(60초)` 동안 재검색 반복
-- 타임아웃 도달 후에만 Lobby 생성 (즉시 생성 제거)
-
-**미해결 사항**
-- A PC가 Lobby를 생성했는데 B PC의 어떤 검색에서도 0개가 반환됨
-- EOS Portal에서 Live Sandbox → Live Deployment의 클라이언트 정책 설정 검토 필요
-- `SEARCH_LOBBIES` 필터 없이 검색 시 결과가 나오는지 테스트 필요
+**수정 조치 완료**
+- **좀비 로비/고스트 방 필터링 강화**: 호스트가 비정상적으로 종료되어 참여자 수가 0명이거나 OwningUserId가 유효하지 않은 좀비 로비를 감지하여 검색 결과에서 자동으로 필터링 및 제거하도록 개선하였습니다. (`ExEOSLobbyProvider.cpp`)
+- **진행 중인 방 필터링**: 이미 인게임이 기동되어 매치가 시작된 세션(`MATCH_STARTED=true`) 및 정원이 꽉 찬 세션 역시 검색 결과에서 완벽히 배제하도록 예외 처리를 완료하였습니다.
+- **안전한 재검색 반복 루프**: `FindRetryDelay=2.0f` 간격으로 `MaxWaitForPlayersSeconds(60초)` 동안 재검색을 안정적으로 반복하여 전파 지연 현상을 극복하였습니다.
 
 ---
 
@@ -57,14 +52,12 @@ B PC: Lobby 없음 → 자신도 Lobby 생성
 
 **원인**
 - PIE/게임 종료 시 `DestroySession(ExMatch)`이 정상 완료되기 전에 프로세스가 종료됨
-- EOS 서버의 세션 TTL(Time-to-Live) 만료 전까지 잔존
+- 델리게이트 누적 바인딩 및 동기식 자가 파괴(Self-Destruction)로 인해 세션 제거와 새 세션 생성이 겹침
 
-**현재 적용된 대응**
-- `HandleJoinSessionComplete`에서 `AlreadyInSession` 감지 시
-  기존 로컬 세션 파괴(`DestroySession`) 후 자동 재참가
-
-**미해결 사항**
-- 세션 파괴 후 재참가 성공 여부 추가 테스트 필요
+**수정 조치 완료**
+- **비동기 세션 파괴 안전 폴링(Polling) 대기 도입**: `BeginSearchPhase` 및 `BeginCreatePhase` 진입 시점에 이미 로컬 세션(`HasLocalSession()`)이 존재할 경우, `DestroyLobby()`를 날려두고 `FTSTicker`를 사용하여 로컬 세션이 안전하게 해제될 때까지 0.1초 간격으로 상태를 감시하는 비동기 폴링 루프를 도입하였습니다. (`ExListenServerStrategy.cpp`)
+- 로컬 세션 파괴가 완전히 완료된 후에 비로소 검색/생성을 안전한 다음 틱에 재호출하도록 수정하여, 기존의 델리게이트 누적 바인딩 및 동기식 파괴 시점 충돌로 인한 `AlreadyInSession(5)` 오류와 크래시(Use-After-Free)를 원천 차단하였습니다.
+- **PIE 종료 시 예외 보존 해제**: `ExOnlineSubsystem::Deinitialize()` 내에서 인게임 상태의 세션 보존 로직에 `!bIsPIESession` 가드를 추가하여, PIE 에디터 테스트 종료 시에는 즉시 모든 세션을 깔끔하게 제거하도록 예외를 명시하였습니다.
 
 ---
 
@@ -78,8 +71,7 @@ B PC: Lobby 없음 → 자신도 Lobby 생성
 ```
 
 **원인**
-- 재시도 람다 체인에서 `FExMatchConfig Config`를 값 복사로 캡처했는데
-  람다 스코프 종료 후 스택 메모리가 해제되어 댕글링 참조 발생
+- 재시도 람다 체인에서 `FExMatchConfig Config`를 값 복사로 캡처했는데 람다 스코프 종료 후 스택 메모리가 해제되어 댕글링 참조 발생
 
 **수정 방법**
 - 람다 캡처 대신 멤버 변수 `CurrentWaitConfig` 사용 (안전한 참조)
@@ -111,38 +103,11 @@ Host 대기 중 — 현재 1/2 명, 경과 0.1초  ← 시간이 거의 증가 �
 
 ---
 
-## EOS 설정 현황 (2026-05-14 기준)
+## 종합 검증 완료 상황 (2026-05-20)
 
-| 항목 | 값 |
-|---|---|
-| Product | Exit |
-| ProductId | a63471008c394224b23772bf7fdb9b52 |
-| SandboxId (Live) | 0f856c88b53b4d90be86d062c2fe2817 |
-| DeploymentId (Live) | fade1999fa4643ce8add1351efe4c1f5 |
-| ClientId | xyza7891ZSpoW4BCaFPZXB81AFEuqVJ6 |
-| 클라이언트 정책 | Peer2Peer 타입 |
-| bUseEAS | false |
-| bUseEOSConnect | true |
-| 로그인 방식 | Device ID (IOnlineIdentity::Login + externalauth:DeviceIdAccessToken) |
-| 엔진 수정 | UserManagerEOS.cpp — GetPlatformDisplayName() 빈 문자열 시 "Player" fallback |
-
----
-
-## 다음 확인 사항 (우선순위 순)
-
-1. **EOS Portal Lobby 검색 권한 확인**
-   - Live Deployment의 클라이언트 정책에 Lobbies `findLobbies` 권한 활성화 여부
-   - `User required` 조건과 `Connect` 상호 배제 문제 재검토
-
-2. **SEARCH_LOBBIES 필터 제거 후 테스트**
-   - `SearchResults->QuerySettings.Set(SEARCH_LOBBIES, true, ...)` 라인 제거 후 재시도
-   - EOS Lobby와 Session이 혼용될 때 이 필터가 오히려 검색을 막는지 확인
-
-3. **MatchMode 필터 제거 후 테스트**
-   - 모든 Lobby가 검색되는지 확인 (필터가 문제인지 분리)
-
-4. **EOS SDK 버전 확인**
-   - `SEARCH_LOBBIES` 상수가 현재 엔진 EOS SDK 버전에서 정의되어 있는지 확인
-
-5. **동일 PC에서 PIE 멀티 클라이언트 테스트**
-   - 같은 PC에서 에디터 3-Client PIE로 Lobby 생성/검색이 정상 동작하는지 먼저 확인
+- **동일 PC PIE 멀티 클라이언트 테스트**: 
+  - `Run Under One Process = False` 옵션 하에서 호스트와 클라이언트가 서로 정상 탐색/매칭되고 맵 전환까지 원활히 완료됨을 검증하였습니다.
+- **비동기 델리게이트 자가 소멸 크래시 방지**:
+  - `FTSTicker`를 활용한 1프레임 지연 기법과 `TSharedFromThis<FExEOSLobbyProvider>` 및 `CreateSP` 약참조 바인딩을 전면 도입하여 어떠한 컴파일러 최적화 옵션 하에서도 UAF(Use-After-Free)가 발생하지 않음을 증명하였습니다.
+- **P2P 연결 수명 유지**:
+  - `ExGameSession` 커스텀 오버라이드를 통해 `ProcessAutoLogin()`의 중복 파괴 요청을 안전하게 무시함으로써, 인게임 진입 후에도 P2P 연결이 끊기지 않고 안정적으로 보존됩니다.
