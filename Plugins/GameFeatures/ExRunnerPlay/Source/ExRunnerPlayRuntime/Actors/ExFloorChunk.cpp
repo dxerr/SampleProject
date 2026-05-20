@@ -22,11 +22,9 @@ AExFloorChunk::AExFloorChunk()
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	RootComponent = SceneRoot;
 
-	// 바닥 메시 생성 및 루트에 부착 (트레드밀 이동을 위해 Movable 설정)
-	SceneRoot->SetMobility(EComponentMobility::Movable);
+	// 바닥 메시 생성 및 루트에 부착
 	FloorMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FloorMesh"));
 	FloorMesh->SetupAttachment(RootComponent);
-	FloorMesh->SetMobility(EComponentMobility::Movable);
 
 	// 기본 콜리전 설정
 	FloorMesh->SetCollisionProfileName(TEXT("BlockAll"));
@@ -355,7 +353,7 @@ void AExFloorChunk::ApplyGap(float GapStartDist, float GapWidth)
 			for (int32 i = 0; i < FloorMesh->GetNumMaterials(); ++i) { LeftFloor->SetMaterial(i, FloorMesh->GetMaterial(i)); }
 
 			LeftFloor->SetCollisionProfileName(TEXT("BlockAll"));
-			LeftFloor->SetMobility(EComponentMobility::Movable);
+			LeftFloor->SetMobility(EComponentMobility::Stationary);
 			LeftFloor->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
 			LeftFloor->RegisterComponent();
 
@@ -380,7 +378,7 @@ void AExFloorChunk::ApplyGap(float GapStartDist, float GapWidth)
 			for (int32 i = 0; i < FloorMesh->GetNumMaterials(); ++i) { RightFloor->SetMaterial(i, FloorMesh->GetMaterial(i)); }
 
 			RightFloor->SetCollisionProfileName(TEXT("BlockAll"));
-			RightFloor->SetMobility(EComponentMobility::Movable);
+			RightFloor->SetMobility(EComponentMobility::Stationary);
 			RightFloor->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
 			RightFloor->RegisterComponent();
 
@@ -654,7 +652,7 @@ void AExFloorChunk::ApplyCurve(float Angle, float Radius, int32 SegmentCount, bo
 
 		SplineMesh->SetCollisionProfileName(TEXT("BlockAll"));
 		SplineMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-		SplineMesh->SetMobility(EComponentMobility::Movable);
+		SplineMesh->SetMobility(EComponentMobility::Stationary);
 
 		SplineMesh->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
 		SplineMesh->RegisterComponent();
@@ -869,7 +867,7 @@ USplineMeshComponent* AExFloorChunk::SpawnGapSplineMesh(float StartDist, float E
 	
 	SplineMesh->SetCollisionProfileName(TEXT("BlockAll"));
 	SplineMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	SplineMesh->SetMobility(EComponentMobility::Movable); // 어태치 에러 대응
+	SplineMesh->SetMobility(EComponentMobility::Stationary); // 어태치 에러 대응
 
 	SplineMesh->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
 	SplineMesh->RegisterComponent();
