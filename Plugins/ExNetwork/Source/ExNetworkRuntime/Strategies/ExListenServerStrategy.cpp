@@ -98,28 +98,20 @@ void FExListenServerStrategy::StartGameSession(const FString& MapPath, UWorld* W
 		return;
 	}
 
-	// ServerTravel 실행 먼저, 이후 5초 후에 로비 파괴
-	// 리즘: ServerTravel 직후에 파괴하면 클라이언트가 P2P 핸드쉘이크 완료 전 세션 정보를 잃어버릴 수 있음.
-	// 5초 후에는 코드가 월드에 주보 할당되어 있지 않을 수 있으므로, 럈다 폰소로 진행.
-	if (LobbyProvider && LobbyProvider->IsInLobby())
+	// [중요 및 핵심 원인 해결] 
+	// 호스트가 ServerTravel 시점에 5초 지연 로비를 임의 파괴하던 구식 타이머를 전면 제거합니다.
+	// 로비 세션을 조기 파괴하면 전환 완료 전후의 P2P 컨텍스트가 완전 소실되어 클라이언트 접속 타임아웃(com.epicgames.p2p.request_connection 타임아웃)을 유발합니다.
+	// 매칭이 완료된 세션은 이미 bShouldAdvertise=false 설정을 통해 신규 매칭 검색에서 완벽 격리되었으므로,
+	// 인게임 세션 및 P2P 무결성을 위해 게임 완료(Idle 복귀) 시까지 세션을 파괴하지 않고 전적으로 유지합니다.
+
+	// 맵 Travel URL 정교한 매개변수 빌드 (?listen 옵션을 맵 직후 처음에 두어 엔진 오진 방지)
+	FString TravelURL = MapPath + TEXT("?listen");
+	if (CurrentWaitConfig.ExpectedPlayerCount > 0)
 	{
-		TWeakPtr<IExLobbyProvider> WeakLobbyProvider = LobbyProvider;
-		FTSTicker::GetCoreTicker().AddTicker(
-			FTickerDelegate::CreateLambda([WeakLobbyProvider](float) -> bool
-			{
-				TSharedPtr<IExLobbyProvider> SharedLobbyProvider = WeakLobbyProvider.Pin();
-				if (SharedLobbyProvider && SharedLobbyProvider->IsInLobby())
-				{
-					UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] ServerTravel 후 로비 정리 실행."));
-					SharedLobbyProvider->DestroyLobby();
-				}
-				return false; // 일회성
-			}),
-			5.0f // 5초 후 실행 — 클라이언트 P2P 핸드쉘이크 완료 시간 보장
-		);
+		int32 TargetExpectedCount = CurrentWaitConfig.bIsSinglePlay ? 1 : CurrentWaitConfig.ExpectedPlayerCount;
+		TravelURL += FString::Printf(TEXT("?ExpectedPlayers=%d"), TargetExpectedCount);
 	}
 
-	const FString TravelURL = MapPath + TEXT("?listen");
 	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] ServerTravel 실행 — URL=%s"), *TravelURL);
 	World->ServerTravel(TravelURL);
 }
