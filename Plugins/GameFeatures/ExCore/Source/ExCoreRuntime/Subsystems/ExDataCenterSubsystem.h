@@ -130,6 +130,22 @@ public:
 	}
 
 	/**
+	 * 에러 출력 없이 해당 타입의 Config가 등록되어 있는지 안전하게 확인한다.
+	 * DataCenter가 준비됐는지 사전 체크하는 용도로 사용한다.
+	 * (OnDataCenterUpdated 핸들러에서 GetConfig 호출 전 가드로 사용 권장)
+	 *
+	 * 사용 예:
+	 *   if (DataCenter->HasConfig<UExRunnerConfig>()) { ... GetConfig<UExRunnerConfig>() ... }
+	 */
+	template <typename T>
+	bool HasConfig() const
+	{
+		static_assert(TIsDerivedFrom<T, UExConfigDataAsset>::IsDerived,
+			"HasConfig<T>: T는 UExConfigDataAsset의 서브클래스여야 합니다.");
+		return ConfigMap.Contains(T::StaticClass());
+	}
+
+	/**
 	 * 태그를 키로 단건 Definition DA를 반환한다.
 	 * 미등록 시 nullptr 반환 (경고 없음 — Definition은 Optional 케이스 허용).
 	 *
