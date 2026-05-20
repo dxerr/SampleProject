@@ -82,24 +82,18 @@ void AExRunnerGameMode::BeginPlay()
 			EventSubsystem->GetEventDelegate(TAG_Rule_GoalReached).AddDynamic(this, &AExRunnerGameMode::OnRuleEndGameEvent);
 		}
 
-		// ── Experience 로드 완료 콜백 구독 ──
-		// DataCenter는 GameFeature 활성화 이후에만 사용 가능합니다.
-		// ExGameModeBase::BeginPlay()에서 ServerSetCurrentExperience()가 호출되어
-		// Experience 로드가 비동기로 시작되었으므로, 완료 이벤트를 구독하여
-		// DataCenter 조회와 PrewarmRunnerWorld를 안전한 시점에 실행합니다.
-		if (AGameStateBase* GS = GetGameState<AGameStateBase>())
+		// ── DataCenter 업데이트 구독 ──
+		// OnExperienceLoadCompleteEvent는 GameFeature 활성화 이전에 발화할 수 있으므로
+		// DataCenter에 직접 구독한다. RegisterConfig/RegisterPreset 이후 발화가 보장되므로
+		// GetConfig 호출 시점이 항상 안전하다.
+		if (UGameInstance* GI = World->GetGameInstance())
 		{
-			if (UExExperienceManagerComponent* ExpManager = GS->GetComponentByClass<UExExperienceManagerComponent>())
+			if (UExDataCenterSubsystem* DataCenter = GI->GetSubsystem<UExDataCenterSubsystem>())
 			{
-				if (ExpManager->IsExperienceLoaded())
-				{
-					// 이미 로드 완료된 경우 (재진입 등 예외 케이스) 즉시 실행
-					OnExperienceReady();
-				}
-				else
-				{
-					ExpManager->OnExperienceLoadCompleteEvent.AddUObject(this, &AExRunnerGameMode::OnExperienceReady);
-				}
+				DataCenter->OnDataCenterUpdated.AddDynamic(this, &AExRunnerGameMode::OnDataCenterUpdated_GameMode);
+
+				// 이미 DataCenter가 준비된 경우 즉시 초기화 시도 (재진입 / 빠른 활성화 케이스)
+				TryInitRunnerFromDataCenter();
 			}
 		}
 	}
@@ -107,27 +101,46 @@ void AExRunnerGameMode::BeginPlay()
 
 void AExRunnerGameMode::OnExperienceReady()
 {
-	// 이 시점은 ExRunnerPlay GameFeature가 완전히 활성화된 이후입니다.
-	// GameFeatureAction_AddExData가 DataCenter에 모든 데이터를 등록 완료한 상태이므로
-	// GetConfig / GetPreset 호출이 안전합니다.
+	// 현재 미사용. DataCenter 초기화는 OnDataCenterUpdated_GameMode / TryInitRunnerFromDataCenter로 처리.
+	// 향후 Experience 기반 UI 등 DataCenter 비의존 초기화가 필요할 경우 여기에 추가.
+}
 
-	if (UGameInstance* GI = GetGameInstance())
-	{
-		if (UExDataCenterSubsystem* DataCenter = GI->GetSubsystem<UExDataCenterSubsystem>())
-		{
-			if (UExRunnerConfig* Config = DataCenter->GetConfig<UExRunnerConfig>())
-			{
-				RunnerConfig = Config;
-				UE_LOG(LogExRunnerPlay, Log, TEXT("[ExRunnerGameMode] OnExperienceReady: RunnerConfig 로드 완료 (%s)"), *Config->GetName());
-			}
-			else
-			{
-				UE_LOG(LogExRunnerPlay, Error, TEXT("[ExRunnerGameMode] OnExperienceReady: RunnerConfig를 DataCenter에서 찾을 수 없습니다. GameFeatureAction_AddExData 설정을 확인하세요."));
-			}
-		}
-	}
+void AExRunnerGameMode::OnDataCenterUpdated_GameMode()
+{
+	// DataCenter에 데이터가 추가될 때마다 호출된다.
+	// TryInitRunnerFromDataCenter가 내부에서 HasConfig 가드를 사용하므로
+	// Config가 없는 시점의 호출은 조용히 무시된다.
+	TryInitRunnerFromDataCenter();
+}
 
-	// 플레이어가 접속하기 전 월드 초기 세팅 완료
+void AExRunnerGameMode::TryInitRunnerFromDataCenter()
+{
+	// 이미 초기화 완료된 경우 재진입 방지
+	if (bDataCenterInitialized) { return; }
+
+	UGameInstance* GI = GetGameInstance();
+	if (!GI) { return; }
+
+	UExDataCenterSubsystem* DataCenter = GI->GetSubsystem<UExDataCenterSubsystem>();
+	if (!DataCenter) { return; }
+
+	// HasConfig<T>()로 사전 가드 — Config가 없으면 에러 없이 조용히 반환
+	// (RegisterConfig가 ConfigMap 추가 이후 OnDataCenterUpdated를 발화하므로
+	//  이 함수가 호출되는 시점에 HasConfig가 true면 GetConfig는 반드시 성공함)
+	if (!DataCenter->HasConfig<UExRunnerConfig>()) { return; }
+
+	UExRunnerConfig* Config = DataCenter->GetConfig<UExRunnerConfig>();
+	if (!Config) { return; } // 이론상 도달 불가 (HasConfig 가드 통과 시)
+
+	bDataCenterInitialized = true;
+
+	// 구독 해제 — 이후 DataCenter 업데이트는 더 이상 처리할 필요 없음
+	DataCenter->OnDataCenterUpdated.RemoveDynamic(this, &AExRunnerGameMode::OnDataCenterUpdated_GameMode);
+
+	RunnerConfig = Config;
+	UE_LOG(LogExRunnerPlay, Log, TEXT("[ExRunnerGameMode] TryInitRunnerFromDataCenter: RunnerConfig 로드 완료 (%s)"), *Config->GetName());
+
+	// DataCenter 준비 완료 → 월드 초기 세팅 실행
 	PrewarmRunnerWorld();
 }
 

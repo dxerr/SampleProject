@@ -116,6 +116,9 @@ private:
 	/** DataCenter로부터 할당받은 RunnerConfig 의 약참조 */
 	TWeakObjectPtr<UExRunnerConfig> RunnerConfig;
 
+	/** DataCenter 초기화 완료 여부 (중복 실행 방지) */
+	bool bDataCenterInitialized = false;
+
 	/** PlayerPawn 캐시 */
 	TWeakObjectPtr<APawn> CachedPlayerPawn;
 
@@ -132,6 +135,23 @@ private:
 	 * DataCenter 조회 및 PrewarmRunnerWorld 호출은 반드시 이 시점 이후에 수행해야 한다.
 	 */
 	void OnExperienceReady();
+
+	/**
+	 * DataCenter 업데이트 콜백.
+	 * UExDataCenterSubsystem::OnDataCenterUpdated 에 바인딩된다.
+	 * RegisterConfig가 ConfigMap에 데이터를 추가한 직후 발화하므로,
+	 * GetConfig 호출이 반드시 성공이 보장된 가장 안전한 진입점이다.
+	 * HasConfig<T>() 가드를 통해 원하는 타입이 등록됐을 때만 초기화를 진행한다.
+	 */
+	UFUNCTION()
+	void OnDataCenterUpdated_GameMode();
+
+	/**
+	 * DataCenter에서 RunnerConfig를 안전하게 조회하여 초기화를 시도한다.
+	 * HasConfig<T>()로 먼저 가드하므로 데이터 미등록 시 에러를 출력하지 않는다.
+	 * 초기화 성공 시 OnDataCenterUpdated 구독을 해제하고 PrewarmRunnerWorld를 호출한다.
+	 */
+	void TryInitRunnerFromDataCenter();
 
 	/**
 	 * 캐릭터 회전 갱신 (경로 접선 방향)
