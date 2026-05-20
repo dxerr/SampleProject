@@ -25,6 +25,7 @@
 #include "Components/BoxComponent.h"
 #include "ExRunnerPlayRuntimeModule.h"
 
+#include "Experience/ExExperienceManagerComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "DrawDebugHelpers.h" // 디버그 드로잉용
@@ -59,17 +60,9 @@ AExRunnerGameMode::AExRunnerGameMode()
 void AExRunnerGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
 {
 	Super::InitGame(MapName, Options, ErrorMessage);
-
-	if (UGameInstance* GI = GetGameInstance())
-	{
-		if (UExDataCenterSubsystem* DataCenter = GI->GetSubsystem<UExDataCenterSubsystem>())
-		{
-			if (UExRunnerConfig* Config = DataCenter->GetConfig<UExRunnerConfig>())
-			{
-				RunnerConfig = Config;
-			}
-		}
-	}
+	// DataCenter 조회는 이 시점에 불가능합니다.
+	// GameFeature(ExRunnerPlay)가 아직 활성화되지 않아 DataCenter가 비어 있습니다.
+	// DataCenter 의존 초기화는 OnExperienceReady()에서 수행합니다.
 }
 
 void AExRunnerGameMode::BeginPlay()
@@ -89,20 +82,53 @@ void AExRunnerGameMode::BeginPlay()
 			EventSubsystem->GetEventDelegate(TAG_Rule_GoalReached).AddDynamic(this, &AExRunnerGameMode::OnRuleEndGameEvent);
 		}
 
-		if (UGameInstance* GI = World->GetGameInstance())
+		// ── Experience 로드 완료 콜백 구독 ──
+		// DataCenter는 GameFeature 활성화 이후에만 사용 가능합니다.
+		// ExGameModeBase::BeginPlay()에서 ServerSetCurrentExperience()가 호출되어
+		// Experience 로드가 비동기로 시작되었으므로, 완료 이벤트를 구독하여
+		// DataCenter 조회와 PrewarmRunnerWorld를 안전한 시점에 실행합니다.
+		if (AGameStateBase* GS = GetGameState<AGameStateBase>())
 		{
-			if (UExDataCenterSubsystem* DataCenter = GI->GetSubsystem<UExDataCenterSubsystem>())
+			if (UExExperienceManagerComponent* ExpManager = GS->GetComponentByClass<UExExperienceManagerComponent>())
 			{
-				if (UExRunnerConfig* Config = DataCenter->GetConfig<UExRunnerConfig>())
+				if (ExpManager->IsExperienceLoaded())
 				{
-					RunnerConfig = Config;
+					// 이미 로드 완료된 경우 (재진입 등 예외 케이스) 즉시 실행
+					OnExperienceReady();
+				}
+				else
+				{
+					ExpManager->OnExperienceLoadCompleteEvent.AddUObject(this, &AExRunnerGameMode::OnExperienceReady);
 				}
 			}
 		}
-
-		// 플레이어가 접속하기 전 월드 초기 세팅 완료
-		PrewarmRunnerWorld();
 	}
+}
+
+void AExRunnerGameMode::OnExperienceReady()
+{
+	// 이 시점은 ExRunnerPlay GameFeature가 완전히 활성화된 이후입니다.
+	// GameFeatureAction_AddExData가 DataCenter에 모든 데이터를 등록 완료한 상태이므로
+	// GetConfig / GetPreset 호출이 안전합니다.
+
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UExDataCenterSubsystem* DataCenter = GI->GetSubsystem<UExDataCenterSubsystem>())
+		{
+			if (UExRunnerConfig* Config = DataCenter->GetConfig<UExRunnerConfig>())
+			{
+				RunnerConfig = Config;
+				UE_LOG(LogExRunnerPlay, Log, TEXT("[ExRunnerGameMode] OnExperienceReady: RunnerConfig 로드 완료 (%s)"), *Config->GetName());
+			}
+			else
+			{
+				UE_LOG(LogExRunnerPlay, Error, TEXT("[ExRunnerGameMode] OnExperienceReady: RunnerConfig를 DataCenter에서 찾을 수 없습니다. GameFeatureAction_AddExData 설정을 확인하세요."));
+			}
+		}
+	}
+
+	// 플레이어가 접속하기 전 월드 초기 세팅 완료
+	PrewarmRunnerWorld();
 }
 
 void AExRunnerGameMode::PrewarmRunnerWorld()

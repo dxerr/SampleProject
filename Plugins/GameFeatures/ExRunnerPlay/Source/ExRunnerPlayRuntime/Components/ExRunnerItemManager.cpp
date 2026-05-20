@@ -25,12 +25,12 @@ void UExRunnerItemManager::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// BeginPlay에서 미리 로드를 시도하지만, ChunkSpawner가 더 일찍 동작할 수 있으므로
-	// SpawnItemsOnChunk 등에서 캐싱 검사를 한 번 더 수행합니다.
-	EnsureSpawnTableLoaded();
-
-	UE_LOG(LogExItemSystem, Log, TEXT("[ExRunnerItemManager] BeginPlay — SpawnTableTag: %s / Load: %s"),
-		*SpawnTableTag.ToString(), CachedSpawnTable ? TEXT("Success") : TEXT("Fail"));
+	// ── SpawnTable 조기 로드 제거 ──
+	// DataCenter는 GameFeature(ExRunnerPlay) 활성화 이후에만 사용 가능합니다.
+	// BeginPlay 시점에는 Experience 로드가 완료되지 않아 DataCenter가 비어 있으므로
+	// GetPreset 호출이 실패하고 화면에 오류 메시지가 출력됩니다.
+	// SpawnTable은 EnsureSpawnTableLoaded()의 재시도 로직에 의해 최초 사용 시점에
+	// 자동으로 지연 로드됩니다 (SpawnItemsOnChunk, GenerateItemPlan 등).
 
 	// 클라이언트 측 수동 Attach 이벤트 수신 대기 (AExItemPickupBase에서 발송)
 	if (UWorld* World = GetWorld())

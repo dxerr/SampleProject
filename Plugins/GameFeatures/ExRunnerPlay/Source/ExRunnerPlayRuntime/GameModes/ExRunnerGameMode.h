@@ -17,6 +17,7 @@ class UExPathManager;
 class UExBGMTrackDataAsset;
 class UExMusicPhaseDataAsset;
 class UExRunnerRuleManagerComponent;
+class UExExperienceManagerComponent;
 struct FExGameplayEventPayload;
 class UShapeComponent;
 
@@ -123,6 +124,14 @@ private:
 
 	/** 초기 맵 데이터 스폰 (Chunk 등) 동기적 수행 */
 	void PrewarmRunnerWorld();
+
+	/**
+	 * Experience 로드 완료 콜백.
+	 * ExExperienceManagerComponent::OnExperienceLoadCompleteEvent 에 바인딩되어,
+	 * GameFeature가 완전히 활성화되어 DataCenter가 준비된 시점에 호출된다.
+	 * DataCenter 조회 및 PrewarmRunnerWorld 호출은 반드시 이 시점 이후에 수행해야 한다.
+	 */
+	void OnExperienceReady();
 
 	/**
 	 * 캐릭터 회전 갱신 (경로 접선 방향)
