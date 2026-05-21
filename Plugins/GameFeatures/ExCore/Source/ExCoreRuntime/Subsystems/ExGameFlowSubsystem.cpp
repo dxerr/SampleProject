@@ -4,6 +4,10 @@
 #include "Tags/ExFlowTags.h"
 #include "Experience/ExExperienceDefinition.h"
 #include "Misc/PackageName.h"
+#include "ExOnlineSubsystem.h"
+#include "UI/Subsystems/ExUIManagerSubsystem.h"
+#include "Engine/LocalPlayer.h"
+#include "Engine/GameInstance.h"
 
 
 DEFINE_LOG_CATEGORY_STATIC(LogExGameFlow, Log, All);
@@ -27,6 +31,20 @@ void UExGameFlowSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	
 	// InGame -> Lobby(복귀)
 	AllowedTransitions.Add(ExFlowTags::Flow_InGame, { ExFlowTags::Flow_Lobby });
+
+	// 네트워크 실패 이벤트 구독을 다음 틱으로 지연 (의존성 타이밍 문제 회피)
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([this](float) -> bool
+	{
+		if (UGameInstance* GI = GetGameInstance())
+		{
+			if (UExOnlineSubsystem* OnlineSub = GI->GetSubsystem<UExOnlineSubsystem>())
+			{
+				OnlineSub->OnMatchConnectionFailed.AddDynamic(this, &UExGameFlowSubsystem::OnMatchConnectionFailed);
+				UE_LOG(LogExGameFlow, Log, TEXT("[ExGameFlowSubsystem] OnMatchConnectionFailed 바인딩 완료."));
+			}
+		}
+		return false;
+	}), 0.1f);
 }
 
 void UExGameFlowSubsystem::Deinitialize()
@@ -34,6 +52,12 @@ void UExGameFlowSubsystem::Deinitialize()
 	// 델리게이트 바인딩 해제
 	OnFlowStateChanged.Clear();
 	OnRequestTravel.Clear();
+
+	if (PostLoadMapHandle.IsValid())
+	{
+		FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(PostLoadMapHandle);
+		PostLoadMapHandle.Reset();
+	}
 
 	Super::Deinitialize();
 }
@@ -115,4 +139,48 @@ void UExGameFlowSubsystem::TransitionToExperience(const UExExperienceDefinition*
 
 	SetFlowState(ExFlowTags::Flow_InGame);
 	OnRequestTravel.Broadcast(MapURL);
+}
+
+void UExGameFlowSubsystem::OnMatchConnectionFailed(const FString& ErrorMessage)
+{
+	UE_LOG(LogExGameFlow, Error, TEXT("[ExGameFlowSubsystem] 네트워크 접속 실패 수신: %s"), *ErrorMessage);
+
+	// 맵 트래블 진행 중(로비로 복귀)일 수 있으므로, 에러 메시지를 캐싱하고 맵 로드 완료 후에 띄웁니다.
+	PendingErrorMessage = ErrorMessage;
+
+	if (!PostLoadMapHandle.IsValid())
+	{
+		PostLoadMapHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddLambda([this](UWorld* LoadedWorld)
+		{
+			if (!PendingErrorMessage.IsEmpty() && LoadedWorld)
+			{
+				// UI 생성을 위해 한 프레임(또는 소폭) 지연
+				FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([this](float) -> bool
+				{
+					if (UGameInstance* GI = GetGameInstance())
+					{
+						if (APlayerController* PC = GI->GetFirstLocalPlayerController())
+						{
+							if (ULocalPlayer* LP = PC->GetLocalPlayer())
+							{
+								if (UExUIManagerSubsystem* UIManager = LP->GetSubsystem<UExUIManagerSubsystem>())
+								{
+									UIManager->ShowAcknowledgeBP(
+										FText::FromString(TEXT("서버 연결 실패")),
+										FText::FromString(PendingErrorMessage)
+									);
+									PendingErrorMessage.Empty();
+								}
+							}
+						}
+					}
+					return false;
+				}), 0.5f);
+			}
+
+			// 1회용 호출 후 바인딩 해제
+			FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(PostLoadMapHandle);
+			PostLoadMapHandle.Reset();
+		});
+	}
 }

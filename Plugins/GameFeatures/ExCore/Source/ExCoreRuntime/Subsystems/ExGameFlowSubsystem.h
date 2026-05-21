@@ -49,6 +49,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ExFlow", meta=(DisplayName="Transition To Experience"))
 	void TransitionToExperience(const UExExperienceDefinition* ExperienceConfig);
 
+	UFUNCTION()
+	void OnMatchConnectionFailed(const FString& ErrorMessage);
+
 public:
 	UPROPERTY(BlueprintAssignable, Category = "ExFlow")
 	FOnFlowStateChanged OnFlowStateChanged;
@@ -62,4 +65,6 @@ protected:
 
 private:
 	FGameplayTag CurrentFlowState;
+	FString PendingErrorMessage;
+	FDelegateHandle PostLoadMapHandle;
 };

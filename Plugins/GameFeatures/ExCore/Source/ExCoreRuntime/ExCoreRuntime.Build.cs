@@ -65,6 +65,11 @@ public class ExCoreRuntime : ModuleRules
 				"CommonInput",
 				"ModelViewViewModel",
 				
+				// --- Online / Session ---
+				"OnlineSubsystem",
+				"OnlineSubsystemUtils",
+				"ExNetworkRuntime",
+				
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

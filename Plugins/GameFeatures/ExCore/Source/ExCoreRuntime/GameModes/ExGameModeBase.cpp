@@ -18,6 +18,11 @@
 #include "Player/ExPlayerStateBase.h"
 #include "Player/ExPlayerControllerBase.h"
 #include "TimerManager.h"
+#include "Engine/LocalPlayer.h"
+#include "UI/Subsystems/ExUIManagerSubsystem.h"
+#include "OnlineSubsystem.h"
+#include "Interfaces/OnlineSessionInterface.h"
+#include "OnlineSessionSettings.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogExCoreGM, Log, All);
 
@@ -78,6 +83,26 @@ void AExGameModeBase::BeginPlay()
 	UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] BeginPlay - SpawnDataAsset: %s"), 
 		SpawnDataAsset ? *SpawnDataAsset->GetName() : TEXT("None"));
 
+	// 호스트인 경우, 맵 로드가 끝났음을 세션에 알립니다.
+	if (HasAuthority())
+	{
+		if (IOnlineSubsystem* OSS = IOnlineSubsystem::Get(FName(TEXT("EOS"))))
+		{
+			if (IOnlineSessionPtr SessionInterface = OSS->GetSessionInterface())
+			{
+				FName SessionName(TEXT("ExMatch"));
+				if (FNamedOnlineSession* Session = SessionInterface->GetNamedSession(SessionName))
+				{
+					FOnlineSessionSettings* Settings = &Session->SessionSettings;
+					Settings->Set(FName(TEXT("HOST_MAP_READY")), true, EOnlineDataAdvertisementType::ViaOnlineService);
+					SessionInterface->UpdateSession(SessionName, *Settings, true);
+					
+					FString CurrentNetDriverName = GetWorld()->GetNetDriver() ? GetWorld()->GetNetDriver()->NetDriverName.ToString() : TEXT("None");
+					UE_LOG(LogExCoreGM, Log, TEXT("[ExGameModeBase] BeginPlay 진단 로그 - HOST_MAP_READY=true 갱신 완료. 현재 NetDriver: %s, 맵: %s"), *CurrentNetDriverName, *GetWorld()->GetMapName());
+				}
+			}
+		}
+	}
 }
 
 void AExGameModeBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -119,6 +144,16 @@ void AExGameModeBase::SetMatchPhase(FGameplayTag NewPhase, bool bForceTransition
 	FGameplayTag OldPhase = CurrentPhase;
 	ExGameState->CurrentMatchPhase = NewPhase; // friend 선언으로 접근 가능
 	
+	// 대기 시간 타임아웃 세팅
+	if (NewPhase == ExMatchTags::Match_WaitingForPlayers)
+	{
+		float WaitTime = GetMaxWaitForPlayersSeconds();
+		if (WaitTime > 0.f)
+		{
+			GetWorld()->GetTimerManager().SetTimer(WaitForPlayersTimerHandle, this, &AExGameModeBase::OnWaitForPlayersTimeout, WaitTime, false);
+		}
+	}
+
 	// 서버 자신도 로컬 델리게이트를 돌도록 강제 트리거
 	ExGameState->OnRep_MatchPhase(OldPhase);
 
@@ -243,6 +278,7 @@ void AExGameModeBase::CheckAndStartMatch()
 		if (bAllLoaded && bAllReady)
 		{
 			UE_LOG(LogExCoreGM, Log, TEXT("[ExRunnerStartDiag] CheckAndStartMatch: 모든 조건 충족! 실제 시작 진행."));
+			GetWorld()->GetTimerManager().ClearTimer(WaitForPlayersTimerHandle);
 			OnAllPlayersReady();
 		}
 	}
@@ -434,6 +470,24 @@ void AExGameModeBase::StartCountdown()
 		
 		GetWorld()->GetTimerManager().SetTimer(CountdownTimerHandle, this, &AExGameModeBase::FinishCountdown, GetCountdownDuration(), false);
 	}
+}
+
+void AExGameModeBase::OnWaitForPlayersTimeout()
+{
+	UE_LOG(LogExCoreGM, Warning, TEXT("[ExGameModeBase] OnWaitForPlayersTimeout: Max wait time reached. Forcing game start."));
+	
+	if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+	{
+		if (ULocalPlayer* LP = PC->GetLocalPlayer())
+		{
+			if (UExUIManagerSubsystem* UIManager = LP->GetSubsystem<UExUIManagerSubsystem>())
+			{
+				UIManager->ShowToast(FText::FromString(TEXT("접속 대기 시간 초과로 강제 시작합니다.")));
+			}
+		}
+	}
+	
+	OnAllPlayersReady();
 }
 
 void AExGameModeBase::FinishCountdown()
