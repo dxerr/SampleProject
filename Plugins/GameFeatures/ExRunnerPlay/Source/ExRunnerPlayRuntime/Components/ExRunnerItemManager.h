@@ -83,16 +83,6 @@ protected:
 	// ── 중앙 제어 인터페이스 ──
 public:
 
-	/**
-	 * ChunkSpawner가 장애물 배치를 완료한 후 명시적으로 호출한다.
-	 * 내부에서 Chunk의 GetLocalTransformAtDistance()를 사용해 표면 좌표를 잡고,
-	 * ObstacleManager에 QueryObstacleAtDistance()로 장애물 정보를 질의하여 Z축을 결정한다.
-	 * @param TargetChunk 대상 청크
-	 * @param ObstacleManager 장애물 매니저 참조 (질의용)
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Runner|Item")
-	void SpawnItemsOnChunk(AExFloorChunk* TargetChunk, UExObstacleManager* ObstacleManager);
-
 	/** ChunkSpawner의 소멸 이벤트를 구독하여 청크와 함께 제거되는 아이템들을 회수 처리한다. */
 	UFUNCTION(BlueprintCallable, Category = "Runner|Item")
 	void BindToSpawner(UExChunkSpawner* Spawner);
@@ -118,15 +108,6 @@ private:
 	/** 안전 배치 거리 추적 (아이템 간 최소 이격 보장) */
 	float LastItemSafeEndDistance = -99999.f;
 
-	/** 코인 라인 배치 */
-	void SpawnCoinLine(AExFloorChunk* Chunk, UExObstacleManager* ObstacleManager, float StartDistance, float EndDistance);
-
-	/** 코인 객체로부터 실제 충돌 반경을 동적으로 획득하여 캐싱 */
-	float GetCachedCoinRadius();
-
-	/** 청크 내 버프 아이템 스폰 (단독 또는 코인 라인 중 삽입) */
-	void SpawnBuffItem(AExFloorChunk* Chunk, UExObstacleManager* ObstacleManager, float AtDistance, float LateralOffset = 0.f);
-
 	/**
 	 * GenerateItemPlan 내부 헬퍼 — 코인 라인 Plan 산출.
 	 * §3.4 규칙: ObstaclePlan 기반 질의로 Z축 결정. 결과를 OutPlan에 추가한다.
@@ -142,9 +123,6 @@ private:
 		float AtDistance, float LateralOffset, TArray<FExSpawnPlan>& OutPlan);
 
 protected:
-	/** 코인 획득 반경 캐싱 (여백 계산용) */
-	UPROPERTY(Transient)
-	float CachedCoinRadius = -1.f;
 	/** 뱀 패턴을 끊김 없이 이어가기 위한 지속 상태 변수 */
 	UPROPERTY(Transient)
 	int32 PersistentTargetLane = 0; // -1, 0, 1 중 하나
