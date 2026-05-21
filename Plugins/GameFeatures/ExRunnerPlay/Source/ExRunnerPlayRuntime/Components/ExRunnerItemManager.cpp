@@ -127,7 +127,10 @@ void UExRunnerItemManager::OnChunkDespawned(AExFloorChunk* Chunk)
 		{
 			if (AExItemPickupBase* Item = WeakItem.Get())
 			{
-				ReturnItemToPool(Item);
+				if (GetOwner() && GetOwner()->HasAuthority())
+				{
+					ReturnItemToPool(Item);
+				}
 			}
 		}
 		SpawnedBySegment.Remove(Chunk->SegmentIndex);
@@ -141,7 +144,10 @@ void UExRunnerItemManager::OnChunkDespawned(AExFloorChunk* Chunk)
 		{
 			if (AExItemPickupBase* Item = Cast<AExItemPickupBase>(Attached))
 			{
-				ReturnItemToPool(Item);
+				if (GetOwner() && GetOwner()->HasAuthority())
+				{
+					ReturnItemToPool(Item);
+				}
 			}
 		}
 	}

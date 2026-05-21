@@ -191,7 +191,15 @@ void UExObstacleManager::OnChunkDespawned(AExFloorChunk* Chunk)
 		{
 			if (AActor* Obstacle = WeakObstacle.Get())
 			{
-				ReturnObstacleToPool(Obstacle);
+				if (GetOwner() && GetOwner()->HasAuthority())
+				{
+					ReturnObstacleToPool(Obstacle);
+				}
+				else
+				{
+					// 클라이언트: 풀 관리는 서버가 담당하므로 로컬에서는 참조만 해제
+					ClientAttachedObstacles.Remove(Obstacle);
+				}
 			}
 		}
 		SpawnedBySegment.Remove(Chunk->SegmentIndex);
@@ -214,7 +222,14 @@ void UExObstacleManager::OnChunkDespawned(AExFloorChunk* Chunk)
 			}
 			if (bIsObstacle)
 			{
-				ReturnObstacleToPool(Attached);
+				if (GetOwner() && GetOwner()->HasAuthority())
+				{
+					ReturnObstacleToPool(Attached);
+				}
+				else
+				{
+					ClientAttachedObstacles.Remove(Attached);
+				}
 			}
 		}
 	}
