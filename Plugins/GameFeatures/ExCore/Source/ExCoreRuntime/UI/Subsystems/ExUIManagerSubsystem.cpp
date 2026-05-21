@@ -4,6 +4,9 @@
 #include "UI/Widgets/ExWindowWidget.h"
 #include "UI/Widgets/ExModalWidget.h"
 #include "Engine/LocalPlayer.h"
+#include "Components/OverlaySlot.h"
+#include "Components/VerticalBoxSlot.h"
+#include "Components/CanvasPanelSlot.h"
 
 // GameFeatureAction 등에서 지연(Lazy) 로드용으로 전역 공유하는 대기열
 TArray<TSoftObjectPtr<UExUIDataAsset>> UExUIManagerSubsystem::PendingUIDataList;
@@ -466,7 +469,22 @@ UExToastWidget* UExUIManagerSubsystem::ShowToastFromDescriptor(const FExToastDes
 	{
 		Toast->InitToast(Descriptor);
 		Toast->OnToastClosed.BindUObject(this, &UExUIManagerSubsystem::HandleToastClosed);
-		ToastContainer->AddChild(Toast);
+		
+		if (UPanelSlot* NewSlot = ToastContainer->AddChild(Toast))
+		{
+			// 컨테이너가 Overlay나 VerticalBox일 때, 자식 캔버스가 찌그러지는 것을 방지하기 위해 정렬 속성을 초기화합니다.
+			if (UOverlaySlot* OVSlot = Cast<UOverlaySlot>(NewSlot))
+			{
+				OVSlot->SetHorizontalAlignment(HAlign_Right);
+				OVSlot->SetVerticalAlignment(VAlign_Top);
+			}
+			else if (UVerticalBoxSlot* VBSlot = Cast<UVerticalBoxSlot>(NewSlot))
+			{
+				VBSlot->SetHorizontalAlignment(HAlign_Right);
+				VBSlot->SetVerticalAlignment(VAlign_Top);
+			}
+		}
+
 		ActiveToasts.Add(Toast);
 	}
 	return Toast;
