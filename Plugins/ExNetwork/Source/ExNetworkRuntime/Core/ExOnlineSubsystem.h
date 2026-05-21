@@ -8,12 +8,16 @@
 #include "Core/IExNetServerStrategy.h"
 #include "Core/ExNetworkTypes.h"
 #include "Match/ExMatchTypes.h"
+#include "Net/Core/Connection/NetEnums.h"
 #include "ExOnlineSubsystem.generated.h"
 
 class IOnlineSubsystem;
 
 /** 로그인 완료 BP 델리게이트 */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FExOnLoginCompleteDynDelegate, bool, bSuccess, const FString&, ErrorMessage);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAuthLoginComplete, bool, bSuccess, const FString&, ErrorMessage);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMatchConnectionFailed, const FString&, ErrorMessage);
 
 /** 매칭 완료 BP 델리게이트 */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FExOnMatchFoundDynDelegate, bool, bSuccess, const FString&, ErrorMessage);
@@ -55,10 +59,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "ExNetwork|Auth")
 	bool IsLoggedIn() const;
 
-	/** 로그인 완료 델리게이트. bSuccess=false 시 ErrorMessage 확인. */
+	// --- 콜백 델리게이트 ---
 	UPROPERTY(BlueprintAssignable, Category = "ExNetwork|Auth")
-	FExOnLoginCompleteDynDelegate OnLoginComplete;
+	FOnAuthLoginComplete OnLoginComplete;
 
+	UPROPERTY(BlueprintAssignable, Category = "ExNetwork|Match")
+	FOnMatchConnectionFailed OnMatchConnectionFailed;
+
+	// --- Blueprint 전용 편의 함수 ---
 	/** 현재 서버 전략 타입 문자열 ("ListenServer" / "DedicatedServer" / "None") */
 	UFUNCTION(BlueprintPure, Category = "ExNetwork|Server")
 	FString GetServerTypeString() const;
@@ -158,6 +166,8 @@ private:
 	void InitAuthProviderAndLogin(IOnlineSubsystem* OSS);
 	void HandleAuthLoginComplete(bool bSuccess, const FString& ErrorMessage);
 
+	void HandleNetworkFailure(UWorld* World, class UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
+
 	// --- FSM 핵심 로직 ---
 	void TransitionMatchState(EExMatchState NewState, ETransitionReason Reason);
 	void HandleEnterMatchState(EExMatchState NewState);
@@ -179,6 +189,7 @@ private:
 	FExMatchConfig PendingMatchConfig;
 
 	FDelegateHandle SubsystemCreatedHandle;
+	FDelegateHandle NetworkFailureHandle;
 
 	TUniquePtr<IExAuthProvider> AuthProvider;
 	TUniquePtr<IExNetServerStrategy> ServerStrategy;

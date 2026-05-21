@@ -10,11 +10,15 @@
 #include "Strategies/ExListenServerStrategy.h"
 #include "Strategies/ExDedicatedServerStrategy.h"
 #include "OnlineSubsystem.h"
+#include "Interfaces/OnlineSessionInterface.h"
+#include "OnlineSessionSettings.h"
 #include "OnlineSubsystemUtils.h"
 #include "OnlineDelegates.h"
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
 #include "Containers/Ticker.h"
+#include "Engine/Engine.h"
+#include "Engine/LocalPlayer.h"
 
 void UExOnlineSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -58,6 +62,8 @@ void UExOnlineSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		SubsystemCreatedHandle.Reset();
 		InitAuthProviderAndLogin(OSS);
 	}
+
+	NetworkFailureHandle = GEngine->OnNetworkFailure().AddUObject(this, &UExOnlineSubsystem::HandleNetworkFailure);
 }
 
 IOnlineSubsystem* UExOnlineSubsystem::TryGetEOSSubsystem() const
@@ -139,6 +145,11 @@ void UExOnlineSubsystem::Deinitialize()
 			FOnlineSubsystemDelegates::OnOnlineSubsystemCreated.Remove(SubsystemCreatedHandle);
 			SubsystemCreatedHandle.Reset();
 		}
+		if (NetworkFailureHandle.IsValid())
+		{
+			GEngine->OnNetworkFailure().Remove(NetworkFailureHandle);
+			NetworkFailureHandle.Reset();
+		}
 		if (PendingMatchStateTickerHandle.IsValid())
 		{
 			FTSTicker::GetCoreTicker().RemoveTicker(PendingMatchStateTickerHandle);
@@ -152,6 +163,12 @@ void UExOnlineSubsystem::Deinitialize()
 	{
 		FOnlineSubsystemDelegates::OnOnlineSubsystemCreated.Remove(SubsystemCreatedHandle);
 		SubsystemCreatedHandle.Reset();
+	}
+
+	if (NetworkFailureHandle.IsValid())
+	{
+		GEngine->OnNetworkFailure().Remove(NetworkFailureHandle);
+		NetworkFailureHandle.Reset();
 	}
 
 	if (AuthProvider)
@@ -341,10 +358,14 @@ void UExOnlineSubsystem::StartGame(const FExMatchConfig& Config)
 			return;
 		}
 		
-		// [경쟁 조건 해결] 호스트가 ServerTravel을 완료하고 신규 NetDriverEOS를 띄울 시간을 보장하기 위해 3.0초 대기 후 ClientTravel 실행
-		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame [CLIENT] — 호스트의 맵 로드 및 NetDriver 가동 대기를 위해 3.0초 후 ClientTravel을 지연 실행합니다."));
+		// [경쟁 조건 해결] 호스트가 ServerTravel을 완료하고 맵을 로드했는지 확인하기 위한 세션 프로퍼티 폴링 방식은 
+		// 클라이언트의 로컬 세션 캐시(NamedSession)에 업데이트가 즉각 반영되지 않아 무한 대기(타임아웃)에 빠지는 문제가 발생합니다.
+		// 따라서 클라이언트가 호스트 맵 로드(ServerTravel)가 완전히 끝나고 P2P Listen 소켓이 열릴 때까지 충분한 시간을 대기하도록 
+		// 지연 시간을 기존 6초에서 20초(호스트의 에셋 프리로드 시간 감안)로 연장하여 접속을 시도합니다.
+		UE_LOG(LogExNetwork, Log, TEXT("[UExOnlineSubsystem] StartGame [CLIENT] — 호스트의 맵 로드 및 NetDriver 가동 대기를 위해 20.0초 후 ClientTravel을 지연 실행합니다."));
 		
 		TWeakObjectPtr<UExOnlineSubsystem> WeakSelf = this;
+		
 		FTSTicker::GetCoreTicker().AddTicker(
 			FTickerDelegate::CreateLambda([WeakSelf, ConnectString](float) -> bool
 			{
@@ -368,7 +389,7 @@ void UExOnlineSubsystem::StartGame(const FExMatchConfig& Config)
 				}
 				return false; // 일회성
 			}),
-			3.0f
+			20.0f // 20초 대기 (호스트 에셋 로딩 대기)
 		);
 	}
 }
@@ -385,6 +406,21 @@ void UExOnlineSubsystem::HandleAuthLoginComplete(bool bSuccess, const FString& E
 		UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] 로그인 완료 — 실패. Error=%s"), *ErrorMessage);
 	}
 	OnLoginComplete.Broadcast(bSuccess, ErrorMessage);
+}
+
+void UExOnlineSubsystem::HandleNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString)
+{
+	UE_LOG(LogExNetwork, Error, TEXT("[UExOnlineSubsystem] NetworkFailure Detected: Type=%d, Message=%s"), (int32)FailureType, *ErrorString);
+
+	// 매칭이나 게임 연결 상태에서 문제가 발생한 경우 리셋
+	if (CurrentMatchState != EExMatchState::Idle)
+	{
+		UE_LOG(LogExNetwork, Warning, TEXT("[UExOnlineSubsystem] 클라이언트 접속 타임아웃/끊김. 매치 강제 리셋."));
+		ResetMatchState();
+
+		// UI 서브시스템 직접 참조 대신 델리게이트로 실패를 외부에 알립니다.
+		OnMatchConnectionFailed.Broadcast(TEXT("네트워크 접속이 원활하지 않아 게임 서버 연결에 실패했습니다."));
+	}
 }
 
 // ------------------------------------------------------------------

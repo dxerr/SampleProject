@@ -112,7 +112,7 @@ void FExListenServerStrategy::StartGameSession(const FString& MapPath, UWorld* W
 		TravelURL += FString::Printf(TEXT("?ExpectedPlayers=%d"), TargetExpectedCount);
 	}
 
-	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] ServerTravel 실행 — URL=%s"), *TravelURL);
+	UE_LOG(LogExNetwork, Log, TEXT("[ExListenServerStrategy] 진단 로그 - 호스트 ServerTravel 실행 시작. 현재 시간=%.2f, URL=%s"), FPlatformTime::Seconds(), *TravelURL);
 	World->ServerTravel(TravelURL);
 }
 
