@@ -458,7 +458,7 @@ void UExLobbyMatchViewModel::OnGameStartedCallback(bool bSuccess, const FString&
 		// [신규] 확실하게 다음 스텝(맵 트래블)에 진입하므로, 유지 중이던 토스트를 명시적이고 능동적으로 닫음
 		if (UExUIManagerSubsystem* UIMgr = GetUIManager())
 		{
-			UIMgr->ClearAllToasts(true);
+			UIMgr->ShowLoadingToast(FText::FromString(TEXT("서버에 접속 중입니다...")));
 		}
 	}
 	else
