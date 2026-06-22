@@ -218,7 +218,7 @@ AutoRun 모드의 드래그/스와이프 처리는 `ExBaseTouchPadWidget` + `ExR
 | Y축 위 | RelativeY ≤ -SwipeThreshold | `RequestJumpAction(true)` Hold 방식 |
 | Y축 아래 | RelativeY ≥ +SwipeThreshold | `RequestSlideAction(true)` Active/Restore 방식 |
 
-> 관련 Legacy 문서: `Legacy/Mobile_Joystick_Input_Proposal.md`, `Legacy/ExRunner_MobileJoystick_Setup_Guide.md`, `Legacy/MobileJoystick_Work_Handover.md`
+> 관련 문서: `Legacy/Mobile_Joystick_Input_Proposal.md`, `Guides/ExRunnerPlay/ExRunner_MobileJoystick_Setup_Guide.md`, `Legacy/MobileJoystick_Work_Handover.md`
 
 ---
 

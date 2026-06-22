@@ -1,10 +1,10 @@
 # ExFrameWork: 아이템 시스템 아키텍처 설계서
 
-> **버전:** v1.2  
+> **버전:** v1.3  
 > **대상 엔진:** Unreal Engine 5  
 > **프로젝트:** ExFrameWork  
 > **작성일:** 2026-03-23  
-> **최종 수정:** 2026-03-23 (v1.2: 중앙 제어식 스폰 순서 보장, 곡선/점프 아치(Arc) Z축 보간, 일반 곡선 청크 기본 스폰 명시)  
+> **최종 수정:** 2026-06-22 (v1.3: 실제 구현에 맞춰 결정론적 2단계 스폰(GenerateItemPlan/RealizeItemPlan)으로 갱신. 구 v1.2 SpawnItemsOnChunk 중앙 제어 서술 대체)  
 > **설계 방식:** A안 (Effect-as-Object) + B안 (Tag-Driven Event) 결합  
 > **의존 문서:**  
 > - ExFrameWork_Multiplayer_Flow_Architecture.md (v2.0)  
@@ -129,25 +129,44 @@ struct EXRUNNERPLAYRUNTIME_API FExObstacleContext
 };
 ```
 
-### 3.4 중앙 제어를 위한 UExRunnerItemManager 확장
+### 3.4 결정론적 2단계 스폰을 위한 UExRunnerItemManager 확장
 
-`UExRunnerItemManager`는 더 이상 `OnChunkSpawned` 이벤트를 직접 듣지 않는다. 대신 `UExChunkSpawner`가 주도권을 가지고 아이템 배치를 요청한다.
+> **v1.3 갱신**: 초기 v1.2의 "중앙 제어(Control Tower)식 `SpawnItemsOnChunk()` 단일 호출" 설계는, 멀티플레이 결정론(서버·클라 동일 레이아웃)을 위해 **Plan/Realize 2단계 방식**으로 대체되었다. (참조: `Archive/Plans/Obstacle_Item_Sync_Plan.md` — C안 하이브리드 결정론)
+
+핵심 원칙:
+- `GenerateItemPlan()`은 **서버·클라이언트 양측에서 동일하게 호출**되어 동일한 배치 계획(`TArray<FExSpawnPlan>`)을 산출한다. Authority 가드가 없으며, 결정론은 `InitializeRandomStream()`이 `SharedTrackSeed`로 초기화한 `ItemRandomStream`에 의해 보장된다.
+- `RealizeItemPlan()`은 **서버 전용**으로, 계획을 실제 액터(`AExItemPickupBase`)로 실체화(SpawnActor)한다.
+- 장애물 질의는 라이브 쿼리가 아니라 동일 청크의 `GenerateObstaclePlan()` 결과(`ObstaclePlan`)를 직접 입력받아 수행한다(§3.4 규칙).
 
 ```cpp
 /**
- * 청크 스포너가 장애물 배치를 완료한 후 호출하는 함수.
- * 내부적으로 Chunk의 GetLocalTransformAtDistance()를 사용해 초기 베이스 트랜스폼을 잡는다.
+ * §3.1.1 초기화 계약 — SharedTrackSeed 수신 직후 호출.
+ * Hash(SharedSeed, 2)로 ItemRandomStream을 초기화하여 양측 결정론을 보장한다.
  */
-UFUNCTION(BlueprintCallable, Category = "Runner|Item")
-void SpawnItemsOnChunk(AExFloorChunk* TargetChunk, UExObstacleManager* ObstacleManager);
+void InitializeRandomStream(int32 SharedSeed);
+
+/**
+ * 결정론적 아이템 배치 산출 (서버·클라 양측 호출, Authority 가드 없음).
+ * 동일 청크의 GenerateObstaclePlan 결과를 입력받아 Plan 기반 장애물 질의로 Z축을 결정한다.
+ * @return PathDistance 오름차순으로 정렬된 아이템 배치 계획 배열
+ */
+TArray<FExSpawnPlan> GenerateItemPlan(AExFloorChunk* TargetChunk, const TArray<FExSpawnPlan>& ObstaclePlan);
+
+/**
+ * 서버 전용 실체화 — GenerateItemPlan의 결과로 실제 액터를 SpawnActor.
+ * 반드시 HasAuthority() == true인 컨텍스트에서만 호출한다.
+ */
+void RealizeItemPlan(const TArray<FExSpawnPlan>& Plan, AExFloorChunk* TargetChunk);
 
 /**
  * 장애물 컨텍스트와 구간 내 비율을 기반으로 아이템의 최종 Z 좌표를 결정한다.
+ * (GenerateItemPlan 내부 헬퍼인 GenerateCoinLinePlan에서 호출)
  * @param Context 장애물 질의 결과
- * @param ChunkBaseLocalZ 해당 Distance에서 청크의 바닥 기준 Z (곡선 청크 대응)
+ * @param ChunkBaseZ 해당 Distance에서 청크의 바닥 기준 Z (곡선 청크 대응)
  * @param AlphaInGap Gap 장애물 통과 시 점프 궤적 커브를 평가하기 위한 상대적 거리 비율 (0~1)
  */
-float CalculateItemZ(const FExObstacleContext& Context, float ChunkBaseLocalZ, float AlphaInGap) const;
+UFUNCTION(BlueprintPure, Category = "Runner|Item")
+float CalculateItemZ(const FExObstacleContext& Context, float ChunkBaseZ, float AlphaInGap) const;
 ```
 
 **CalculateItemZ 핵심 구현 (포물선 및 청크 표면 반영):**
@@ -186,27 +205,31 @@ float UExRunnerItemManager::CalculateItemZ(const FExObstacleContext& Context, fl
 }
 ```
 
-### 3.5 중앙 제어 스폰 배치 흐름도 (Sequence)
+### 3.5 결정론적 2단계 스폰 배치 흐름도 (Sequence)
 
 ```
-[AExRunnerGameMode 시작]
+[매치 시작] SharedTrackSeed 결정 (서버 → 복제)
   │
-UExChunkSpawner::SpawnNextChunk()
+  ├─ ObstacleManager->InitializeRandomStream(SharedTrackSeed)
+  └─ ItemManager->InitializeRandomStream(SharedTrackSeed)   (양측)
+  │
+[청크 생성 시] UExChunkSpawner::SpawnNextChunk()
   │
   ├─ 1. AExFloorChunk 생성. (청크 타입별로 직선/곡선 정보 생성 완료)
   │
-  ├─ 2. ObstacleManager->SpawnObstaclesOnChunk(Chunk) 호출
-  │      └─ 장애물이 청크 표면 Transform 기반으로 모두 스폰 완료 (Race Condition 해소)
+  ├─ 2. ObstaclePlan = ObstacleManager->GenerateObstaclePlan(Chunk)   (양측, 결정론)
   │
-  └─ 3. RunnerItemManager->SpawnItemsOnChunk(Chunk, ObstacleManager) 호출
-         │
-         ├─ 코인 라인 배치 위치(Distance) 순회
-         │   ├─ ObstacleManager->QueryObstacleAtDistance()
-         │   ├─ Chunk->GetLocalTransformAtDistance() 로 기본 바닥 Z, 곡률 회전값(Roll, Pitch, Yaw) 확보
-         │   ├─ CalculateItemZ() 로 장애물 조건 및 포물선(Arc) 높이 합산
-         │   └─ SpawnItem()
-         │
-         └─ AttachToActor(Chunk) (항상 월드 시프트 및 청크 삭제 주기에 동기화)
+  ├─ 3. ItemPlan = ItemManager->GenerateItemPlan(Chunk, ObstaclePlan) (양측, 결정론)
+  │      │
+  │      └─ 코인 라인 배치 위치(Distance) 순회 (GenerateCoinLinePlan)
+  │          ├─ ObstaclePlan 기반 장애물 질의로 컨텍스트 확보
+  │          ├─ Chunk->GetLocalTransformAtDistance() 로 기본 바닥 Z, 곡률 회전값 확보
+  │          ├─ CalculateItemZ() 로 장애물 조건 및 포물선(Arc) 높이 합산
+  │          └─ FExSpawnPlan 누적 (SpawnActor 아님, 계획만 산출)
+  │
+  └─ 4. [서버 전용] ItemManager->RealizeItemPlan(ItemPlan, Chunk)
+         ├─ Plan 순회하며 AExItemPickupBase SpawnActor + AttachToActor(Chunk)
+         └─ SpawnedBySegment[SegmentIndex]에 등록 (Despawn 시 일괄 회수)
 ```
 
 ---
@@ -223,33 +246,32 @@ UExChunkSpawner::SpawnNextChunk()
 
 ---
 
-## 6. 시스템 상호작용 다이어그램 (v1.2 갱신 - 중앙 제어 방식)
+## 6. 시스템 상호작용 다이어그램 (v1.3 갱신 - 결정론적 2단계 방식)
 
-디커플링(Decoupling) 자체는 유지하되, **배치 순서의 무결성을 위해 `ChunkSpawner`를 컨트롤 타워(Control Tower)로 격상**한다.
+디커플링(Decoupling)을 유지하면서, **배치 순서의 무결성과 멀티플레이 결정론을 위해 `ChunkSpawner`가 Plan 산출 순서를 주도**한다. Plan 산출(Generate)은 양측에서 동일하게 실행되고, 실체화(Realize)는 서버만 수행한다.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│                     AExRunnerGameMode (서버)                          │
-│                                                                      │
-│  ┌───────────────────────────────┐                                   │
-│  │        ChunkSpawner           │     (컨트롤 타워)                   │
-│  │                               │          (1) SpawnObstacles()     │
-│  │  1. Chunk Actor 스폰          ├──────────────────────────┐        │
-│  │  2. 장애물 매니저 명시적 호출  │                          ▼        │
-│  │  3. 아이템 매니저 명시적 호출  │  (2) SpawnItems()  ┌────────────┐  │
-│  └──────────────┬────────────────┼─────────────────► │ Obstacle   │  │
-│                 │                │                 │ Manager    │  │
-│                 ▼                │                 └─────┬──────┘  │
-│        ┌──────────────────┐      │         QueryContext() │          │
-│        │ RunnerItemManager│◄─────┴────────────────────────┘          │
-│        │ (CalculateItemZ) │                                          │
-│        └────────┬─────────┘                                          │
-│                 │                                                    │
-│                 ▼ SpawnActor()                                       │
-│  ┌───────────────────────────────────────────────────────────────┐   │
-│  │        AExItemPickupBase (Replicated, Client Predicted)       │   │
-│  │  [클라이언트 예측] 로컬 오버랩 → 즉시 숨김 및 피드백                │   │
-│  └───────────────────────────────────────────────────────────────┘   │
+│                 AExRunnerGameMode / ExChunkSpawner                     │
+│                                                                       │
+│  공유 시드: SharedTrackSeed → 각 매니저 InitializeRandomStream()        │
+│                                                                       │
+│  [양측 결정론 산출]                                                     │
+│   (1) ObstaclePlan = ObstacleManager->GenerateObstaclePlan(Chunk)      │
+│                          │                                             │
+│                          ▼  ObstaclePlan 입력                          │
+│   (2) ItemPlan = RunnerItemManager->GenerateItemPlan(Chunk, Plan)      │
+│            (CalculateItemZ로 곡면/Arc Z축 결정 → FExSpawnPlan 누적)     │
+│                          │                                             │
+│                          ▼  [서버 전용]                                │
+│   (3) RunnerItemManager->RealizeItemPlan(ItemPlan, Chunk)  ── SpawnActor│
+│                          │                                             │
+│                          ▼                                             │
+│  ┌───────────────────────────────────────────────────────────────┐    │
+│  │        AExItemPickupBase (Replicated, Client Predicted)        │    │
+│  │  [클라이언트 예측] 로컬 오버랩 → 즉시 숨김 및 피드백              │    │
+│  │  SpawnedBySegment[SegmentIndex] 로 추적, 청크 Despawn 시 회수    │    │
+│  └───────────────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -264,7 +286,9 @@ UExChunkSpawner::SpawnNextChunk()
 ## 8. 검증 체크리스트
 
 ### 1단계 핵심 검증 (설계 무결성)
-- [ ] `ChunkSpawner`에서 `Obstacles`이 먼저 스폰된 후에만 `Items`를 스폰한다. (Race Condition 방지)
+- [ ] `ObstaclePlan`이 먼저 산출된 후 `GenerateItemPlan`에 입력되어 아이템 Z축이 결정된다. (Race Condition 방지)
+- [ ] `GenerateItemPlan`은 서버·클라 양측에서 동일한 결과를 산출한다. (`SharedTrackSeed` 결정론)
+- [ ] `RealizeItemPlan`(SpawnActor)은 서버에서만 호출된다. (`HasAuthority()` 가드)
 - [ ] 커브형 청크 위에서도 코인이 허공에 뜨거나 파묻히지 않고 표면을 따라 회전하며 배치된다.
 - [ ] Gap 장애물 구간에 진입 시, 시작부터 끝 지점까지 코인이 곡선(Jump Arc)을 그리며 배치된다.
 - [ ] 로컬 플레이어 오버랩 시 즉시 예측 피드백이 발생하고, Multicast 수신 시 중복 처리되지 않는다.
@@ -279,3 +303,4 @@ UExChunkSpawner::SpawnNextChunk()
 | 2026-03-23 | v1.0 | 초안 작성. Effect-as-Object + Tag-Driven Event 결합 설계 |
 | 2026-03-23 | v1.1 | 클라이언트 예측, Stateless 원칙 명시, Assert 보강, 장애물 질의 추가 |
 | 2026-03-23 | v1.2 | 중앙 제어식 상호작용 방식 개편 (Race Condition 원천 차단), 점프 궤적 커브(Jump Arc) 확장, 커브형 청크(Curved Chunk) 지형 자동 보간 명시 |
+| 2026-06-22 | v1.3 | 실제 구현(GenerateItemPlan/RealizeItemPlan 결정론 2단계)에 맞춰 §3.4~3.6 재작성. 구 SpawnItemsOnChunk 중앙 제어 서술 대체, InitializeRandomStream/SpawnedBySegment 반영 |

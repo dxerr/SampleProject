@@ -113,20 +113,27 @@
   - **ExCore/**: 핵심 프레임워크 관련 (장르 무관 범용 시스템)
     - 예: `Mover_System_Analysis.md`, `DataDrivenCVars_Analysis.md`
   - **ExRunnerPlay/**: 러너 게임 특화 기능 관련
-    - 예: `ExRunner_System_Architecture.md`, `Issue_Obstacle_Sync_Report.md`
+    - 예: `ExRunner_System_Architecture.md`, `ExFrameWork_Item_System_Architecture.md`
 - **Guides/**: 사용 가이드, 튜토리얼, 셋업 가이드 등을 보관합니다.
   - **ExCore/**: 핵심 프레임워크 가이드
-    - 예: `ExCore_GameplayTag_EventSystem_Guide.md`
+    - 예: `ExCore_Common_Popup_UI_Setup_Guide.md`, `Debug_System/`
   - **ExRunnerPlay/**: 러너 게임 관련 가이드
     - 예: `Climb_Sync_Guide.md`, `CurvedWorld_Runner_Setup_Guide.md`
   - **Common/**: 엔진, 도구, 범용 설정 가이드 (특정 모듈에 종속되지 않음)
-    - 예: `MotionMatching_Guide_KR.md`, `PythonBridge_Documentation.md`
+    - 예: `New_MotionMatching_ABP_Setup_Guide.md`, `PythonBridge_Documentation.md`
+- **Plans/**: 진행 중이거나 미완료인 구현 계획서(Plan)를 보관합니다.
+  - 구현이 **완료**된 계획서는 `Archive/Plans/`로 이동합니다.
+- **Migrat/**: 마이그레이션 절차/체크리스트 문서를 보관합니다.
 - **Bug/**: 개발 중 발생한 크리티컬 이슈와 해결 방법을 기록합니다.
   - 파일명: `[이슈키워드]_[원인].md` (예: `Constructor_Crash_NewObject.md`)
   - 경로 : /Bug 폴더 하위 경로에서 해당 사항에 맞는 분류된 경로 폴더로 지정
   - 비슷한 이슈 발생 시 우선 검색하여 해결책을 찾습니다.
+- **Archive/**: **구현이 완료된 계획서**나 **이미 해결된 이슈/분석 보고서**를 보관합니다. (계획 당시 기록을 보존하되, 최신 상태는 해당 Architecture 문서를 참조)
+  - **Plans/**: 완료된 구현 계획서 (예: `ExNetwork_Phase1~4`, `GameFeature_AssetManifest_Plan.md`)
+  - **Issues/**: 해결된 이슈/완료된 TODO (예: `Issue_Obstacle_Sync_Report.md`)
 - **Legacy/**: 오래된 보고서, 더 이상 유효하지 않지만 참고용으로 남겨둔 문서들을 보관합니다.
   - 예: `Legacy_Spawner_Implementation_Report.md`
+  - (참고) `Archive/`는 "완료되어 여전히 유효한" 문서, `Legacy/`는 "낡아서 더 이상 유효하지 않은" 문서로 구분합니다.
 - **Root**: `ExFrameWork_Guidelines.md`와 같은 프로젝트 전반에 걸친 핵심 기준 문서는 루트에 위치합니다.
 
 ### 2.2 관리 규칙
@@ -186,10 +193,18 @@
 
 3. 아래 값을 입력합니다:
 
-   필드값 예시Primary Asset Type`Map`Asset Base Class`World`Directories`/ExRunnerPlay/Map`Cook Rule`Always Cook`
+   | 필드 | 값 예시 |
+   |------|---------|
+   | Primary Asset Type | `Map` |
+   | Asset Base Class | `World` |
+   | Directories | `/ExRunnerPlay/Map` |
+   | Cook Rule | `Always Cook` |
 
 **비교표**:
 
-방식위치쿠킹 조건❌/✅`DefaultGame.ini` PrimaryAssetTypesToScanConfig 파일플러그인 활성/비활성 무관 항상 포함❌ 잘못된 방식`GameFeatureData.uasset` Asset ManagerGameFeature 에셋해당 GameFeature 활성화 시에만 포함✅ 올바른 방식
+| 방식 | 위치 | 쿠킹 조건 | ❌/✅ |
+|------|------|-----------|-------|
+| `DefaultGame.ini` PrimaryAssetTypesToScan | Config 파일 | 플러그인 활성/비활성 무관 항상 포함 | ❌ 잘못된 방식 |
+| `GameFeatureData.uasset` Asset Manager | GameFeature 에셋 | 해당 GameFeature 활성화 시에만 포함 | ✅ 올바른 방식 |
 
 > **주의**: Core 계열(ExCore 등) 공통 에셋이 아닌 이상, 특정 GameFeature 전용 맵/에셋은 반드시 해당 플러그인의 GameFeatureData에서 관리합니다.

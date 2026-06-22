@@ -10,6 +10,10 @@
 
 `UExRunnerStatComponent`에 코인 갯수 / 스프린트 남은 시간을 추가하고, 아이템 획득 이벤트와 연동하여 UI까지 바인딩하는 전체 계획.
 
+> ⚠️ **현재 구현 상태 (2026-06-22 기준):**
+> - ✅ **코인 시스템 구현 완료** — `ExRunnerStatComponent`에 `GetCoinCount()` / `AddCoinCount()` / `OnCoinCountChanged` 및 `OnScorePickedUp` 구독 구현됨.
+> - ❌ **스프린트 버프 시스템 미구현** — 계획상의 `ActivateSprint()`, `SprintRemainingTime`, `OnSprintTimeChanged`는 현재 `ExRunnerStatComponent.h`에 존재하지 않음. 본 문서의 스프린트 관련 항목 및 그에 의존하는 UI 바인딩(스프린트 잔여 시간)은 아직 작업 대상으로 남아 있음.
+
 ---
 
 ## 1. 설계 판단 요약

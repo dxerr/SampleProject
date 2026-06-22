@@ -1,5 +1,5 @@
 /**
- * @file ExRunnerMapManifest.h
+ * @file ExRunnerAssetManifest.h
  * @brief ExRunnerPlay 플러그인 전용 에셋 매니페스트
  * @details ExCore의 UExFeatureAssetManifest를 상속받아 Runner 전용 에셋을 관리합니다.
  *          맵 목록(FeatureMaps)과 추가 에셋(AdditionalAssets)은 베이스 클래스에 정의되어 있으며,
@@ -12,7 +12,7 @@
 
 #include "CoreMinimal.h"
 #include "ExFeatureAssetManifest.h"
-#include "ExRunnerMapManifest.generated.h"
+#include "ExRunnerAssetManifest.generated.h"
 
 /**
  * UExRunnerAssetManifest

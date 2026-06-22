@@ -1,7 +1,7 @@
 # 모바일 조이스틱 작업 현황 및 인수인계
 
 **최종 업데이트:** 2026-03-16  
-**관련 가이드 문서:** `ExRunner_MobileJoystick_Setup_Guide.md`
+**관련 가이드 문서:** `Guides/ExRunnerPlay/ExRunner_MobileJoystick_Setup_Guide.md`
 
 ---
 

@@ -141,7 +141,7 @@ class MYPLUGINRUNTIME_API UMyPluginAssetManifest : public UExFeatureAssetManifes
 ## 8. 연관 문서
 
 - [ExCore 이벤트 시스템](./ExFrameWork_EventSystem_Architecture.md)
-- [구현 계획서](../../Plans/GameFeature_AssetManifest_Plan.md)
+- [구현 계획서 (완료, 아카이브)](../../Archive/Plans/GameFeature_AssetManifest_Plan.md)
 
 ---
 

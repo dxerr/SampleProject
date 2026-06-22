@@ -3,6 +3,12 @@
 러너 게임의 핵심인 **리듬 기반 BGM 시스템**을 UE5의 Quartz Clock + MetaSound를 활용하여 구현합니다.
 비트에 맞춰 장애물이 스폰되고, 게임 Phase에 따라 음악 레이어가 동적으로 믹싱되는 시스템입니다.
 
+> ⚠️ **현재 구현 상태 (2026-06-22 기준) — 본 계획 대비 변경점:**
+> - `UExMusicManagerSubsystem`, `UExBeatSyncComponent`, `ExMusicTags.h/.cpp` 모두 구현되어 있음. 다만 **API 시그니처가 본 문서의 초안과 달라짐**:
+>   - 계획: `StartBGM(USoundBase*, float BPM)` (사운드/BPM 직접 전달)  →  **실제: `StartBGM(const UExBGMTrackDataAsset*)` (데이터 에셋 기반)**. `SetBPM()`, `TransitionToPhase(FGameplayTag)`, `PauseBGM()` 등으로 확장됨.
+>   - BeatSync의 `SpawnProbabilityPerBeat` 등 파라미터는 컴포넌트 프로퍼티가 아니라 **`ExRunnerConfig`(DataCenter)에서 로드**하도록 변경됨.
+> - 본문 코드 예시는 초기 설계 기준이므로, 정확한 시그니처는 `ExMusicManagerSubsystem.h` 및 `ExFrameWork_Sound_System_Architecture.md`를 우선 참조.
+
 ---
 
 ## User Review Required

@@ -30,7 +30,7 @@ void UExRunnerItemManager::BeginPlay()
 	// BeginPlay 시점에는 Experience 로드가 완료되지 않아 DataCenter가 비어 있으므로
 	// GetPreset 호출이 실패하고 화면에 오류 메시지가 출력됩니다.
 	// SpawnTable은 EnsureSpawnTableLoaded()의 재시도 로직에 의해 최초 사용 시점에
-	// 자동으로 지연 로드됩니다 (SpawnItemsOnChunk, GenerateItemPlan 등).
+	// 자동으로 지연 로드됩니다 (GenerateItemPlan 등).
 
 	// 클라이언트 측 수동 Attach 이벤트 수신 대기 (AExItemPickupBase에서 발송)
 	if (UWorld* World = GetWorld())

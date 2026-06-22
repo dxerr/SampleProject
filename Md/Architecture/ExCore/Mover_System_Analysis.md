@@ -237,4 +237,33 @@ void UExRunnerMovementComponent::ProduceInput_Implementation(int32 SimTimeMs, FM
 - **기존 BP 수정 최소화** - 컴포넌트 추가만으로 동작
 - **Velocity가 정상적으로 업데이트** → 애니메이션 자동 연동
 
+> **구현 메모 (2026-06-22):** 현재 `ExRunnerMovementComponent`는 위 권장안에 따라 입력을 주입하되, 실제 코드에서는 `UMoverDataModelBlueprintLibrary::SetDirectionalInput()`을 사용한다 (`ExRunnerMovementComponent.cpp` 참조). 구 `SetVelocityInput` 방식은 더 이상 사용하지 않는다.
+
+---
+
+## 📚 부록: MovementModes 구조 및 상태 전환
+
+> 구 `Guides/Common/Mover_MovementModes_Analysis.md` 내용을 본 문서로 통합 (2026-06-22).
+
+### A. MovementModes의 실제 구조
+- **오해**: 에디터 디테일 패널에서 마치 블루프린트 커스텀 구조체나 배열처럼 보여 BP 전용 데이터로 오해하기 쉽다.
+- **실제 (C++)**: `UMoverComponent` 내부에 정의된 `TMap<FName, TObjectPtr<UBaseMovementMode>>` 프로퍼티다. 상태 이름(FName)을 키로, 이동 모드 C++ 인스턴스(Instanced Object)를 값으로 가지는 데이터 사전(Map)이다.
+
+### B. 이동 속도 제어 구조 (MaxSpeed 등)
+- **데이터 위치**: 속도 데이터는 구조체를 직접 Break하지 않는다. "Walking" 같은 각 모드 내부에 할당된 **`Shared Settings`(공유 세팅 객체)** 안에 존재한다.
+    - 예) `Walking` → `Shared Settings` → `CommonLegacyMovementSettings` → `MaxSpeed`
+- **접근 및 수정 방법**:
+    - **BP**: `CharacterMover` 객체에서 **`Find Shared Settings`** 노드로 `CommonLegacyMovementSettings` 객체를 얻어 값을 읽거나 쓴다.
+    - **C++**: `MoverComp->FindSharedSettings<UCommonLegacyMovementSettings>()`로 포인터를 얻어 수정한다.
+
+### C. 상태 치환(Walking ↔ Falling 등)의 발생 위치
+Mover는 분기(Branch)문이 아니라 상태 머신에 의해 그룹 전환을 관리한다. 크게 3곳에서 처리된다.
+1. **엔진 내부 자동 전환 (내장 C++ 로직)**: `UWalkingMode::OnGenerateMove` 등에서 바닥(Floor) 검사를 수행하고, 바닥이 없어지면 엔진이 스스로 `"Falling"` 모드로 `QueueNextMode`한다.
+2. **데이터 기반 전환 (Transitions 배열)**: `CharacterMover`의 하단 `Transitions` 에디터 배열에 룰을 추가하여, 조건(입력, 속도 등) 만족 시 다른 모드로 넘어가도록 비주얼 설정이 가능하다.
+3. **명시적 코드/블루프린트 강제 전환**:
+    - **BP**: `Queue Next Mode` 노드에 상태 이름 입력.
+    - **C++**: `MoverComp->QueueNextMode(FName("Walking"));`
+
+> 참고: 속도 제어를 억지로 덮어쓰거나 Tick에서 강제 전환하지 말고, Mover의 의도된 흐름(Shared Settings 조회 및 Queue Next Mode)을 활용하는 것이 안정적이다.
+
 

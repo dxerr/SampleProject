@@ -1,5 +1,5 @@
 // Copyright ExFrameWork. All Rights Reserved.
 
-#include "ExRunnerMapManifest.h"
+#include "ExRunnerAssetManifest.h"
 
 // UExFeatureAssetManifest의 기본 동작을 그대로 사용합니다.

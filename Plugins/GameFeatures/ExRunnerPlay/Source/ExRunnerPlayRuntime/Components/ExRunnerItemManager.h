@@ -19,11 +19,13 @@ class UCurveFloat;
 /**
  * UExRunnerItemManager
  * 러너 게임 전용 아이템 배치 매니저.
- * 
- * 중앙 제어 방식(v1.2):
- *   이 매니저는 OnChunkSpawned 이벤트를 직접 듣지 않는다.
- *   UExChunkSpawner가 장애물 배치 완료 후 명시적으로
- *   SpawnItemsOnChunk()를 호출하여 배치 순서를 보장한다.
+ *
+ * 결정론적 2단계 스폰 방식:
+ *   1) GenerateItemPlan(): 서버·클라 양측에서 동일하게 호출되어 동일한 배치 계획을 산출한다.
+ *      결정론은 InitializeRandomStream()이 SharedTrackSeed로 초기화한 ItemRandomStream으로 보장.
+ *      동일 청크의 GenerateObstaclePlan 결과(ObstaclePlan)를 입력받아 Plan 기반 장애물 질의를 수행한다.
+ *   2) RealizeItemPlan(): 서버 전용으로, 계획을 실제 액터(AExItemPickupBase)로 실체화(SpawnActor)한다.
+ *   스폰된 액터는 SegmentIndex(SpawnedBySegment)로 추적되어 청크 Despawn 시 일괄 회수된다.
  *
  * Z축 배치:
  *   장애물 타입(Climb/Slide/Gap)에 따라 자동으로 Z축 위치를 결정하며,
