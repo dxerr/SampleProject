@@ -12,6 +12,7 @@ public class ExCoreRuntime : ModuleRules
 		PublicIncludePaths.AddRange(
 			new string[] {
 				ModuleDirectory,
+				Path.Combine(ModuleDirectory, "Animation"),
 				Path.Combine(ModuleDirectory, "GameModes"),
 				Path.Combine(ModuleDirectory, "Data"),
 				Path.Combine(ModuleDirectory, "Data", "Base"),	        // DataCenter 3-Base 클래스
@@ -58,6 +59,8 @@ public class ExCoreRuntime : ModuleRules
 				"InputCore", // EKeys::LeftMouseButton 링크 에러 해결
 				"Mover",
 				"MotionWarping", // Centralized Warp Logic
+				"IKRig",          // UExRetargetAnimInstance — BlendToSource op 런타임 제어
+				"StructUtils",    // FInstancedStruct (GetMutablePtr in IKRetargetProfile)
 				
 				// --- UI Architecture Modules ---
 				"UMG",

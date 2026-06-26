@@ -64,6 +64,10 @@
 		{
 			"Name": "ModelViewViewModel",
 			"Enabled": true
+		},
+		{
+			"Name": "IKRig",
+			"Enabled": true
 		}
 	]
 
