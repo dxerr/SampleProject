@@ -11,7 +11,8 @@ public class ExCoreRuntime : ModuleRules
 
 		PublicIncludePaths.AddRange(
 			new string[] {
-				// Path.Combine(ModuleDirectory, "ExCoreRuntime"), // Self
+				ModuleDirectory,
+				Path.Combine(ModuleDirectory, "Animation"),
 				Path.Combine(ModuleDirectory, "GameModes"),
 				Path.Combine(ModuleDirectory, "Data"),
 				Path.Combine(ModuleDirectory, "Components"),
@@ -44,6 +45,20 @@ public class ExCoreRuntime : ModuleRules
 				"EnhancedInput",
 				"Mover",
 				"MotionWarping", // Centralized Warp Logic
+				"IKRig",          // UExRetargetAnimInstance — BlendToSource op 런타임 제어
+				"StructUtils",    // FInstancedStruct (GetMutablePtr in IKRetargetProfile)
+
+				// --- UI Architecture Modules ---
+				"UMG",
+				"CommonUI",
+				"CommonInput",
+				"ModelViewViewModel",
+
+				// --- Online / Session ---
+				"OnlineSubsystem",
+				"OnlineSubsystemUtils",
+				"ExNetworkRuntime",
+
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
