@@ -12,6 +12,15 @@
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
 
+#if PLATFORM_MAC && !USE_SENTRY_NATIVE
+#include "Mac/MacSystemIncludes.h"
+#endif
+
+// SENTRY_WINGDK is explicitly defined only for Windows/WinGDK, so default it to 0 for other platforms to avoid -Wundef
+#ifndef SENTRY_WINGDK
+#define SENTRY_WINGDK 0
+#endif
+
 #define LOCTEXT_NAMESPACE "FSentryModule"
 
 const FName FSentryModule::ModuleName = "Sentry";
@@ -22,14 +31,14 @@ void FSentryModule::StartupModule()
 	SentrySettings = NewObject<USentrySettings>(GetTransientPackage(), "SentrySettings", RF_Standalone);
 	SentrySettings->AddToRoot();
 
-#if PLATFORM_MAC
-	// Load Sentry Cocoa dynamic library
-	FString LibraryPath = FPaths::Combine(GetBinariesPath(), TEXT("sentry.dylib"));
+#if PLATFORM_MAC && !USE_SENTRY_NATIVE
+	// Load SentryObjC dynamic library
+	FString LibraryPath = FPaths::Combine(GetBinariesPath(), TEXT("SentryObjC.dylib"));
 	mDllHandleSentry = FPlatformProcess::GetDllHandle(*LibraryPath);
 
 	if (!mDllHandleSentry)
 	{
-		UE_LOG(LogSentrySdk, Error, TEXT("Failed to load sentry.dylib from %s"), *LibraryPath);
+		UE_LOG(LogSentrySdk, Error, TEXT("Failed to load SentryObjC.dylib from %s"), *LibraryPath);
 	}
 #endif
 
@@ -47,7 +56,7 @@ void FSentryModule::ShutdownModule()
 	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
 	// we call this function before unloading the module.
 
-#if PLATFORM_MAC
+#if PLATFORM_MAC && !USE_SENTRY_NATIVE
 	// Free sentry dynamic library
 	if (mDllHandleSentry)
 	{
@@ -87,18 +96,45 @@ USentrySettings* FSentryModule::GetSettings() const
 	return SentrySettings;
 }
 
+FString FSentryModule::GetPluginPath()
+{
+	return IPluginManager::Get().FindPlugin(TEXT("Sentry"))->GetBaseDir();
+}
+
 FString FSentryModule::GetBinariesPath()
 {
-	const FString PluginDir = IPluginManager::Get().FindPlugin(TEXT("Sentry"))->GetBaseDir();
+	// Unreal Engine currently stores Windows ARM64 binaries in the Win64 directory and does not distinguish by architecture,
+	// so when building the path to platform-specific plugin resources, the platform name must be set manually
+	// instead of relying on FPlatformProcess::GetBinariesSubdirectory().
+	// The same applies to WinGDK targets, which the engine treats as Win64 by default in this context.
 
-	return FPaths::Combine(PluginDir, TEXT("Binaries"), FPlatformProcess::GetBinariesSubdirectory());
+#if SENTRY_WINGDK
+	const FString PlatformDir = TEXT("WinGDK");
+#elif PLATFORM_WINDOWS && PLATFORM_CPU_ARM_FAMILY
+	const FString PlatformDir = TEXT("WinArm64");
+#else
+	const FString PlatformDir = FPlatformProcess::GetBinariesSubdirectory();
+#endif
+
+	return FPaths::Combine(GetPluginPath(), TEXT("Binaries"), PlatformDir);
 }
 
 FString FSentryModule::GetThirdPartyPath()
 {
-	const FString PluginDir = IPluginManager::Get().FindPlugin(TEXT("Sentry"))->GetBaseDir();
+	// Unreal Engine currently stores Windows ARM64 binaries in the Win64 directory and does not distinguish by architecture,
+	// so when building the path to platform-specific plugin resources, the platform name must be set manually
+	// instead of relying on FPlatformProcess::GetBinariesSubdirectory().
+	// The same applies to WinGDK targets, which the engine treats as Win64 by default in this context.
 
-	return FPaths::Combine(PluginDir, TEXT("Source"), TEXT("ThirdParty"), FPlatformProcess::GetBinariesSubdirectory());
+#if SENTRY_WINGDK
+	const FString PlatformDir = TEXT("WinGDK");
+#elif PLATFORM_WINDOWS && PLATFORM_CPU_ARM_FAMILY
+	const FString PlatformDir = TEXT("WinArm64");
+#else
+	const FString PlatformDir = FPlatformProcess::GetBinariesSubdirectory();
+#endif
+
+	return FPaths::Combine(GetPluginPath(), TEXT("Source"), TEXT("ThirdParty"), PlatformDir);
 }
 
 FString FSentryModule::GetPluginVersion()
@@ -127,7 +163,7 @@ bool FSentryModule::IsMarketplaceVersion()
 	return PluginPath.StartsWith(MarketplacePrefix);
 }
 
-#if PLATFORM_MAC
+#if PLATFORM_MAC && !USE_SENTRY_NATIVE
 
 void* FSentryModule::GetSentryLibHandle() const
 {

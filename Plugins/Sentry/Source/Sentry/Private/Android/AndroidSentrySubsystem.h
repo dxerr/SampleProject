@@ -13,6 +13,7 @@ public:
 	virtual void InitWithSettings(const USentrySettings* settings, const FSentryCallbackHandlers& callbackHandlers) override;
 	virtual void Close() override;
 	virtual bool IsEnabled() override;
+	virtual bool IsCrashing() const override { return false; }
 	virtual ESentryCrashedLastRun IsCrashedLastRun() override;
 	virtual void AddBreadcrumb(TSharedPtr<ISentryBreadcrumb> breadcrumb) override;
 	virtual void AddBreadcrumbWithParams(const FString& Message, const FString& Category, const FString& Type, const TMap<FString, FSentryVariant>& Data, ESentryLevel Level) override;
@@ -29,6 +30,9 @@ public:
 	virtual TSharedPtr<ISentryId> CaptureEvent(TSharedPtr<ISentryEvent> event) override;
 	virtual TSharedPtr<ISentryId> CaptureEventWithScope(TSharedPtr<ISentryEvent> event, const FSentryScopeDelegate& onConfigureScope) override;
 	virtual TSharedPtr<ISentryId> CaptureEnsure(const FString& type, const FString& message) override;
+	virtual TSharedPtr<ISentryId> CaptureHang(uint32 HungThreadId) override;
+	virtual bool IsHangTrackingSupported() const override;
+	virtual bool IsNativeHangTrackingEnabled() const override;
 	virtual void CaptureFeedback(TSharedPtr<ISentryFeedback> feedback) override;
 	virtual void SetUser(TSharedPtr<ISentryUser> user) override;
 	virtual void RemoveUser() override;
@@ -38,6 +42,8 @@ public:
 	virtual void SetAttribute(const FString& key, const FSentryVariant& value) override;
 	virtual void RemoveAttribute(const FString& key) override;
 	virtual void SetLevel(ESentryLevel level) override;
+	virtual void SetRelease(const FString& release) override;
+	virtual void SetEnvironment(const FString& environment) override;
 	virtual void StartSession() override;
 	virtual void EndSession() override;
 	virtual void GiveUserConsent() override;
@@ -51,6 +57,7 @@ public:
 	virtual TSharedPtr<ISentryTransactionContext> ContinueTrace(const FString& sentryTrace, const TArray<FString>& baggageHeaders) override;
 
 	virtual void HandleAssert() override;
+	virtual FString GetDeviceType() const override { return TEXT("Handheld"); }
 
 	FString TryCaptureScreenshot() const;
 

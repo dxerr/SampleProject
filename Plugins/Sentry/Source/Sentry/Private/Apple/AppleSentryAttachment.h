@@ -2,9 +2,11 @@
 
 #pragma once
 
+#if !USE_SENTRY_NATIVE
+
 #include "Interface/SentryAttachmentInterface.h"
 
-@class SentryAttachment;
+@class SentryObjCAttachment;
 
 class FAppleSentryAttachment : public ISentryAttachment
 {
@@ -13,7 +15,7 @@ public:
 	FAppleSentryAttachment(const FString& path, const FString& filename, const FString& contentType);
 	virtual ~FAppleSentryAttachment() override;
 
-	SentryAttachment* GetNativeObject();
+	SentryObjCAttachment* GetNativeObject();
 
 	virtual TArray<uint8> GetData() const override;
 	virtual FString GetPath() const override;
@@ -21,7 +23,9 @@ public:
 	virtual FString GetContentType() const override;
 
 private:
-	SentryAttachment* AttachmentApple;
+	SentryObjCAttachment* AttachmentApple;
 };
 
 typedef FAppleSentryAttachment FPlatformSentryAttachment;
+
+#endif // !USE_SENTRY_NATIVE

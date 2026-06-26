@@ -2,18 +2,20 @@
 
 #pragma once
 
+#if !USE_SENTRY_NATIVE
+
 #include "Interface/SentryEventInterface.h"
 
-@class SentryEvent;
+@class SentryObjCEvent;
 
 class FAppleSentryEvent : public ISentryEvent
 {
 public:
 	FAppleSentryEvent();
-	FAppleSentryEvent(SentryEvent* event);
+	FAppleSentryEvent(SentryObjCEvent* event);
 	virtual ~FAppleSentryEvent() override;
 
-	SentryEvent* GetNativeObject();
+	SentryObjCEvent* GetNativeObject();
 
 	virtual TSharedPtr<ISentryId> GetId() const override;
 	virtual void SetMessage(const FString& message) override;
@@ -42,7 +44,9 @@ public:
 	virtual bool IsAnr() const override;
 
 private:
-	SentryEvent* EventApple;
+	SentryObjCEvent* EventApple;
 };
 
 typedef FAppleSentryEvent FPlatformSentryEvent;
+
+#endif // !USE_SENTRY_NATIVE

@@ -2,18 +2,20 @@
 
 #pragma once
 
+#if !USE_SENTRY_NATIVE
+
 #include "Interface/SentryUserInterface.h"
 
-@class SentryUser;
+@class SentryObjCUser;
 
 class FAppleSentryUser : public ISentryUser
 {
 public:
 	FAppleSentryUser();
-	FAppleSentryUser(SentryUser* user);
+	FAppleSentryUser(SentryObjCUser* user);
 	virtual ~FAppleSentryUser() override;
 
-	SentryUser* GetNativeObject();
+	SentryObjCUser* GetNativeObject();
 
 	virtual void SetEmail(const FString& email) override;
 	virtual FString GetEmail() const override;
@@ -27,7 +29,9 @@ public:
 	virtual TMap<FString, FString> GetData() override;
 
 private:
-	SentryUser* UserApple;
+	SentryObjCUser* UserApple;
 };
 
 typedef FAppleSentryUser FPlatformSentryUser;
+
+#endif // !USE_SENTRY_NATIVE

@@ -2,7 +2,7 @@
 
 #include "WindowsSentrySubsystem.h"
 
-#if USE_SENTRY_NATIVE
+#if USE_SENTRY_NATIVE && !SENTRY_WINGDK
 
 #include "SentryDefines.h"
 #include "SentrySettings.h"
@@ -13,11 +13,18 @@
 
 void FWindowsSentrySubsystem::InitWithSettings(const USentrySettings* Settings, const FSentryCallbackHandlers& CallbackHandlers)
 {
+	bOutOfProcessScreenshots = Settings->EnableOutOfProcessScreenshots;
+
 	// Detect Wine/Proton before initializing
 	WineProtonInfo = FSentryPlatformDetectionUtils::DetectWineProton();
 
 	// Call parent implementation (handles crash logger initialization)
 	FMicrosoftSentrySubsystem::InitWithSettings(Settings, CallbackHandlers);
+
+	if (Settings->EnableExternalCrashReporter)
+	{
+		ConfigureCrashReporterAppearance(Settings);
+	}
 
 	// Add Wine/Proton context for all events if detected
 	if (WineProtonInfo.bIsRunningUnderWine && IsEnabled())
@@ -75,20 +82,27 @@ void FWindowsSentrySubsystem::InitWithSettings(const USentrySettings* Settings, 
 	}
 }
 
+FString FWindowsSentrySubsystem::GetHandlerExecutableName() const
+{
+	return bUseNativeBackend ? TEXT("sentry-crash.exe") : TEXT("crashpad_handler.exe");
+}
+
 void FWindowsSentrySubsystem::ConfigureHandlerPath(sentry_options_t* Options)
 {
 	const FString HandlerPath = GetHandlerPath();
 
 	if (!FPaths::FileExists(HandlerPath))
 	{
-		UE_LOG(LogSentrySdk, Error, TEXT("Crashpad executable couldn't be found."));
+		UE_LOG(LogSentrySdk, Error, TEXT("Crash handler executable couldn't be found at: %s"), *HandlerPath);
 		return;
 	}
 
 	sentry_options_set_handler_pathw(Options, *HandlerPath);
+}
 
-	// Enable stack capture adjustment for Wine/Proton
-	if (WineProtonInfo.bIsRunningUnderWine)
+void FWindowsSentrySubsystem::ConfigureStackCaptureStrategy(sentry_options_t* Options)
+{
+	if (WineProtonInfo.bIsRunningUnderWine && !bUseNativeBackend)
 	{
 		UE_LOG(LogSentrySdk, Log, TEXT("Enabling Crashpad stack capture adjustment for Wine/Proton compatibility"));
 		sentry_options_set_crashpad_limit_stack_capture_to_sp(Options, 1);
@@ -106,11 +120,23 @@ void FWindowsSentrySubsystem::ConfigureCrashReporterPath(sentry_options_t* Optio
 	sentry_options_set_external_crash_reporter_pathw(Options, *CrashReporterPath);
 }
 
-sentry_value_t FWindowsSentrySubsystem::OnCrash(const sentry_ucontext_t* uctx, sentry_value_t event, void* closure)
+void FWindowsSentrySubsystem::ConfigureScreenshotCapturing(sentry_options_t* Options)
 {
-	// Windows-specific crash handling can go here if needed in the future
-	// For now, just delegate to parent which handles the crash logger
-	return FMicrosoftSentrySubsystem::OnCrash(uctx, event, closure);
+	if (bOutOfProcessScreenshots)
+	{
+		UE_LOG(LogSentrySdk, Log, TEXT("Native out-of-process screenshot capturing enabled"));
+		sentry_options_set_attach_screenshot(Options, 1);
+	}
 }
 
-#endif // USE_SENTRY_NATIVE
+FString FWindowsSentrySubsystem::GetDeviceType() const
+{
+	if (FSentryPlatformDetectionUtils::IsSteamDeck())
+	{
+		return TEXT("Handheld");
+	}
+
+	return FMicrosoftSentrySubsystem::GetDeviceType();
+}
+
+#endif // USE_SENTRY_NATIVE && !SENTRY_WINGDK

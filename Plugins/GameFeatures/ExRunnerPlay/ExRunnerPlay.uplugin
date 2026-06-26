@@ -36,15 +36,15 @@
 			"Enabled": true
 		},
 		{
-			"Name": "Sentry",
-			"Enabled": true
-		},
-		{
 			"Name": "BinkMedia",
 			"Enabled": true
 		},
 		{
 			"Name": "ExNetwork",
+			"Enabled": true
+		},
+		{
+			"Name": "Sentry",
 			"Enabled": true
 		}
 	],

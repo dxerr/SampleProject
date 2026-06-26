@@ -2,24 +2,28 @@
 
 #pragma once
 
+#if !USE_SENTRY_NATIVE
+
 #include "Interface/SentryIdInterface.h"
 
-@class SentryId;
+@class SentryObjCId;
 
 class FAppleSentryId : public ISentryId
 {
 public:
 	FAppleSentryId();
 	FAppleSentryId(const FString& id);
-	FAppleSentryId(SentryId* id);
+	FAppleSentryId(SentryObjCId* id);
 	virtual ~FAppleSentryId() override;
 
-	SentryId* GetNativeObject();
+	SentryObjCId* GetNativeObject();
 
 	virtual FString ToString() const override;
 
 private:
-	SentryId* IdApple;
+	SentryObjCId* IdApple;
 };
 
 typedef FAppleSentryId FPlatformSentryId;
+
+#endif // !USE_SENTRY_NATIVE

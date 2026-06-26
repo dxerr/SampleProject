@@ -67,16 +67,19 @@ void FAndroidSentrySubsystem::InitWithSettings(const USentrySettings* settings, 
 	SettingsJson->SetNumberField(TEXT("sampleRate"), settings->SampleRate);
 	SettingsJson->SetNumberField(TEXT("maxBreadcrumbs"), settings->MaxBreadcrumbs);
 	SettingsJson->SetBoolField(TEXT("attachScreenshot"), settings->AttachScreenshot);
+	SettingsJson->SetBoolField(TEXT("attachSessionReplay"), settings->AttachSessionReplay);
 	SettingsJson->SetArrayField(TEXT("inAppInclude"), FAndroidSentryConverters::StrinArrayToJsonArray(settings->InAppInclude));
 	SettingsJson->SetArrayField(TEXT("inAppExclude"), FAndroidSentryConverters::StrinArrayToJsonArray(settings->InAppExclude));
 	SettingsJson->SetBoolField(TEXT("sendDefaultPii"), settings->SendDefaultPii);
 	SettingsJson->SetBoolField(TEXT("enableAnrTracking"), settings->EnableAppNotRespondingTracking);
+	SettingsJson->SetNumberField(TEXT("anrTimeoutMillis"), settings->AppNotRespondingTimeout * 1000.0f);
 	SettingsJson->SetBoolField(TEXT("enableNdk"), settings->AndroidCrashBackend != ESentryAndroidCrashBackend::TombstoneOnly);
 	SettingsJson->SetBoolField(TEXT("enableTombstone"),
 		settings->AndroidCrashBackend == ESentryAndroidCrashBackend::TombstoneOnly || settings->AndroidCrashBackend == ESentryAndroidCrashBackend::TombstoneMergedWithNdk);
 	SettingsJson->SetBoolField(TEXT("enableAutoLogAttachment"), settings->EnableAutoLogAttachment);
 	SettingsJson->SetBoolField(TEXT("enableStructuredLogging"), settings->EnableStructuredLogging);
 	SettingsJson->SetBoolField(TEXT("enableMetrics"), settings->EnableMetrics);
+	SettingsJson->SetStringField(TEXT("deviceType"), GetDeviceType());
 	if (settings->EnableOfflineCaching)
 	{
 		SettingsJson->SetNumberField(TEXT("maxCacheItems"), settings->CacheMaxItems);
@@ -328,6 +331,22 @@ TSharedPtr<ISentryId> FAndroidSentrySubsystem::CaptureEnsure(const FString& type
 	return MakeShareable(new FAndroidSentryId(*id));
 }
 
+TSharedPtr<ISentryId> FAndroidSentrySubsystem::CaptureHang(uint32 HungThreadId)
+{
+	// Hang tracking is handled by the native Android SDK via built-in ANR detection (see EnableAppNotRespondingTracking setting)
+	return nullptr;
+}
+
+bool FAndroidSentrySubsystem::IsHangTrackingSupported() const
+{
+	return false;
+}
+
+bool FAndroidSentrySubsystem::IsNativeHangTrackingEnabled() const
+{
+	return false;
+}
+
 void FAndroidSentrySubsystem::CaptureFeedback(TSharedPtr<ISentryFeedback> feedback)
 {
 	TSharedPtr<FAndroidSentryFeedback> feedbackAndroid = StaticCastSharedPtr<FAndroidSentryFeedback>(feedback);
@@ -371,18 +390,36 @@ void FAndroidSentrySubsystem::RemoveTag(const FString& key)
 
 void FAndroidSentrySubsystem::SetAttribute(const FString& key, const FSentryVariant& value)
 {
-	// No-op: Android SDK doesn't support global log attributes
+	TSharedPtr<FSentryJavaObjectWrapper> nativeValue = FAndroidSentryConverters::VariantToNative(value);
+	if (nativeValue.IsValid())
+	{
+		FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::SentryBridgeJava, "setAttribute", "(Ljava/lang/String;Ljava/lang/Object;)V",
+			*FSentryJavaObjectWrapper::GetJString(key), nativeValue->GetJObject());
+	}
 }
 
 void FAndroidSentrySubsystem::RemoveAttribute(const FString& key)
 {
-	// No-op: Android SDK doesn't support global log attributes
+	FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::SentryBridgeJava, "removeAttribute", "(Ljava/lang/String;)V",
+		*FSentryJavaObjectWrapper::GetJString(key));
 }
 
 void FAndroidSentrySubsystem::SetLevel(ESentryLevel level)
 {
 	FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::SentryBridgeJava, "setLevel", "(Lio/sentry/SentryLevel;)V",
 		FAndroidSentryConverters::SentryLevelToNative(level)->GetJObject());
+}
+
+void FAndroidSentrySubsystem::SetRelease(const FString& release)
+{
+	FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::SentryBridgeJava, "setRelease", "(Ljava/lang/String;)V",
+		*FSentryJavaObjectWrapper::GetJString(release));
+}
+
+void FAndroidSentrySubsystem::SetEnvironment(const FString& environment)
+{
+	FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::SentryBridgeJava, "setEnvironment", "(Ljava/lang/String;)V",
+		*FSentryJavaObjectWrapper::GetJString(environment));
 }
 
 void FAndroidSentrySubsystem::StartSession()

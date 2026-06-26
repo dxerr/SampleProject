@@ -1,13 +1,16 @@
 // Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #include "AppleSentrySamplingContext.h"
+
+#if !USE_SENTRY_NATIVE
+
 #include "AppleSentryTransactionContext.h"
 
 #include "Infrastructure/AppleSentryConverters.h"
 
 #include "Convenience/AppleSentryInclude.h"
 
-FAppleSentrySamplingContext::FAppleSentrySamplingContext(SentrySamplingContext* context)
+FAppleSentrySamplingContext::FAppleSentrySamplingContext(SentryObjCSamplingContext* context)
 {
 	SamplingContext = context;
 }
@@ -27,7 +30,9 @@ TMap<FString, FSentryVariant> FAppleSentrySamplingContext::GetCustomSamplingCont
 	return FAppleSentryConverters::VariantMapToUnreal(SamplingContext.customSamplingContext);
 }
 
-SentrySamplingContext* FAppleSentrySamplingContext::GetNativeObject()
+SentryObjCSamplingContext* FAppleSentrySamplingContext::GetNativeObject()
 {
 	return SamplingContext;
 }
+
+#endif // !USE_SENTRY_NATIVE

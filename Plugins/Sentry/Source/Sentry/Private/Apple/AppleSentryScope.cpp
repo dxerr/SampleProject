@@ -2,6 +2,8 @@
 
 #include "AppleSentryScope.h"
 
+#if !USE_SENTRY_NATIVE
+
 #include "AppleSentryAttachment.h"
 #include "AppleSentryBreadcrumb.h"
 
@@ -12,10 +14,10 @@
 
 FAppleSentryScope::FAppleSentryScope()
 {
-	ScopeApple = [[SENTRY_APPLE_CLASS(SentryScope) alloc] init];
+	ScopeApple = [[SENTRY_APPLE_CLASS(SentryObjCScope) alloc] init];
 }
 
-FAppleSentryScope::FAppleSentryScope(SentryScope* scope)
+FAppleSentryScope::FAppleSentryScope(SentryObjCScope* scope)
 {
 	ScopeApple = scope;
 }
@@ -25,7 +27,7 @@ FAppleSentryScope::~FAppleSentryScope()
 	// Put custom destructor logic here if needed
 }
 
-SentryScope* FAppleSentryScope::GetNativeObject()
+SentryObjCScope* FAppleSentryScope::GetNativeObject()
 {
 	return ScopeApple;
 }
@@ -118,7 +120,7 @@ void FAppleSentryScope::SetLevel(ESentryLevel level)
 ESentryLevel FAppleSentryScope::GetLevel() const
 {
 	NSDictionary* scopeDict = [ScopeApple serialize];
-	SentryLevel level = FAppleSentryConverters::StringToSentryLevel(scopeDict[@"level"]);
+	SentryObjCLevel level = FAppleSentryConverters::StringToSentryLevel(scopeDict[@"level"]);
 	return FAppleSentryConverters::SentryLevelToUnreal(level);
 }
 
@@ -226,3 +228,5 @@ void FAppleSentryScope::Clear()
 {
 	[ScopeApple clear];
 }
+
+#endif // !USE_SENTRY_NATIVE

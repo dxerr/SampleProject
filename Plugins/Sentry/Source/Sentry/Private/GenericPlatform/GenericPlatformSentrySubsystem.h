@@ -3,14 +3,20 @@
 #pragma once
 
 #include "Convenience/GenericPlatformSentryInclude.h"
+#include "GenericPlatform/GenericPlatformCrashContext.h"
+#include "HAL/ThreadSafeBool.h"
+#include "UObject/StrongObjectPtr.h"
 
 #include "Interface/SentrySubsystemInterface.h"
 
-#include "HAL/CriticalSection.h"
+#ifdef USE_SENTRY_SESSION_REPLAY
+#include "SessionReplay/SentrySessionReplayRecorder.h"
+#endif
 
 class FGenericPlatformSentryAttachment;
 class FGenericPlatformSentryScope;
 class FGenericPlatformSentryCrashReporter;
+class USentryEvent;
 
 #if USE_SENTRY_NATIVE
 
@@ -22,6 +28,7 @@ public:
 	virtual void InitWithSettings(const USentrySettings* settings, const FSentryCallbackHandlers& callbackHandlers) override;
 	virtual void Close() override;
 	virtual bool IsEnabled() override;
+	virtual bool IsCrashing() const override;
 	virtual ESentryCrashedLastRun IsCrashedLastRun() override;
 	virtual void AddBreadcrumb(TSharedPtr<ISentryBreadcrumb> breadcrumb) override;
 	virtual void AddBreadcrumbWithParams(const FString& Message, const FString& Category, const FString& Type, const TMap<FString, FSentryVariant>& Data, ESentryLevel Level) override;
@@ -38,6 +45,7 @@ public:
 	virtual TSharedPtr<ISentryId> CaptureEvent(TSharedPtr<ISentryEvent> event) override;
 	virtual TSharedPtr<ISentryId> CaptureEventWithScope(TSharedPtr<ISentryEvent> event, const FSentryScopeDelegate& onScopeConfigure) override;
 	virtual TSharedPtr<ISentryId> CaptureEnsure(const FString& type, const FString& message) override;
+	virtual TSharedPtr<ISentryId> CaptureHang(uint32 HungThreadId) override;
 	virtual void CaptureFeedback(TSharedPtr<ISentryFeedback> feedback) override;
 	virtual void SetUser(TSharedPtr<ISentryUser> user) override;
 	virtual void RemoveUser() override;
@@ -47,6 +55,8 @@ public:
 	virtual void SetAttribute(const FString& key, const FSentryVariant& value) override;
 	virtual void RemoveAttribute(const FString& key) override;
 	virtual void SetLevel(ESentryLevel level) override;
+	virtual void SetRelease(const FString& release) override;
+	virtual void SetEnvironment(const FString& environment) override;
 	virtual void StartSession() override;
 	virtual void EndSession() override;
 	virtual void GiveUserConsent() override;
@@ -60,6 +70,9 @@ public:
 	virtual TSharedPtr<ISentryTransactionContext> ContinueTrace(const FString& sentryTrace, const TArray<FString>& baggageHeaders) override;
 
 	virtual void HandleAssert() override {}
+	virtual bool IsHangTrackingSupported() const override { return false; }
+	virtual bool IsNativeHangTrackingEnabled() const override { return bNativeHangTracking; }
+	virtual FString GetDeviceType() const override { return TEXT("Desktop"); }
 
 	USentryBeforeSendHandler* GetBeforeSendHandler() const;
 	USentryBeforeBreadcrumbHandler* GetBeforeBreadcrumbHandler() const;
@@ -76,12 +89,18 @@ protected:
 	virtual void ConfigureCertsPath(sentry_options_t* Options) {}
 	virtual void ConfigureLogFileAttachment(sentry_options_t* Options) {}
 	virtual void ConfigureNetworkConnectFunc(sentry_options_t* Options) {}
+	virtual void ConfigureStackCaptureStrategy(sentry_options_t* Options) {}
 	virtual void ConfigureCrashReporterPath(sentry_options_t* Options) {}
+	virtual void ConfigureScreenshotCapturing(sentry_options_t* Options) {}
+	virtual void ConfigureSessionReplayCapturing(sentry_options_t* Options) {}
+
+	void ConfigureCrashReporterAppearance(const USentrySettings* Settings);
 
 	FString GetHandlerPath() const;
 	FString GetDatabasePath() const;
 	FString GetScreenshotPath() const;
 	FString GetCrashReporterPath() const;
+	FString GetCrashReporterLogoPath() const;
 	virtual FString GetHandlerExecutableName() const { return TEXT("invalid"); }
 	virtual FString GetCrashReporterExecutableName() const { return TEXT("invalid"); }
 
@@ -93,11 +112,19 @@ protected:
 	virtual double OnTraceSampling(const sentry_transaction_context_t* transaction_ctx, sentry_value_t custom_sampling_ctx, const int* parent_sampled);
 
 	virtual bool IsScreenshotSupported() const;
+	virtual bool IsOutOfProcessScreenshotEnabled() const { return false; }
+
+	virtual ECrashContextType ResolveCrashType() const;
 
 	void InitCrashReporter(const FString& release, const FString& environment);
 
 	virtual void AddFileAttachment(TSharedPtr<ISentryAttachment> attachment);
 	virtual void AddByteAttachment(TSharedPtr<ISentryAttachment> attachment);
+
+	void SetEventCrashType(sentry_value_t event, ECrashContextType crashType);
+	void SetEventTag(sentry_value_t event, const char* key, const char* value);
+
+	bool bUseNativeBackend;
 
 	TArray<TSharedPtr<FGenericPlatformSentryAttachment>> attachments;
 
@@ -125,9 +152,26 @@ private:
 	bool isStackTraceEnabled;
 	bool isPiiAttachmentEnabled;
 	bool isScreenshotAttachmentEnabled;
+	bool isSessionReplayAttachmentEnabled;
 	bool isGpuDumpAttachmentEnabled;
 
+	bool bNativeHangTracking;
+
+	FDelegateHandle AppHangHeartbeatHandle;
+
+	FDateTime initTimestamp;
+
 	FString databaseParentPath;
+
+	TStrongObjectPtr<USentryEvent> PooledCrashEvent;
+
+	FThreadSafeBool bIsCrashing;
+
+#ifdef USE_SENTRY_SESSION_REPLAY
+	FString GetReplayPath() const;
+
+	TUniquePtr<FSentrySessionReplayRecorder> SessionReplay;
+#endif
 };
 
 #endif

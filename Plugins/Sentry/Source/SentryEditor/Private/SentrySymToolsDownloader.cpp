@@ -20,6 +20,10 @@
 #include "HAL/PlatformFileManager.h"
 #endif
 
+#if PLATFORM_MAC
+#include "Mac/MacSystemIncludes.h"
+#endif
+
 #if PLATFORM_WINDOWS
 const FString FSentrySymToolsDownloader::SentryCliExecName = TEXT("sentry-cli-Windows-x86_64.exe");
 #elif PLATFORM_MAC
@@ -54,8 +58,7 @@ ESentrySymToolsStatus FSentrySymToolsDownloader::GetStatus()
 		return ESentrySymToolsStatus::Downloading;
 	}
 
-	if (FPaths::FileExists(GetSentryCliPath()) && FPaths::FileExists(GetSymUploadScriptPath()) &&
-		HasExecutePermission(GetSentryCliPath()) && HasExecutePermission(GetSymUploadScriptPath()))
+	if (FPaths::FileExists(GetSentryCliPath()) && FPaths::FileExists(GetSymUploadScriptPath()) && HasExecutePermission(GetSentryCliPath()))
 	{
 		return ESentrySymToolsStatus::Configured;
 	}

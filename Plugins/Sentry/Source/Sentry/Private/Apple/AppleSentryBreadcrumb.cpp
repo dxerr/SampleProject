@@ -2,6 +2,8 @@
 
 #include "AppleSentryBreadcrumb.h"
 
+#if !USE_SENTRY_NATIVE
+
 #include "Infrastructure/AppleSentryConverters.h"
 
 #include "Convenience/AppleSentryInclude.h"
@@ -9,10 +11,10 @@
 
 FAppleSentryBreadcrumb::FAppleSentryBreadcrumb()
 {
-	BreadcrumbApple = [[SENTRY_APPLE_CLASS(SentryBreadcrumb) alloc] init];
+	BreadcrumbApple = [[SENTRY_APPLE_CLASS(SentryObjCBreadcrumb) alloc] init];
 }
 
-FAppleSentryBreadcrumb::FAppleSentryBreadcrumb(SentryBreadcrumb* breadcrumb)
+FAppleSentryBreadcrumb::FAppleSentryBreadcrumb(SentryObjCBreadcrumb* breadcrumb)
 {
 	BreadcrumbApple = breadcrumb;
 }
@@ -22,7 +24,7 @@ FAppleSentryBreadcrumb::~FAppleSentryBreadcrumb()
 	// Put custom destructor logic here if needed
 }
 
-SentryBreadcrumb* FAppleSentryBreadcrumb::GetNativeObject()
+SentryObjCBreadcrumb* FAppleSentryBreadcrumb::GetNativeObject()
 {
 	return BreadcrumbApple;
 }
@@ -76,3 +78,5 @@ ESentryLevel FAppleSentryBreadcrumb::GetLevel() const
 {
 	return FAppleSentryConverters::SentryLevelToUnreal(BreadcrumbApple.level);
 }
+
+#endif // !USE_SENTRY_NATIVE

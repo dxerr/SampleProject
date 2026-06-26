@@ -33,6 +33,7 @@ public:
 	virtual void InitWithSettings(const USentrySettings* settings, const FSentryCallbackHandlers& callbackHandlers) = 0;
 	virtual void Close() = 0;
 	virtual bool IsEnabled() = 0;
+	virtual bool IsCrashing() const = 0;
 	virtual ESentryCrashedLastRun IsCrashedLastRun() = 0;
 	virtual void AddBreadcrumb(TSharedPtr<ISentryBreadcrumb> breadcrumb) = 0;
 	virtual void AddBreadcrumbWithParams(const FString& Message, const FString& Category, const FString& Type, const TMap<FString, FSentryVariant>& Data, ESentryLevel Level) = 0;
@@ -49,6 +50,7 @@ public:
 	virtual TSharedPtr<ISentryId> CaptureEvent(TSharedPtr<ISentryEvent> event) = 0;
 	virtual TSharedPtr<ISentryId> CaptureEventWithScope(TSharedPtr<ISentryEvent> event, const FSentryScopeDelegate& onConfigureScope) = 0;
 	virtual TSharedPtr<ISentryId> CaptureEnsure(const FString& type, const FString& message) = 0;
+	virtual TSharedPtr<ISentryId> CaptureHang(uint32 HungThreadId) = 0;
 	virtual void CaptureFeedback(TSharedPtr<ISentryFeedback> feedback) = 0;
 	virtual void SetUser(TSharedPtr<ISentryUser> user) = 0;
 	virtual void RemoveUser() = 0;
@@ -58,6 +60,8 @@ public:
 	virtual void SetAttribute(const FString& key, const FSentryVariant& value) = 0;
 	virtual void RemoveAttribute(const FString& key) = 0;
 	virtual void SetLevel(ESentryLevel level) = 0;
+	virtual void SetRelease(const FString& release) = 0;
+	virtual void SetEnvironment(const FString& environment) = 0;
 	virtual void StartSession() = 0;
 	virtual void EndSession() = 0;
 	virtual void GiveUserConsent() = 0;
@@ -72,4 +76,7 @@ public:
 
 	/** Unreal-specific methods that are not part of the platform's Sentry SDK API */
 	virtual void HandleAssert() = 0;
+	virtual bool IsHangTrackingSupported() const = 0;
+	virtual bool IsNativeHangTrackingEnabled() const = 0;
+	virtual FString GetDeviceType() const = 0;
 };

@@ -2,36 +2,27 @@
 
 #include "AppleSentryLog.h"
 
+#if !USE_SENTRY_NATIVE
+
 #include "Infrastructure/AppleSentryConverters.h"
 
 #include "Convenience/AppleSentryInclude.h"
 #include "Convenience/AppleSentryMacro.h"
 
 FAppleSentryLog::FAppleSentryLog()
+	: FAppleSentryLog(FString(), ESentryLevel::Debug)
 {
-	LogApple = [SENTRY_APPLE_CLASS(SentryLog) alloc];
-	// Initialize required properties
-	LogApple.timestamp = [NSDate date];
-	LogApple.traceId = [[SENTRY_APPLE_CLASS(SentryId) alloc] init];
-	LogApple.body = @"";
-	LogApple.attributes = @{};
-	LogApple.level = SentryLogLevelDebug;
 }
 
-FAppleSentryLog::FAppleSentryLog(SentryLog* log)
+FAppleSentryLog::FAppleSentryLog(SentryObjCLog* log)
 {
 	LogApple = log;
 }
 
 FAppleSentryLog::FAppleSentryLog(const FString& body, ESentryLevel level)
 {
-	LogApple = [SENTRY_APPLE_CLASS(SentryLog) alloc];
-	// Initialize required properties
-	LogApple.timestamp = [NSDate date];
-	LogApple.traceId = [[SENTRY_APPLE_CLASS(SentryId) alloc] init];
-	LogApple.attributes = @{};
-	SetBody(body);
-	SetLevel(level);
+	LogApple = [[SENTRY_APPLE_CLASS(SentryObjCLog) alloc] initWithLevel:FAppleSentryConverters::SentryLogLevelToNative(level)
+																   body:body.GetNSString()];
 }
 
 FAppleSentryLog::~FAppleSentryLog()
@@ -39,7 +30,7 @@ FAppleSentryLog::~FAppleSentryLog()
 	// Put custom destructor logic here if needed
 }
 
-SentryLog* FAppleSentryLog::GetNativeObject()
+SentryObjCLog* FAppleSentryLog::GetNativeObject()
 {
 	return LogApple;
 }
@@ -66,7 +57,7 @@ ESentryLevel FAppleSentryLog::GetLevel() const
 
 void FAppleSentryLog::SetAttribute(const FString& key, const FSentryVariant& value)
 {
-	SentryAttribute* attribute = FAppleSentryConverters::VariantToAttributeNative(value);
+	SentryObjCAttribute* attribute = FAppleSentryConverters::VariantToAttributeNative(value);
 
 	if (!attribute)
 	{
@@ -78,7 +69,7 @@ void FAppleSentryLog::SetAttribute(const FString& key, const FSentryVariant& val
 
 FSentryVariant FAppleSentryLog::GetAttribute(const FString& key) const
 {
-	SentryAttribute* attribute = [LogApple.attributes objectForKey:key.GetNSString()];
+	SentryObjCAttribute* attribute = [LogApple.attributes objectForKey:key.GetNSString()];
 
 	if (!attribute)
 	{
@@ -90,7 +81,7 @@ FSentryVariant FAppleSentryLog::GetAttribute(const FString& key) const
 
 bool FAppleSentryLog::TryGetAttribute(const FString& key, FSentryVariant& value) const
 {
-	SentryAttribute* attribute = [LogApple.attributes objectForKey:key.GetNSString()];
+	SentryObjCAttribute* attribute = [LogApple.attributes objectForKey:key.GetNSString()];
 
 	if (!attribute)
 	{
@@ -113,3 +104,5 @@ void FAppleSentryLog::AddAttributes(const TMap<FString, FSentryVariant>& attribu
 		SetAttribute(pair.Key, pair.Value);
 	}
 }
+
+#endif // !USE_SENTRY_NATIVE

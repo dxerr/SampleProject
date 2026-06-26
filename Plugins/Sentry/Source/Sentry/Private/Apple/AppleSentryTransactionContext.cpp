@@ -2,15 +2,17 @@
 
 #include "AppleSentryTransactionContext.h"
 
+#if !USE_SENTRY_NATIVE
+
 #include "Convenience/AppleSentryInclude.h"
 #include "Convenience/AppleSentryMacro.h"
 
 FAppleSentryTransactionContext::FAppleSentryTransactionContext(const FString& name, const FString& operation)
 {
-	TransactionContext = [[SENTRY_APPLE_CLASS(SentryTransactionContext) alloc] initWithName:name.GetNSString() operation:operation.GetNSString()];
+	TransactionContext = [[SENTRY_APPLE_CLASS(SentryObjCTransactionContext) alloc] initWithName:name.GetNSString() operation:operation.GetNSString()];
 }
 
-FAppleSentryTransactionContext::FAppleSentryTransactionContext(SentryTransactionContext* context)
+FAppleSentryTransactionContext::FAppleSentryTransactionContext(SentryObjCTransactionContext* context)
 {
 	TransactionContext = context;
 }
@@ -30,7 +32,9 @@ FString FAppleSentryTransactionContext::GetOperation() const
 	return FString(TransactionContext.operation);
 }
 
-SentryTransactionContext* FAppleSentryTransactionContext::GetNativeObject()
+SentryObjCTransactionContext* FAppleSentryTransactionContext::GetNativeObject()
 {
 	return TransactionContext;
 }
+
+#endif // !USE_SENTRY_NATIVE

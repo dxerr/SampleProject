@@ -2,33 +2,144 @@
 
 #include "Mac/MacSentrySubsystem.h"
 
+#include "SentryDefines.h"
+#include "SentrySettings.h"
+
+#include "Misc/Paths.h"
+
+#if USE_SENTRY_NATIVE
+
+#include "GenericPlatform/GenericPlatformOutputDevices.h"
+
+void FMacSentrySubsystem::InitWithSettings(const USentrySettings* Settings, const FSentryCallbackHandlers& CallbackHandlers)
+{
+	FGenericPlatformSentrySubsystem::InitWithSettings(Settings, CallbackHandlers);
+
+	if (Settings->EnableExternalCrashReporter)
+	{
+		ConfigureCrashReporterAppearance(Settings);
+	}
+
+	if (Settings->EnableCrashReporterContextPropagation)
+	{
+		InitCrashReporter(Settings->GetEffectiveRelease(), Settings->GetEffectiveEnvironment());
+	}
+}
+
+FString FMacSentrySubsystem::GetHandlerExecutableName() const
+{
+	return TEXT("sentry-crash");
+}
+
+void FMacSentrySubsystem::ConfigureHandlerPath(sentry_options_t* Options)
+{
+	const FString HandlerPath = GetHandlerPath();
+
+	if (!FPaths::FileExists(HandlerPath))
+	{
+		UE_LOG(LogSentrySdk, Error, TEXT("Crash handler executable couldn't be found at: %s"), *HandlerPath);
+		return;
+	}
+
+	sentry_options_set_handler_path(Options, TCHAR_TO_UTF8(*HandlerPath));
+}
+
+void FMacSentrySubsystem::ConfigureDatabasePath(sentry_options_t* Options)
+{
+	sentry_options_set_database_path(Options, TCHAR_TO_UTF8(*GetDatabasePath()));
+}
+
+void FMacSentrySubsystem::ConfigureCertsPath(sentry_options_t* Options)
+{
+	// UE's bundled libcurl uses OpenSSL which requires explicit CA certificate paths on macOS
+	static const char* KnownCertPaths[] = {
+		"/etc/ssl/cert.pem",
+	};
+
+	for (const char* BundlePath : KnownCertPaths)
+	{
+		FString FileName(BundlePath);
+
+		if (FPaths::FileExists(FileName))
+		{
+			UE_LOG(LogSentrySdk, Log, TEXT("Sentry transport will use the certificate found at %s for verification."), *FileName);
+			sentry_options_set_ca_certs(Options, BundlePath);
+			return;
+		}
+	}
+
+	UE_LOG(LogSentrySdk, Warning, TEXT("Could not find CA certificates in any known location. Sentry transport may not function properly for handled events"));
+}
+
+void FMacSentrySubsystem::ConfigureLogFileAttachment(sentry_options_t* Options)
+{
+	const FString LogFilePath = FGenericPlatformOutputDevices::GetAbsoluteLogFilename();
+	sentry_options_add_attachment(Options, TCHAR_TO_UTF8(*FPaths::ConvertRelativePathToFull(LogFilePath)));
+}
+
+void FMacSentrySubsystem::ConfigureCrashReporterPath(sentry_options_t* Options)
+{
+	const FString CrashReporterPath = GetCrashReporterPath();
+	if (!FPaths::FileExists(CrashReporterPath))
+	{
+		UE_LOG(LogSentrySdk, Error, TEXT("External crash reporter executable couldn't be found at: %s"), *CrashReporterPath);
+		return;
+	}
+	sentry_options_set_external_crash_reporter_path(Options, TCHAR_TO_UTF8(*CrashReporterPath));
+}
+
+#else
+
 #include "AppleSentryId.h"
 
-#include "SentryDefines.h"
 #include "SentryModule.h"
-#include "SentrySettings.h"
 
 #include "Utils/SentryFileUtils.h"
 
+#include "HAL/FileManager.h"
 #include "Misc/CoreDelegates.h"
 #include "Misc/FileHelper.h"
-#include "Misc/Paths.h"
+#include "Misc/Guid.h"
+
+#include "Mac/MacSystemIncludes.h"
 
 void FMacSentrySubsystem::InitWithSettings(const USentrySettings* settings, const FSentryCallbackHandlers& callbackHandlers)
 {
 	FAppleSentrySubsystem::InitWithSettings(settings, callbackHandlers);
 
-	if (IsEnabled() && isScreenshotAttachmentEnabled)
+	if (IsEnabled())
 	{
-		OnHandleSystemErrorDelegateHandle = FCoreDelegates::OnHandleSystemError.AddLambda([this]()
+		if (isScreenshotAttachmentEnabled && !IsRunningCommandlet())
 		{
-			TryCaptureScreenshot();
-		});
+			OnHandleSystemErrorDelegateHandle = FCoreDelegates::OnHandleSystemError.AddLambda([this]()
+			{
+				TryCaptureScreenshot();
+			});
+		}
+
+#ifdef USE_SENTRY_SESSION_REPLAY
+		if (settings->AttachSessionReplay)
+		{
+			SessionReplay = MakeUnique<FSentrySessionReplayRecorder>();
+			if (!SessionReplay->Initialize(settings, GetReplayPath()))
+			{
+				SessionReplay.Reset();
+			}
+		}
+#endif
 	}
 }
 
 void FMacSentrySubsystem::Close()
 {
+#ifdef USE_SENTRY_SESSION_REPLAY
+	if (SessionReplay)
+	{
+		SessionReplay->Shutdown();
+		SessionReplay.Reset();
+	}
+#endif
+
 	if (OnHandleSystemErrorDelegateHandle.IsValid())
 	{
 		FCoreDelegates::OnHandleSystemError.Remove(OnHandleSystemErrorDelegateHandle);
@@ -38,11 +149,20 @@ void FMacSentrySubsystem::Close()
 	FAppleSentrySubsystem::Close();
 }
 
+#ifdef USE_SENTRY_SESSION_REPLAY
+FString FMacSentrySubsystem::GetReplayPath() const
+{
+	const FString ReplayId = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens).ToLower();
+	const FString ReplayPath = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SentryReplays"), FString::Printf(TEXT("replay-%s.mp4"), *ReplayId));
+	return FPaths::ConvertRelativePathToFull(ReplayPath);
+}
+#endif
+
 TSharedPtr<ISentryId> FMacSentrySubsystem::CaptureEnsure(const FString& type, const FString& message)
 {
 	TSharedPtr<ISentryId> id = FAppleSentrySubsystem::CaptureEnsure(type, message);
 
-	if (isScreenshotAttachmentEnabled)
+	if (isScreenshotAttachmentEnabled && !IsRunningCommandlet())
 	{
 		const FString& screenshotPath = TryCaptureScreenshot();
 		UploadScreenshotForEvent(id, screenshotPath);
@@ -100,3 +220,5 @@ FString FMacSentrySubsystem::GetLatestGameLog() const
 {
 	return SentryFileUtils::GetGameLogBackupPath();
 }
+
+#endif

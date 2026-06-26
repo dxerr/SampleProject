@@ -2,17 +2,19 @@
 
 #pragma once
 
+#if !USE_SENTRY_NATIVE
+
 #include "Interface/SentryTransactionInterface.h"
 
-@protocol SentrySpan;
+@class SentryObjCSpan;
 
 class FAppleSentryTransaction : public ISentryTransaction
 {
 public:
-	FAppleSentryTransaction(id<SentrySpan> transaction);
+	FAppleSentryTransaction(SentryObjCSpan* transaction);
 	virtual ~FAppleSentryTransaction() override;
 
-	id<SentrySpan> GetNativeObject();
+	SentryObjCSpan* GetNativeObject();
 
 	virtual TSharedPtr<ISentrySpan> StartChildSpan(const FString& operation, const FString& desctiption, bool bindToScope) override;
 	virtual TSharedPtr<ISentrySpan> StartChildSpanWithTimestamp(const FString& operation, const FString& desctiption, int64 timestamp, bool bindToScope) override;
@@ -27,7 +29,9 @@ public:
 	virtual void GetTrace(FString& name, FString& value) override;
 
 private:
-	id<SentrySpan> TransactionApple;
+	SentryObjCSpan* TransactionApple;
 };
 
 typedef FAppleSentryTransaction FPlatformSentryTransaction;
+
+#endif // !USE_SENTRY_NATIVE

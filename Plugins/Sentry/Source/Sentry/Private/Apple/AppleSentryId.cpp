@@ -2,20 +2,22 @@
 
 #include "AppleSentryId.h"
 
+#if !USE_SENTRY_NATIVE
+
 #include "Convenience/AppleSentryInclude.h"
 #include "Convenience/AppleSentryMacro.h"
 
 FAppleSentryId::FAppleSentryId()
 {
-	IdApple = [[SENTRY_APPLE_CLASS(SentryId) alloc] init];
+	IdApple = [[SENTRY_APPLE_CLASS(SentryObjCId) alloc] init];
 }
 
 FAppleSentryId::FAppleSentryId(const FString& id)
 {
-	IdApple = [[SENTRY_APPLE_CLASS(SentryId) alloc] initWithUUIDString:id.GetNSString()];
+	IdApple = [[SENTRY_APPLE_CLASS(SentryObjCId) alloc] initWithUUIDString:id.GetNSString()];
 }
 
-FAppleSentryId::FAppleSentryId(SentryId* id)
+FAppleSentryId::FAppleSentryId(SentryObjCId* id)
 {
 	IdApple = id;
 }
@@ -25,7 +27,7 @@ FAppleSentryId::~FAppleSentryId()
 	// Put custom destructor logic here if needed
 }
 
-SentryId* FAppleSentryId::GetNativeObject()
+SentryObjCId* FAppleSentryId::GetNativeObject()
 {
 	return IdApple;
 }
@@ -34,3 +36,5 @@ FString FAppleSentryId::ToString() const
 {
 	return FString(IdApple.sentryIdString);
 }
+
+#endif // !USE_SENTRY_NATIVE

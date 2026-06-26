@@ -1,6 +1,9 @@
 // Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #include "AppleSentryTransaction.h"
+
+#if !USE_SENTRY_NATIVE
+
 #include "AppleSentrySpan.h"
 
 #include "Infrastructure/AppleSentryConverters.h"
@@ -10,7 +13,7 @@
 
 #include "SentryDefines.h"
 
-FAppleSentryTransaction::FAppleSentryTransaction(id<SentrySpan> transaction)
+FAppleSentryTransaction::FAppleSentryTransaction(SentryObjCSpan* transaction)
 {
 	TransactionApple = transaction;
 	[TransactionApple retain];
@@ -21,18 +24,18 @@ FAppleSentryTransaction::~FAppleSentryTransaction()
 	[TransactionApple release];
 }
 
-id<SentrySpan> FAppleSentryTransaction::GetNativeObject()
+SentryObjCSpan* FAppleSentryTransaction::GetNativeObject()
 {
 	return TransactionApple;
 }
 
 TSharedPtr<ISentrySpan> FAppleSentryTransaction::StartChildSpan(const FString& operation, const FString& desctiption, bool bindToScope)
 {
-	id<SentrySpan> span = [TransactionApple startChildWithOperation:operation.GetNSString() description:desctiption.GetNSString()];
+	SentryObjCSpan* span = [TransactionApple startChildWithOperation:operation.GetNSString() description:desctiption.GetNSString()];
 
 	if (bindToScope)
 	{
-		[SENTRY_APPLE_CLASS(SentrySDK) configureScope:^(SentryScope* scope) {
+		[SENTRY_APPLE_CLASS(SentryObjCSDK) configureScope:^(SentryObjCScope* scope) {
 			scope.span = span;
 		}];
 	}
@@ -90,8 +93,10 @@ void FAppleSentryTransaction::RemoveData(const FString& key)
 
 void FAppleSentryTransaction::GetTrace(FString& name, FString& value)
 {
-	SentryTraceHeader* traceHeader = [TransactionApple toTraceHeader];
+	SentryObjCTraceHeader* traceHeader = [TransactionApple toTraceHeader];
 
 	name = TEXT("sentry-trace");
 	value = FString([traceHeader value]);
 }
+
+#endif // !USE_SENTRY_NATIVE

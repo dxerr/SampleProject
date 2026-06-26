@@ -2,19 +2,21 @@
 
 #pragma once
 
+#if !USE_SENTRY_NATIVE
+
 #include "Interface/SentryLogInterface.h"
 
-@class SentryLog;
+@class SentryObjCLog;
 
 class FAppleSentryLog : public ISentryLog
 {
 public:
 	FAppleSentryLog();
-	FAppleSentryLog(SentryLog* log);
+	FAppleSentryLog(SentryObjCLog* log);
 	FAppleSentryLog(const FString& body, ESentryLevel level);
 	virtual ~FAppleSentryLog() override;
 
-	SentryLog* GetNativeObject();
+	SentryObjCLog* GetNativeObject();
 
 	virtual void SetBody(const FString& body) override;
 	virtual FString GetBody() const override;
@@ -28,7 +30,9 @@ public:
 	virtual void AddAttributes(const TMap<FString, FSentryVariant>& attributes) override;
 
 private:
-	SentryLog* LogApple;
+	SentryObjCLog* LogApple;
 };
 
 typedef FAppleSentryLog FPlatformSentryLog;
+
+#endif // !USE_SENTRY_NATIVE

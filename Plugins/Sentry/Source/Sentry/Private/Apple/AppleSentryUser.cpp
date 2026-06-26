@@ -2,6 +2,8 @@
 
 #include "AppleSentryUser.h"
 
+#if !USE_SENTRY_NATIVE
+
 #include "Infrastructure/AppleSentryConverters.h"
 
 #include "Convenience/AppleSentryInclude.h"
@@ -9,10 +11,10 @@
 
 FAppleSentryUser::FAppleSentryUser()
 {
-	UserApple = [[SENTRY_APPLE_CLASS(SentryUser) alloc] init];
+	UserApple = [[SENTRY_APPLE_CLASS(SentryObjCUser) alloc] init];
 }
 
-FAppleSentryUser::FAppleSentryUser(SentryUser* user)
+FAppleSentryUser::FAppleSentryUser(SentryObjCUser* user)
 {
 	UserApple = user;
 }
@@ -22,7 +24,7 @@ FAppleSentryUser::~FAppleSentryUser()
 	// Put custom destructor logic here if needed
 }
 
-SentryUser* FAppleSentryUser::GetNativeObject()
+SentryObjCUser* FAppleSentryUser::GetNativeObject()
 {
 	return UserApple;
 }
@@ -76,3 +78,5 @@ TMap<FString, FString> FAppleSentryUser::GetData()
 {
 	return FAppleSentryConverters::StringMapToUnreal(UserApple.data);
 }
+
+#endif // !USE_SENTRY_NATIVE
