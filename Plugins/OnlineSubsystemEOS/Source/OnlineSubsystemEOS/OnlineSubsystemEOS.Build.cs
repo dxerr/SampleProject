@@ -16,13 +16,6 @@ public class OnlineSubsystemEOS : ModuleRules
 			}
 		);
 
-		PrivateIncludePathModuleNames.AddRange(
-			new string[]
-			{
-				"VoiceChat",
-			}
-		);
-
 		PrivateDependencyModuleNames.AddRange(
 			new string[] {
 				"Core",
@@ -31,12 +24,13 @@ public class OnlineSubsystemEOS : ModuleRules
 				"Engine",
 				"EOSVoiceChat",
 				"Json",
+				"NetCore",
 				"OnlineBase",
 				"OnlineSubsystem",
 				"OnlineSubsystemUtils",
 				"Sockets",
 				"SocketSubsystemEOS",
-				"NetCore"
+				"VoiceChat"
 			}
 		);
 
@@ -48,6 +42,9 @@ public class OnlineSubsystemEOS : ModuleRules
 
 	protected virtual bool bUseXblXstsToken { get { return false; } }
 	protected virtual bool bUsePsnIdToken { get { return false; } }
-	protected virtual bool bAddUserLoginInfo { get { return false; } }
+	// [Ex] Modified (UE5.8 재적용): PC(Win64) Device ID 로그인 시 UserLoginInfo가 비어
+	// EOS_InvalidParameters가 발생하는 버그 우회 — 기본값 true로 ADD_USER_LOGIN_INFO=1 강제.
+	// (콘솔 플랫폼 확장은 별도 서브클래스에서 이미 true override 중이라 영향 없음)
+	protected virtual bool bAddUserLoginInfo { get { return true; } }
 	protected virtual bool bAuthTokenSavegameStorage { get { return false; } }
 }

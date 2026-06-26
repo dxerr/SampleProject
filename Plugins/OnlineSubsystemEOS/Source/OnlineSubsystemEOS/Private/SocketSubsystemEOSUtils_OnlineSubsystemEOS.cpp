@@ -16,6 +16,7 @@ FSocketSubsystemEOSUtils_OnlineSubsystemEOS::~FSocketSubsystemEOSUtils_OnlineSub
 {
 }
 
+#if WITH_EOS_P2P
 EOS_ProductUserId FSocketSubsystemEOSUtils_OnlineSubsystemEOS::GetLocalUserId()
 {
 	EOS_ProductUserId Result = nullptr;
@@ -25,6 +26,7 @@ EOS_ProductUserId FSocketSubsystemEOSUtils_OnlineSubsystemEOS::GetLocalUserId()
 
 	return Result;
 }
+#endif // WITH_EOS_P2P
 
 bool FSocketSubsystemEOSUtils_OnlineSubsystemEOS::IsLoggedIn()
 {

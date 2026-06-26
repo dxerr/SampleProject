@@ -105,7 +105,7 @@ void FOnlineSubsystemEOSModule::StartupModule()
 #endif
 
 #if WITH_EDITOR
-	FCoreDelegates::OnPostEngineInit.AddRaw(this, &FOnlineSubsystemEOSModule::OnPostEngineInit);
+	FCoreDelegates::GetOnPostEngineInit().AddRaw(this, &FOnlineSubsystemEOSModule::OnPostEngineInit);
 	FCoreDelegates::OnPreExit.AddRaw(this, &FOnlineSubsystemEOSModule::OnPreExit);
 #endif
 }
@@ -136,7 +136,7 @@ void FOnlineSubsystemEOSModule::OnPreExit()
 void FOnlineSubsystemEOSModule::ShutdownModule()
 {
 #if WITH_EDITOR
-	FCoreDelegates::OnPostEngineInit.RemoveAll(this);
+	FCoreDelegates::GetOnPostEngineInit().RemoveAll(this);
 	FCoreDelegates::OnPreExit.RemoveAll(this);
 #endif
 

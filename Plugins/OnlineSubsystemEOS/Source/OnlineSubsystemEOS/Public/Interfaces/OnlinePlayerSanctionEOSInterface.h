@@ -25,7 +25,7 @@ DECLARE_DELEGATE_OneParam(FOnQueryActivePlayerSanctionsComplete, const bool /* b
 class IOnlinePlayerSanctionEOS
 {
 public:
-	virtual ~IOnlinePlayerSanctionEOS() {};
+	virtual ~IOnlinePlayerSanctionEOS() = default;
 
 
 	/**

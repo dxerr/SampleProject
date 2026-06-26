@@ -92,6 +92,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	bool bUseEOSConnect;
 	bool bUseEOSRTC;
 	bool bUseNamedPlatformConfig;
+	bool bUseNewEcomFlow;
 	UE_DEPRECATED(5.7, "bUseNewLoginFlow is deprecated, the legacy login flow has been removed from UserManagerEOS.")
 	bool bUseNewLoginFlow;
 	TArray<FEOSArtifactSettings> Artifacts;
@@ -181,6 +182,10 @@ public:
 	 */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="EOS Settings")
 	bool bUseNamedPlatformConfig = false;
+
+	/** New Epic Games Store Ecom integration - Use IOnlineEntitlements, IOnlinePurchase and IOnlineStoreV2 for a complete feature set of the Ecom interface in the EOS SDK */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "EOS Ecom Settings", DisplayName = "Use new Ecom flow")
+	bool bUseNewEcomFlow = false;
 
 	/** Set to true to use new EOS login flow */
 	UE_DEPRECATED(5.7, "bUseNewLoginFlow is deprecated, the legacy login flow has been removed from UserManagerEOS.")

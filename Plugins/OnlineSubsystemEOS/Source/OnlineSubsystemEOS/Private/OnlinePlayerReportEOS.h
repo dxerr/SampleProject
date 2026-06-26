@@ -10,7 +10,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogOnlinePlayerReportEOS, Log, All);
 
 #define UE_LOG_ONLINE_PLAYERREPORTEOS(Verbosity, Format, ...) \
 { \
-	UE_LOG(LogOnlinePlayerReportEOS, Verbosity, TEXT("%s%s"), ONLINE_LOG_PREFIX, *FString::Printf(Format, ##__VA_ARGS__)); \
+	UE_LOGF(LogOnlinePlayerReportEOS, Verbosity, "%ls%ls", ONLINE_LOG_PREFIX, *FString::Printf(Format, ##__VA_ARGS__)); \
 }
 
 class FOnlineSubsystemEOS;

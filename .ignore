@@ -2,6 +2,7 @@
 /.claude
 /.gemini
 /.git
+/.github
 /.sentry-native
 /.vscode
 /Bug
@@ -23,12 +24,18 @@
 /Plugins/Sentry/Gradle
 /Plugins/Sentry/Intermediate
 /Plugins/Sentry/Scripts
+/Plugins/UnrealCopilot/.claude
 /Plugins/UnrealCopilot/.cursor
 /Plugins/UnrealCopilot/.git
 /Plugins/UnrealCopilot/Content
+/Plugins/UnrealCopilot/Docs
 /Plugins/UnrealCopilot/Intermediate
 /Plugins/UnrealCopilot/skills
+/Plugins/UnrealCopilot/Tools
+/Plugins/UnrealCopilot/UnrealMCPHub
 /Plugins/UnrealMCP/.git
 /Plugins/UnrealMCP/Intermediate
 /Plugins/UnrealMCP/Logs
 /Plugins/UnrealMCP/MCP
+/Plugins/VaultAssetCheckTool/Content
+/Plugins/VaultAssetCheckTool/Intermediate

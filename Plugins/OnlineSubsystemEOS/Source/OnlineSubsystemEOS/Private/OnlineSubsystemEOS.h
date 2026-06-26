@@ -53,6 +53,16 @@ typedef TSharedPtr<class FOnlinePlayerSanctionEOS, ESPMode::ThreadSafe> FOnlineP
 class FOnlinePlayerReportEOS;
 typedef TSharedPtr<class FOnlinePlayerReportEOS, ESPMode::ThreadSafe> FOnlinePlayerReportEOSPtr;
 
+// FOnlineEntitlementsEOS, FOnlinePurchaseEOS and FOnlineStoreEOSV2 are only set if bUseNewEcomFlow is true
+class FOnlineEntitlementsEOS;
+typedef TSharedPtr<class FOnlineEntitlementsEOS, ESPMode::ThreadSafe> FOnlineEntitlementsEOSPtr;
+
+class FOnlinePurchaseEOS;
+typedef TSharedPtr<class FOnlinePurchaseEOS, ESPMode::ThreadSafe> FOnlinePurchaseEOSPtr;
+
+class FOnlineStoreEOSV2;
+typedef TSharedPtr<class FOnlineStoreEOSV2, ESPMode::ThreadSafe> FOnlineStoreEOSV2Ptr;
+
 typedef TSharedPtr<FPlatformEOSHelpers, ESPMode::ThreadSafe> FPlatformEOSHelpersPtr;
 
 /**
@@ -162,6 +172,12 @@ public:
 	FOnlinePlayerSanctionEOSPtr PlayerSanctionEOSPtr;
 	/** Player Report interface pointer */
 	FOnlinePlayerReportEOSPtr PlayerReportInterfacePtr;
+	/** Entitlements interface pointer - only valid if bUseNewEcomFlow is true */
+	FOnlineEntitlementsEOSPtr EntitlementsInterfacePtr;
+	/** Purchase interface pointer - only valid if bUseNewEcomFlow is true */
+	FOnlinePurchaseEOSPtr PurchaseInterfacePtr;
+	/** Store interface pointer used to retrieve EGS offers - only valid if bUseNewEcomFlow is true */
+	FOnlineStoreEOSV2Ptr StoreInterfaceV2Ptr;
 
 	TSharedPtr<FSocketSubsystemEOS, ESPMode::ThreadSafe> SocketSubsystem;
 
@@ -205,6 +221,7 @@ public:
 	virtual IOnlineTitleFilePtr GetTitleFileInterface() const override { return nullptr; }
 	virtual IOnlineStoreV2Ptr GetStoreV2Interface() const override { return nullptr; }
 	virtual IOnlinePurchasePtr GetPurchaseInterface() const override { return nullptr; }
+	virtual IOnlineEntitlementsPtr GetEntitlementsInterface() const override { return nullptr; }
 	virtual IOnlineEventsPtr GetEventsInterface() const override { return nullptr; }
 	virtual IOnlineAchievementsPtr GetAchievementsInterface() const override { return nullptr; }
 	virtual IOnlineSharingPtr GetSharingInterface() const override { return nullptr; }

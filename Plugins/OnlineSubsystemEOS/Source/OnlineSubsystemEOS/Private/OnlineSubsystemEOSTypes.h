@@ -180,9 +180,7 @@ public:
 	{
 	}
 
-	virtual ~TOnlineUserEOS()
-	{
-	}
+	virtual ~TOnlineUserEOS() = default;
 
 // FOnlineUser
 	virtual FUniqueNetIdRef GetUserId() const override

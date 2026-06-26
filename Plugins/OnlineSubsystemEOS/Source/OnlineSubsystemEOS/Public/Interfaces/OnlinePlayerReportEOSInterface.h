@@ -19,7 +19,7 @@ DECLARE_DELEGATE_OneParam(FOnSendPlayerReportComplete, const bool /* bWasSuccess
 class IOnlinePlayerReportEOS
 {
 public:
-	virtual ~IOnlinePlayerReportEOS() {};
+	virtual ~IOnlinePlayerReportEOS() = default;
 
 	/**
 	*	Enum to set the category on the player report

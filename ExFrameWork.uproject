@@ -133,7 +133,19 @@
 		{
 			"Name": "ExNetwork",
 			"Enabled": true
+		},
+		{
+			"Name": "VaultAssetCheckTool",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
+		},
+		{
+			"Name": "Sentry",
+			"Enabled": true
 		}
+
 	],
 	"EpicSampleNameHash": "1673045636"
 }

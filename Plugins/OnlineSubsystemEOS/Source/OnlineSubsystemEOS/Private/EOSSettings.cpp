@@ -148,6 +148,7 @@ FEOSSettings::FEOSSettings()
 	, bUseEAS(false)
 	, bUseEOSConnect(false)
 	, bUseEOSRTC(true)
+	, bUseNewEcomFlow(false)
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	, bUseNewLoginFlow(false)
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
@@ -198,6 +199,7 @@ const FEOSSettings& UEOSSettings::ManualGetSettings()
 		GConfig->GetBool(INI_SECTION, TEXT("bUseEOSConnect"), GCachedSettings->bUseEOSConnect, GEngineIni);
 		GConfig->GetBool(INI_SECTION, TEXT("bUseEOSRTC"), GCachedSettings->bUseEOSRTC, GEngineIni);
 		GConfig->GetBool(INI_SECTION, TEXT("bUseNamedPlatformConfig"), GCachedSettings->bUseNamedPlatformConfig, GEngineIni);
+		GConfig->GetBool(INI_SECTION, TEXT("bUseNewEcomFlow"), GCachedSettings->bUseNewEcomFlow, GEngineIni);
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		GConfig->GetBool(INI_SECTION, TEXT("bUseNewLoginFlow"), GCachedSettings->bUseNewLoginFlow, GEngineIni);
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
@@ -233,6 +235,7 @@ FEOSSettings UEOSSettings::ToNative() const
 	Native.bUseEOSConnect = bUseEOSConnect;
 	Native.bUseEOSRTC = bUseEOSRTC;
 	Native.bUseNamedPlatformConfig = bUseNamedPlatformConfig;
+	Native.bUseNewEcomFlow = bUseNewEcomFlow;
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	Native.bUseNewLoginFlow = bUseNewLoginFlow;
 PRAGMA_ENABLE_DEPRECATION_WARNINGS

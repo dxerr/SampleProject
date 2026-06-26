@@ -312,7 +312,7 @@ bool FOnlineTitleFileEOS::ReadFile(const FString& FileName)
 			{
 				TitleFile->bIsLoaded = true;
 				TitleFile->bInProgress = false;
-				UE_LOG_ONLINE_TITLEFILE(Verbose, TEXT("Read (%s), size %d"), *TitleFile->Filename, TitleFile->ContentSize);
+				UE_LOG_ONLINE_TITLEFILE(Verbose, TEXT("Read (%s), size %zu"), *TitleFile->Filename, TitleFile->ContentSize);
 			}
 			else
 			{

@@ -244,7 +244,7 @@ void FOnlineUserCloudEOS::EnumerateUserFiles(const FUniqueNetId& UserId)
 		}
 		else
 		{
-			UE_LOG_ONLINE_CLOUD(Warning, TEXT("[FOnlineUserCloudEOS::EnumerateUserFiles] UniqueNetId not found for EOS_ProductUserId %d"), Data->LocalUserId);
+			UE_LOG_ONLINE_CLOUD(Warning, TEXT("[FOnlineUserCloudEOS::EnumerateUserFiles] UniqueNetId not found for EOS_ProductUserId %lld"), Data->LocalUserId);
 		}
 
 		TriggerOnEnumerateUserFilesCompleteDelegates(bWasSuccessful, *UniqueNetIdPtr);
@@ -397,7 +397,7 @@ bool FOnlineUserCloudEOS::ReadUserFile(const FUniqueNetId& UserId, const FString
 				{
 					UserCloudFile->bIsLoaded = true;
 					UserCloudFile->bInProgress = false;
-					UE_LOG_ONLINE_CLOUD(Verbose, TEXT("[FOnlineUserCloudEOS::ReadUserFile] Read file %s with size %d"), *UserCloudFile->Filename, UserCloudFile->ContentSize);
+					UE_LOG_ONLINE_CLOUD(Verbose, TEXT("[FOnlineUserCloudEOS::ReadUserFile] Read file %s with size %zu"), *UserCloudFile->Filename, UserCloudFile->ContentSize);
 				}
 				else
 				{
@@ -527,7 +527,7 @@ bool FOnlineUserCloudEOS::WriteUserFile(const FUniqueNetId& UserId, const FStrin
 
 					UserCloudFile->ContentIndex += (size_t)*OutDataWritten;
 
-					UE_LOG_ONLINE_CLOUD(Verbose, TEXT("[FOnlineUserCloudEOS::WriteUserFile] Wrote %d bytes for file %s"), BytesToWrite, *FileName);
+					UE_LOG_ONLINE_CLOUD(Verbose, TEXT("[FOnlineUserCloudEOS::WriteUserFile] Wrote %zu bytes for file %s"), BytesToWrite, *FileName);
 
 					return EOS_PlayerDataStorage_EWriteResult::EOS_WR_ContinueWriting;
 				}
@@ -577,7 +577,7 @@ bool FOnlineUserCloudEOS::WriteUserFile(const FUniqueNetId& UserId, const FStrin
 				{
 					UserCloudFile->bIsLoaded = true;
 					UserCloudFile->bInProgress = false;
-					UE_LOG_ONLINE_CLOUD(Verbose, TEXT("[FOnlineUserCloudEOS::WriteUserFile] Wrote file %s with size %d"), *UserCloudFile->Filename, UserCloudFile->ContentSize);
+					UE_LOG_ONLINE_CLOUD(Verbose, TEXT("[FOnlineUserCloudEOS::WriteUserFile] Wrote file %s with size %zu"), *UserCloudFile->Filename, UserCloudFile->ContentSize);
 				}
 				else
 				{
@@ -829,7 +829,7 @@ void FOnlineUserCloudEOS::DumpCloudFileState(const FUniqueNetId& UserId, const F
 		FEOSUserCloudFile* UserCloudFile = UserCloudFileCollection->Find(FileName);
 		if (UserCloudFile != nullptr)
 		{
-			UE_LOG_ONLINE_CLOUD(Log, TEXT("[FOnlineUserCloudEOS::DumpCloudFileState] File %s state: ContentSize (%d), IsLoaded (%d), InProgress (%d)"), *UserCloudFile->Filename, UserCloudFile->ContentSize, UserCloudFile->bIsLoaded, UserCloudFile->bInProgress);
+			UE_LOG_ONLINE_CLOUD(Log, TEXT("[FOnlineUserCloudEOS::DumpCloudFileState] File %s state: ContentSize (%zu), IsLoaded (%d), InProgress (%d)"), *UserCloudFile->Filename, UserCloudFile->ContentSize, UserCloudFile->bIsLoaded, UserCloudFile->bInProgress);
 		}
 		else
 		{

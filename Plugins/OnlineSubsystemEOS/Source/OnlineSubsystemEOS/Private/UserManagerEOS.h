@@ -171,7 +171,6 @@ struct FNotificationIdCallbackPair
 		delete Callback;
 	}
 };
-typedef TSharedPtr<FNotificationIdCallbackPair> FNotificationIdCallbackPairPtr;
 
 /** Cache for the info passed on to ReadFriendsList, kept while user info queries complete */
 struct ReadUserListInfo
@@ -234,11 +233,11 @@ struct FLocalUserEOS
 	/** Last Login Credentials used for a login attempt */
 	TSharedPtr<FOnlineAccountCredentials> LastLoginCredentials_Legacy;
 
-	/** Struct containing the information related to the connect login notification for the user */
-	FNotificationIdCallbackPairPtr ConnectLoginNotification;
-
 	/** If set, Connect Login will be re-attempted with it. If this attempt fails, a new token will need to be provided */
 	TOptional<FString> UserProvidedConnectAuthToken;
+
+	/** Track if the player is in the process of logging out to avoid calling EOS SDK logout APIs multiple times */
+	bool bIsLoggingOut = false;
 };
 
 /**
@@ -388,13 +387,15 @@ public:
 	void LoginViaExternalAuth(int32 LocalUserNum);
 	void CreateConnectedLogin(int32 LocalUserNum, EOS_EpicAccountId AccountId, EOS_ContinuanceToken Token);
 	void LinkEAS(int32 LocalUserNum, EOS_ContinuanceToken Token);
-	void AutoRefreshConnectLogin(int32 LocalUserNum);
+	void AutoRefreshConnectLogin(const EOS_Connect_AuthExpirationCallbackInfo* Data);
 	bool ConnectLoginNoEAS(int32 LocalUserNum);
 
 	void FullLoginCallback(int32 LocalUserNum, EOS_EpicAccountId AccountId, EOS_ProductUserId UserId);
 	void FriendStatusChanged(const EOS_Friends_OnFriendsUpdateInfo* Data);
 	void FriendStatusChangedImpl(EOS_EpicAccountId LocalUserId, EOS_EpicAccountId TargetUserId, EOS_EFriendsStatus PreviousStatus, EOS_EFriendsStatus CurrentStatus);
-	void LoginStatusChanged(const EOS_Auth_LoginStatusChangedCallbackInfo* Data);
+	void AuthLoginStatusChanged(const EOS_Auth_LoginStatusChangedCallbackInfo* Data);
+	void ConnectLoginStatusChanged(const EOS_Connect_LoginStatusChangedCallbackInfo* Data);
+	void PresenceChanged(const EOS_Presence_PresenceChangedCallbackInfo* Data);
 
 	int32 GetDefaultLocalUser() const { return DefaultLocalUser; }
 
@@ -445,14 +446,19 @@ private:
 	int32 DefaultLocalUser;
 
 	/** Notification state for SDK events */
-	EOS_NotificationId LoginNotificationId = EOS_INVALID_NOTIFICATIONID;
-	FCallbackBase* LoginNotificationCallback = nullptr;
+	EOS_NotificationId AuthLoginStatusChangedNotificationId = EOS_INVALID_NOTIFICATIONID;
+	FCallbackBase* AuthLoginStatusChangedNotificationCallback = nullptr;
+	EOS_NotificationId ConnectLoginStatusChangedNotificationId = EOS_INVALID_NOTIFICATIONID;
+	FCallbackBase* ConnectLoginStatusChangedNotificationCallback = nullptr;
+	EOS_NotificationId ConnectLoginExpiredNotificationId = EOS_INVALID_NOTIFICATIONID;
+	FCallbackBase* ConnectLoginExpiredNotificationCallback = nullptr;
 	EOS_NotificationId FriendsNotificationId = EOS_INVALID_NOTIFICATIONID;
 	FCallbackBase* FriendsNotificationCallback = nullptr;
 	EOS_NotificationId PresenceNotificationId = EOS_INVALID_NOTIFICATIONID;
 	FCallbackBase* PresenceNotificationCallback = nullptr;
 	EOS_NotificationId DisplaySettingsUpdatedId = EOS_INVALID_NOTIFICATIONID;
 	FCallbackBase* DisplaySettingsUpdatedCallback = nullptr;
+	bool bLastReportedExclusiveInput = false;
 
 	/** Information related to ongoing operations and state for local users */
 	TLocalUserArray<FLocalUserEOS> LocalUsers;

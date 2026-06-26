@@ -49,6 +49,10 @@
 		{
 			"Name": "EOSOverlayInputProvider",
 			"Enabled": true
+		},
+		{
+			"Name": "VoiceChat",
+			"Enabled": true
 		}
 	]
 }

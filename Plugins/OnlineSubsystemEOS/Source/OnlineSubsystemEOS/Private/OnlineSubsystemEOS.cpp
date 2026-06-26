@@ -13,6 +13,9 @@
 #include "OnlineStoreEOS.h"
 #include "OnlinePlayerSanctionEOS.h"
 #include "OnlinePlayerReportEOS.h"
+#include "OnlineEntitlementsEOS.h"
+#include "OnlinePurchaseEOS.h"
+#include "OnlineStoreEOSV2.h"
 #include "EOSSettings.h"
 #include "EOSShared.h"
 #include "EOSVoiceChat.h"
@@ -88,7 +91,11 @@ public:
 	virtual void LeaveChannel(const FString& ChannelName, const FOnVoiceChatChannelLeaveCompleteDelegate& Delegate) override { VoiceChatUser.LeaveChannel(ChannelName, Delegate); }
 	virtual FOnVoiceChatChannelJoinedDelegate& OnVoiceChatChannelJoined() override { return VoiceChatUser.OnVoiceChatChannelJoined(); }
 	virtual FOnVoiceChatChannelExitedDelegate& OnVoiceChatChannelExited() override { return VoiceChatUser.OnVoiceChatChannelExited(); }
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	virtual FOnVoiceChatCallStatsUpdatedDelegate& OnVoiceChatCallStatsUpdated() override { return VoiceChatUser.OnVoiceChatCallStatsUpdated(); }
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	virtual FOnVoiceChatCallStatsUpdatedDelegate2& OnVoiceChatCallStatsUpdated2() override { return VoiceChatUser.OnVoiceChatCallStatsUpdated2(); }
+	virtual TOptional<FVoiceChatCallStats> GetChannelCallStats(const FString& ChannelName) const override { return VoiceChatUser.GetChannelCallStats(ChannelName); }
 	virtual void Set3DPosition(const FString& ChannelName, const FVector& Position) override { VoiceChatUser.Set3DPosition(ChannelName, Position); }
 	virtual TArray<FString> GetChannels() const override { return VoiceChatUser.GetChannels(); }
 	virtual TArray<FString> GetPlayersInChannel(const FString& ChannelName) const override { return VoiceChatUser.GetPlayersInChannel(ChannelName); }
@@ -116,8 +123,10 @@ public:
 	virtual void UnregisterOnVoiceChatAfterCaptureAudioReadDelegate(FDelegateHandle Handle) override { VoiceChatUser.UnregisterOnVoiceChatAfterCaptureAudioReadDelegate(Handle); }
 	virtual FDelegateHandle RegisterOnVoiceChatBeforeCaptureAudioSentDelegate(const FOnVoiceChatBeforeCaptureAudioSentDelegate2::FDelegate& Delegate) override { return VoiceChatUser.RegisterOnVoiceChatBeforeCaptureAudioSentDelegate(Delegate); }
 	virtual void UnregisterOnVoiceChatBeforeCaptureAudioSentDelegate(FDelegateHandle Handle) override { VoiceChatUser.UnregisterOnVoiceChatBeforeCaptureAudioSentDelegate(Handle); }
-	virtual FDelegateHandle RegisterOnVoiceChatBeforeRecvAudioRenderedDelegate(const FOnVoiceChatBeforeRecvAudioRenderedDelegate::FDelegate& Delegate) override { return VoiceChatUser.RegisterOnVoiceChatBeforeRecvAudioRenderedDelegate(Delegate); }
-	virtual void UnregisterOnVoiceChatBeforeRecvAudioRenderedDelegate(FDelegateHandle Handle) override { VoiceChatUser.UnregisterOnVoiceChatBeforeRecvAudioRenderedDelegate(Handle); }
+	virtual FDelegateHandle RegisterOnVoiceChatBeforeRecvMixedAudioRenderedDelegate(const FOnVoiceChatBeforeRecvAudioRenderedDelegate::FDelegate& Delegate) override { return VoiceChatUser.RegisterOnVoiceChatBeforeRecvMixedAudioRenderedDelegate(Delegate); }
+	virtual void UnregisterOnVoiceChatBeforeRecvMixedAudioRenderedDelegate(FDelegateHandle Handle) override { VoiceChatUser.UnregisterOnVoiceChatBeforeRecvMixedAudioRenderedDelegate(Handle); }
+	virtual FDelegateHandle RegisterOnVoiceChatBeforeRecvUnmixedAudioRenderedDelegate(const FOnVoiceChatBeforeRecvAudioRenderedDelegate::FDelegate& Delegate) override { return VoiceChatUser.RegisterOnVoiceChatBeforeRecvUnmixedAudioRenderedDelegate(Delegate); }
+	virtual void UnregisterOnVoiceChatBeforeRecvUnmixedAudioRenderedDelegate(FDelegateHandle Handle) override { VoiceChatUser.UnregisterOnVoiceChatBeforeRecvUnmixedAudioRenderedDelegate(Handle); }
 	virtual FString InsecureGetLoginToken(const FString& PlayerName) override { return VoiceChatUser.InsecureGetLoginToken(PlayerName); }
 	virtual FString InsecureGetJoinToken(const FString& ChannelName, EVoiceChatChannelType ChannelType, TOptional<FVoiceChatChannel3dProperties> Channel3dProperties = TOptional<FVoiceChatChannel3dProperties>()) override { return VoiceChatUser.InsecureGetJoinToken(ChannelName, ChannelType, Channel3dProperties); }
 	// ~End IVoiceChatUser
@@ -202,7 +211,7 @@ bool FOnlineSubsystemEOS::PlatformCreate()
 	// Create platform instance
 	EOS_Platform_Options PlatformOptions = {};
 	PlatformOptions.ApiVersion = 14;
-	UE_EOS_CHECK_API_MISMATCH(EOS_PLATFORM_OPTIONS_API_LATEST, 14);
+	UE_EOS_CHECK_API_MISMATCH(EOS_PLATFORM_OPTIONS_API_LATEST, 15);
 	PlatformOptions.ClientCredentials.ClientId = reinterpret_cast<const char*>(ArtifactSettings.ClientId.IsEmpty() ? nullptr : (const char*)ClientIdUtf8.Get());
 	PlatformOptions.ClientCredentials.ClientSecret = ArtifactSettings.ClientSecret.IsEmpty() ? nullptr : (const char*)ClientSecretUtf8.Get();
 	PlatformOptions.ProductId = ArtifactSettings.ProductId.IsEmpty() ? nullptr : (const char*)ProductIdUtf8.Get();
@@ -464,9 +473,21 @@ bool FOnlineSubsystemEOS::Init()
 	StatsInterfacePtr = MakeShared<FOnlineStatsEOS>(this);
 	LeaderboardsInterfacePtr = MakeShared<FOnlineLeaderboardsEOS>(this);
 	AchievementsInterfacePtr = MakeShared<FOnlineAchievementsEOS>(this);
-	StoreInterfacePtr = MakeShared<FOnlineStoreEOS>(this);
 	PlayerSanctionEOSPtr = MakeShared<FOnlinePlayerSanctionEOS>(this);
 	PlayerReportInterfacePtr = MakeShared<FOnlinePlayerReportEOS>(this);
+
+	FEOSSettings Settings = UEOSSettings::GetSettings();
+	if (Settings.bUseNewEcomFlow)
+	{
+		EntitlementsInterfacePtr = MakeShared<FOnlineEntitlementsEOS>(this);
+		PurchaseInterfacePtr = MakeShared<FOnlinePurchaseEOS>(this);
+		StoreInterfaceV2Ptr = MakeShared<FOnlineStoreEOSV2>(this);
+	}
+	else
+	{
+		StoreInterfacePtr = MakeShared<FOnlineStoreEOS>(this);
+		UE_LOG_ONLINE(Warning, TEXT("[FOnlineSubsystemEOS::Init] bUseNewEcomFlow set to false. Note the old ecom flow will be deprecated in a future version"));
+	}
 
 	// We initialized ok so we can tick
 	StartTicker();
@@ -498,9 +519,12 @@ bool FOnlineSubsystemEOS::Shutdown()
 	StatsInterfacePtr = nullptr;
 	LeaderboardsInterfacePtr = nullptr;
 	AchievementsInterfacePtr = nullptr;
-	StoreInterfacePtr = nullptr;
 	TitleFileInterfacePtr = nullptr;
 	UserCloudInterfacePtr = nullptr;
+	EntitlementsInterfacePtr = nullptr;
+	PurchaseInterfacePtr = nullptr;
+	StoreInterfaceV2Ptr = nullptr;
+	StoreInterfacePtr = nullptr;
 
 #if WITH_EOSVOICECHAT
 	for (TPair<FUniqueNetIdRef, FOnlineSubsystemEOSVoiceChatUserWrapperRef>& Pair : LocalVoiceChatUsers)
@@ -542,9 +566,21 @@ bool FOnlineSubsystemEOS::Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice&
 	{
 		bWasHandled = UserManager->HandleFriendsExec(InWorld, Cmd, Ar);
 	}
-	else if (StoreInterfacePtr != nullptr && FParse::Command(&Cmd, TEXT("ECOM"))) /* ONLINE ECOM ... */
+	else if (StoreInterfacePtr != nullptr && FParse::Command(&Cmd, TEXT("ECOM"))) /* ONLINE ECOM ... only ran if bUseNewEcomFlow is false */
 	{
 		bWasHandled = StoreInterfacePtr->HandleEcomExec(InWorld, Cmd, Ar);
+	}
+	else if (StoreInterfaceV2Ptr != nullptr && FParse::Command(&Cmd, TEXT("ECOM"))) /* ONLINE ECOM ... only ran if bUseNewEcomFlow is true */
+	{
+		bWasHandled = StoreInterfaceV2Ptr->HandleEcomExec(InWorld, Cmd, Ar);
+	}
+	else if (PurchaseInterfacePtr != nullptr && FParse::Command(&Cmd, TEXT("PURCHASE"))) /* ONLINE PURCHASE ... only ran if bUseNewEcomFlow is true */
+	{
+		bWasHandled = PurchaseInterfacePtr->HandlePurchaseExec(InWorld, Cmd, Ar);
+	}
+	else if (EntitlementsInterfacePtr != nullptr && FParse::Command(&Cmd, TEXT("ENTITLEMENTS"))) /* ONLINE ENTITLEMENTS ... only ran if bUseNewEcomFlow is true */
+	{
+		bWasHandled = EntitlementsInterfacePtr->HandleEntitlementsExec(InWorld, Cmd, Ar);
 	}
 	else if (LeaderboardsInterfacePtr != nullptr && FParse::Command(&Cmd, TEXT("LEADERBOARDS"))) /* ONLINE LEADERBOARDS ... */
 	{
@@ -635,6 +671,9 @@ FOnlineSubsystemEOS::FOnlineSubsystemEOS(FName InInstanceName) :
 	, StoreInterfacePtr(nullptr)
 	, TitleFileInterfacePtr(nullptr)
 	, UserCloudInterfacePtr(nullptr)
+	, EntitlementsInterfacePtr(nullptr)
+	, PurchaseInterfacePtr(nullptr)
+	, StoreInterfaceV2Ptr(nullptr)
 {
 	StopTicker();
 }
@@ -662,9 +701,20 @@ IOnlineUserCloudPtr FOnlineSubsystemEOS::GetUserCloudInterface() const
 
 IOnlineEntitlementsPtr FOnlineSubsystemEOS::GetEntitlementsInterface() const
 {
-	UE_LOG_ONLINE(Error, TEXT("Entitlements Interface Requested"));
-	return nullptr;
-};
+	FEOSSettings Settings = UEOSSettings::GetSettings();
+	if (Settings.bUseNewEcomFlow)
+	{
+		return EntitlementsInterfacePtr;
+	}
+	else
+	{
+		UE_CALL_ONCE([]()
+		{
+			UE_LOG_ONLINE(Warning, TEXT("Entitlements Interface Requested - only supported with bUseNewEcomFlow"));
+		});
+		return nullptr;
+	}
+}
 
 IOnlineLeaderboardsPtr FOnlineSubsystemEOS::GetLeaderboardsInterface() const
 {
@@ -693,12 +743,28 @@ IOnlineTitleFilePtr FOnlineSubsystemEOS::GetTitleFileInterface() const
 
 IOnlineStoreV2Ptr FOnlineSubsystemEOS::GetStoreV2Interface() const
 {
-	return StoreInterfacePtr;
+	FEOSSettings Settings = UEOSSettings::GetSettings();
+	if (Settings.bUseNewEcomFlow)
+	{
+		return StoreInterfaceV2Ptr;
+	}
+	else
+	{
+		return StoreInterfacePtr;
+	}
 }
 
 IOnlinePurchasePtr FOnlineSubsystemEOS::GetPurchaseInterface() const
 {
-	return StoreInterfacePtr;
+	FEOSSettings Settings = UEOSSettings::GetSettings();
+	if (Settings.bUseNewEcomFlow)
+	{
+		return PurchaseInterfacePtr;
+	}
+	else
+	{
+		return StoreInterfacePtr;
+	}
 }
 
 IOnlineAchievementsPtr FOnlineSubsystemEOS::GetAchievementsInterface() const
@@ -741,6 +807,30 @@ IVoiceChatUser* FOnlineSubsystemEOS::GetVoiceChatUserInterface(const FUniqueNetI
 		if (FEOSVoiceChatFactory* EOSVoiceChatFactory = FEOSVoiceChatFactory::Get())
 		{
 			VoiceChatInterface = EOSVoiceChatFactory->CreateInstanceWithPlatform(EOSPlatformHandle);
+
+			if (VoiceChatInterface)
+			{
+				if (VoiceChatInterface->Initialize())
+				{
+					TOptional<bool> bConnectResult;
+					VoiceChatInterface->Connect(FOnVoiceChatConnectCompleteDelegate::CreateLambda(
+					[&bConnectResult](const FVoiceChatResult& VoiceChatResult)
+					{
+						bConnectResult = VoiceChatResult.IsSuccess();
+					}));
+
+					if (!bConnectResult.IsSet() || !bConnectResult.GetValue())
+					{
+						UE_LOG_ONLINE(Warning, TEXT("GetVoiceChatUserInterface: VoiceChat Connect failed"));
+						VoiceChatInterface.Reset();
+					}
+				}
+				else
+				{
+					UE_LOG_ONLINE(Warning, TEXT("GetVoiceChatUserInterface: VoiceChat Initialize failed"));
+					VoiceChatInterface.Reset();
+				}
+			}
 		}
 	}
 

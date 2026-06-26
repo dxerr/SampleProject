@@ -435,14 +435,19 @@ typedef TEOSGlobalCallback<EOS_Lobby_OnLeaveLobbyRequestedCallback, EOS_Lobby_Le
 
 FOnlineSessionEOS::~FOnlineSessionEOS()
 {
+	EOS_Sessions_RemoveNotifySessionInviteReceived(EOSSubsystem->SessionsHandle, SessionInviteReceivedId);
 	EOS_Sessions_RemoveNotifySessionInviteAccepted(EOSSubsystem->SessionsHandle, SessionInviteAcceptedId);
+	EOS_Sessions_RemoveNotifyJoinSessionAccepted(EOSSubsystem->SessionsHandle, JoinSessionAcceptedId);
 	EOS_Sessions_RemoveNotifyLeaveSessionRequested(EOSSubsystem->SessionsHandle, LeaveSessionRequestedId);
+	delete SessionInviteReceivedCallback;
 	delete SessionInviteAcceptedCallback;
+	delete JoinSessionAcceptedCallback;
 	delete LeaveSessionRequestedCallback;
 
 	EOS_Lobby_RemoveNotifyLobbyUpdateReceived(LobbyHandle, LobbyUpdateReceivedId);
 	EOS_Lobby_RemoveNotifyLobbyMemberUpdateReceived(LobbyHandle, LobbyMemberUpdateReceivedId);
 	EOS_Lobby_RemoveNotifyLobbyMemberStatusReceived(LobbyHandle, LobbyMemberStatusReceivedId);
+	EOS_Lobby_RemoveNotifyLobbyInviteReceived(LobbyHandle, LobbyInviteReceivedId);
 	EOS_Lobby_RemoveNotifyLobbyInviteAccepted(LobbyHandle, LobbyInviteAcceptedId);
 	EOS_Lobby_RemoveNotifyJoinLobbyAccepted(LobbyHandle, JoinLobbyAcceptedId);
 	EOS_Lobby_RemoveNotifyLeaveLobbyRequested(LobbyHandle, LeaveLobbyRequestedId);
@@ -450,6 +455,7 @@ FOnlineSessionEOS::~FOnlineSessionEOS()
 	delete LobbyUpdateReceivedCallback;
 	delete LobbyMemberUpdateReceivedCallback;
 	delete LobbyMemberStatusReceivedCallback;
+	delete LobbyInviteReceivedCallback;
 	delete LobbyInviteAcceptedCallback;
 	delete JoinLobbyAcceptedCallback;
 	delete LeaveLobbyRequestedCallback;
@@ -626,7 +632,7 @@ void FOnlineSessionEOS::RegisterSessionNotifications()
 	EOS_Sessions_AddNotifyJoinSessionAcceptedOptions AddNotifyJoinSessionAcceptedOptions = { };
 	AddNotifyJoinSessionAcceptedOptions.ApiVersion = 1;
 	UE_EOS_CHECK_API_MISMATCH(EOS_SESSIONS_ADDNOTIFYJOINSESSIONACCEPTED_API_LATEST, 1);
-	SessionInviteAcceptedId = EOS_Sessions_AddNotifyJoinSessionAccepted(EOSSubsystem->SessionsHandle, &AddNotifyJoinSessionAcceptedOptions, JoinSessionAcceptedCallbackObj, JoinSessionAcceptedCallbackObj->GetCallbackPtr());
+	JoinSessionAcceptedId = EOS_Sessions_AddNotifyJoinSessionAccepted(EOSSubsystem->SessionsHandle, &AddNotifyJoinSessionAcceptedOptions, JoinSessionAcceptedCallbackObj, JoinSessionAcceptedCallbackObj->GetCallbackPtr());
 
 	// Requested session leave notifications
 	EOS_Sessions_AddNotifyLeaveSessionRequestedOptions AddNotifyLeaveSessionRequestedOptions = { 0 };
@@ -1559,12 +1565,19 @@ TSharedPtr<class FInternetAddr> GetHostAddress(const FString& EosHostAddress, co
 
 bool IsNetDriverEOS(const FName NetDriverName)
 {
-	const FNetDriverDefinition* Found = GEngine->NetDriverDefinitions.FindByPredicate([NetDriverName](const FNetDriverDefinition& Elem)
+	if (GEngine)
+	{
+		const FNetDriverDefinition* Found = GEngine->NetDriverDefinitions.FindByPredicate([NetDriverName](const FNetDriverDefinition& Elem)
 		{
 			return Elem.DefName == NetDriverName;
 		});
 
-	return Found && Found->DriverClassName.ToString().Contains(TEXT("NetDriverEOS"));
+		return Found && Found->DriverClassName.ToString().Contains(TEXT("NetDriverEOS"));
+	}
+
+	UE_LOG_ONLINE_SESSION(Verbose, TEXT("GEngine not valid. Unable to check if NetDriver [%s] was EOS."), *NetDriverName.ToString());
+
+	return false;
 }
 
 uint32 FOnlineSessionEOS::CreateEOSSession(int32 HostingPlayerNum, FNamedOnlineSession* Session)
@@ -2386,51 +2399,6 @@ void FOnlineSessionEOS::AddLobbySearchAttribute(EOS_HLobbySearch LobbySearchHand
 	}
 }
 
-void FOnlineSessionEOS::CopySearchResult(const FSessionDetailsEOS& SessionHandle, EOS_SessionDetails_Info* SessionInfo, FOnlineSession& OutSession, FOnCopySessionDataCompleteCallback&& Callback)
-{
-	OutSession.NumOpenPrivateConnections = SessionInfo->NumOpenPublicConnections;
-	OutSession.SessionSettings.NumPrivateConnections = SessionInfo->Settings->NumPublicConnections;
-	OutSession.SessionSettings.bAllowJoinInProgress = SessionInfo->Settings->bAllowJoinInProgress == EOS_TRUE;
-	OutSession.SessionSettings.bAllowInvites = SessionInfo->Settings->bInvitesAllowed == EOS_TRUE;
-
-	switch (SessionInfo->Settings->PermissionLevel)
-	{
-		case EOS_EOnlineSessionPermissionLevel::EOS_OSPF_InviteOnly:
-		{
-			OutSession.SessionSettings.bAllowJoinViaPresence = false;
-			break;
-		}
-		case EOS_EOnlineSessionPermissionLevel::EOS_OSPF_JoinViaPresence:
-		case EOS_EOnlineSessionPermissionLevel::EOS_OSPF_PublicAdvertised:
-		{
-			OutSession.SessionSettings.bAllowJoinViaPresence = true;
-			break;
-		}
-	}
-
-	CopyAttributes(SessionHandle, OutSession);
-
-	if (SessionInfo->OwnerServerClientId)
-	{
-		OutSession.OwningUserId = FUniqueNetIdEOS::DedicatedServerId();
-
-		// ResolveUniqueNetIds is an asynchronous operation, so in the cases where it's not called, we'll delay the execution of this callback to match the flow
-		EOSSubsystem->ExecuteNextTick([Callback = MoveTemp(Callback)]()
-			{
-				Callback(true);
-			});
-	}
-	else
-	{
-		EOSSubsystem->UserManager->ResolveUniqueNetId(EOSSubsystem->UserManager->GetDefaultLocalUser(), SessionInfo->OwnerUserId, [this, &OutSession, Callback = MoveTemp(Callback)](FUniqueNetIdEOSRef ResolvedUniqueNetId, const FOnlineError& Error)
-			{
-				OutSession.OwningUserId = ResolvedUniqueNetId;
-				OutSession.OwningUserName = EOSSubsystem->UserManager->GetPlayerNickname(*ResolvedUniqueNetId);
-				Callback(true);
-			});
-	}
-}
-
 void FOnlineSessionEOS::CopyAttributes(const FSessionDetailsEOS& SessionHandle, FOnlineSession& OutSession)
 {
 	EOS_SessionDetails_GetSessionAttributeCountOptions CountOptions = { };
@@ -2525,14 +2493,58 @@ void FOnlineSessionEOS::AddSearchResult(const TSharedRef<FSessionDetailsEOS>& Se
 	EOS_EResult CopyResult = EOS_SessionDetails_CopyInfo(SessionHandle->SessionDetailsHandle, &CopyOptions, &EosSessionDetailsInfo);
 	if (CopyResult == EOS_EResult::EOS_Success)
 	{
-		int32 Position = SearchSettings->SearchResults.AddZeroed();
+		const int32 Position = SearchSettings->SearchResults.AddZeroed();
 		FOnlineSessionSearchResult& SearchResult = SearchSettings->SearchResults[Position];
 
 		// This will set the host address and port
 		TSharedPtr<FOnlineSessionInfoEOS> OnlineSessionInfo = MakeShared<FOnlineSessionInfoEOS>(FOnlineSessionInfoEOS::Create(FUniqueNetIdEOSSession::Create(EosSessionDetailsInfo->SessionId), SessionHandle));
 		SearchResult.Session.SessionInfo = OnlineSessionInfo;
 
-		CopySearchResult(*SessionHandle, EosSessionDetailsInfo, SearchResult.Session, MoveTemp(Callback));
+		SearchResult.Session.NumOpenPrivateConnections = EosSessionDetailsInfo->NumOpenPublicConnections;
+		SearchResult.Session.SessionSettings.NumPrivateConnections = EosSessionDetailsInfo->Settings->NumPublicConnections;
+		SearchResult.Session.SessionSettings.bAllowJoinInProgress = EosSessionDetailsInfo->Settings->bAllowJoinInProgress == EOS_TRUE;
+		SearchResult.Session.SessionSettings.bAllowInvites = EosSessionDetailsInfo->Settings->bInvitesAllowed == EOS_TRUE;
+
+		switch (EosSessionDetailsInfo->Settings->PermissionLevel)
+		{
+			case EOS_EOnlineSessionPermissionLevel::EOS_OSPF_InviteOnly:
+			{
+				SearchResult.Session.SessionSettings.bAllowJoinViaPresence = false;
+				break;
+			}
+			case EOS_EOnlineSessionPermissionLevel::EOS_OSPF_JoinViaPresence:
+			case EOS_EOnlineSessionPermissionLevel::EOS_OSPF_PublicAdvertised:
+			{
+				SearchResult.Session.SessionSettings.bAllowJoinViaPresence = true;
+				break;
+			}
+		}
+
+		CopyAttributes(*SessionHandle, SearchResult.Session);
+
+		if (EosSessionDetailsInfo->OwnerServerClientId)
+		{
+			SearchResult.Session.OwningUserId = FUniqueNetIdEOS::DedicatedServerId();
+
+			// ResolveUniqueNetIds is an asynchronous operation, so in the cases where it's not called, we'll delay the execution of this callback to match the flow
+			EOSSubsystem->ExecuteNextTick([Callback = MoveTemp(Callback)]()
+				{
+					Callback(true);
+				});
+		}
+		else
+		{
+			EOSSubsystem->UserManager->ResolveUniqueNetId(EOSSubsystem->UserManager->GetDefaultLocalUser(), EosSessionDetailsInfo->OwnerUserId, [this, WeakSearchSettings = SearchSettings.ToWeakPtr(), Position, Callback = MoveTemp(Callback)](FUniqueNetIdEOSRef ResolvedUniqueNetId, const FOnlineError& Error)
+			{
+				if (TSharedPtr<FOnlineSessionSearch> StrongSearchSettings = WeakSearchSettings.Pin())
+				{
+					FOnlineSession& OutSession = StrongSearchSettings->SearchResults[Position].Session;
+					OutSession.OwningUserId = ResolvedUniqueNetId;
+					OutSession.OwningUserName = EOSSubsystem->UserManager->GetPlayerNickname(*ResolvedUniqueNetId);
+				}
+				Callback(true);
+			});
+		}
 
 		// CopySearchResult above will populate the settings so we can now read the port and construct the HostAddress.
 		OnlineSessionInfo->HostAddr = GetHostAddress(UTF8_TO_TCHAR(EosSessionDetailsInfo->HostAddress), SearchResult.Session.SessionSettings);
@@ -2878,7 +2890,7 @@ bool FOnlineSessionEOS::JoinSession(int32 PlayerNum, FName SessionName, const FO
 			}
 			else
 			{
-				UE_LOG_ONLINE_SESSION(Warning, TEXT("Invalid session info on search result"), *SessionName.ToString());
+				UE_LOG_ONLINE_SESSION(Warning, TEXT("Invalid session info on search result"));
 			}
 		}
 		else
@@ -3245,7 +3257,16 @@ static bool GetConnectStringFromSessionInfo(TSharedPtr<FOnlineSessionInfoEOS>& S
 		return false;
 	}
 
-	ConnectInfo = FString::Printf(TEXT("[%s]:%d"), *SessionInfo->HostAddr->ToString(false), PortOverride);
+	FString AddrString = SessionInfo->HostAddr->ToString(false);
+	if (AddrString.StartsWith(EOS_CONNECTION_URL_PREFIX, ESearchCase::IgnoreCase))
+	{
+		ConnectInfo = FString::Printf(TEXT("[%s]"), *AddrString);
+	}
+	else
+	{
+		int32 Port = PortOverride != 0 ? PortOverride : SessionInfo->HostAddr->GetPort();
+		ConnectInfo = FString::Printf(TEXT("[%s]:%d"), *SessionInfo->HostAddr->ToString(false), Port);
+	}
 
 	if (SocketNameOverride != NAME_None)
 	{
@@ -3955,7 +3976,12 @@ void FOnlineSessionEOS::SetPortFromNetDriver(const FOnlineSubsystemEOS& Subsyste
 	auto SessionInfoEOS = StaticCastSharedPtr<FOnlineSessionInfoEOS>(SessionInfo);
 	if (SessionInfoEOS.IsValid() && SessionInfoEOS->HostAddr.IsValid())
 	{
-		SessionInfoEOS->HostAddr->SetPort(NetDriverPort);
+		FString AddrString = SessionInfoEOS->HostAddr->ToString(false);
+		// Set port if IP address is used. EOS P2P does not use ports
+		if (!AddrString.StartsWith(EOS_CONNECTION_URL_PREFIX, ESearchCase::IgnoreCase))
+		{
+			SessionInfoEOS->HostAddr->SetPort(NetDriverPort);
+		}
 	}
 }
 
@@ -4671,13 +4697,17 @@ uint32 FOnlineSessionEOS::FindLobbySession(int32 SearchingPlayerNum, const TShar
 	EOS_Lobby_CreateLobbySearchOptions CreateLobbySearchOptions = { 0 };
 	CreateLobbySearchOptions.ApiVersion = 1;
 	UE_EOS_CHECK_API_MISMATCH(EOS_LOBBY_CREATELOBBYSEARCH_API_LATEST, 1);
-	CreateLobbySearchOptions.MaxResults = FMath::Clamp(SearchSettings->MaxSearchResults, 0, EOS_SESSIONS_MAX_SEARCH_RESULTS);
+	CreateLobbySearchOptions.MaxResults = FMath::Clamp(SearchSettings->MaxSearchResults, 0, EOS_LOBBY_MAX_SEARCH_RESULTS);
 
 	EOS_HLobbySearch LobbySearchHandle;
 
 	EOS_EResult SearchResult = EOS_Lobby_CreateLobbySearch(LobbyHandle, &CreateLobbySearchOptions, &LobbySearchHandle);
 	if (SearchResult == EOS_EResult::EOS_Success)
 	{
+		const auto BucketIdUtf8 = StringCast<UTF8CHAR>(*GetBucketId(*SearchSettings));
+		FLobbyAttributeOptions BucketIdAttribute(EOS_LOBBY_SEARCH_BUCKET_ID, (const char*)BucketIdUtf8.Get());
+		AddLobbySearchAttribute(LobbySearchHandle, &BucketIdAttribute, EOS_EOnlineComparisonOp::EOS_CO_EQUAL);
+
 		// We add the search parameters
 		for (FSearchParams::TConstIterator It(SearchSettings->QuerySettings.SearchParams); It; ++It)
 		{
