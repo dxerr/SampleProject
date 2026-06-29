@@ -27,6 +27,7 @@ public class ExCoreRuntime : ModuleRules
 				Path.Combine(ModuleDirectory, "Items"),
 				Path.Combine(ModuleDirectory, "Items", "Effects"),
 				Path.Combine(ModuleDirectory, "Struct", "Items"),
+				Path.Combine(ModuleDirectory, "Struct", "Music"),
 				Path.Combine(ModuleDirectory, "Subsystems"),             // ExDataCenterSubsystem, ExAssetPreloadSubsystem
 				Path.Combine(ModuleDirectory, "Struct", "Subsystems"),   // FExPreloadOptions
 				Path.Combine(ModuleDirectory, "UI"),
