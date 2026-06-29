@@ -158,4 +158,12 @@ private:
 	 */
 	void UpdateCharacterRotation(float DeltaTime);
 
+	/** UExBeatSyncComponent::OnBeatTick 구독 핸들러 — ObstacleManager에 비트 스폰 요청 */
+	UFUNCTION()
+	void OnBeatTick_Handler(int32 BeatIndex, float ElapsedTime);
+
+	/** UExBeatSyncComponent::OnBeatSyncStateChanged 구독 핸들러 — ObstacleManager 기본 스폰 억제 갱신 */
+	UFUNCTION()
+	void OnBeatSyncStateChanged_Handler(bool bEnabled);
+
 };

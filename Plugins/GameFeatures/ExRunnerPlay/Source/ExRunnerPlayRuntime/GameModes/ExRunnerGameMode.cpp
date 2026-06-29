@@ -6,7 +6,7 @@
 #include "../Components/ExChunkSpawner.h"
 #include "../Components/ExObstacleManager.h"
 #include "../Components/ExRunnerItemManager.h"
-#include "../Components/ExBeatSyncComponent.h"
+#include "ExBeatSyncComponent.h"
 #include "../Components/ExPathManager.h"
 #include "../Components/ExRunnerRuleManagerComponent.h"
 #include "../GameStates/ExRunnerGameState.h"
@@ -209,7 +209,17 @@ void AExRunnerGameMode::PrewarmRunnerWorld()
 
 		if (BeatSyncComponent && GS->ObstacleManager)
 		{
-			BeatSyncComponent->BindToObstacleManager(GS->ObstacleManager);
+			// RunnerConfig 설정 주입 (ExCore BeatSync는 Config를 직접 참조하지 않음)
+			if (RunnerConfig.IsValid())
+			{
+				BeatSyncComponent->InitSettings(RunnerConfig->BeatSync);
+			}
+			// OnBeatTick → ObstacleManager 비트 스폰 요청
+			BeatSyncComponent->OnBeatTick.AddDynamic(this, &AExRunnerGameMode::OnBeatTick_Handler);
+			// OnBeatSyncStateChanged → ObstacleManager 기본 스폰 억제 제어
+			BeatSyncComponent->OnBeatSyncStateChanged.AddDynamic(this, &AExRunnerGameMode::OnBeatSyncStateChanged_Handler);
+			// 초기 억제 상태 동기화
+			GS->ObstacleManager->bSuppressDefaultChunkSpawn = BeatSyncComponent->bRuntimeBeatSyncEnabled;
 		}
 
 		UE_LOG(LogExRunnerPlay, Log, TEXT("PrewarmRunnerWorld 완료: 맵 생성 동기화 준비 끝."));
@@ -530,4 +540,26 @@ float AExRunnerGameMode::GetMaxWaitForPlayersSeconds() const
 		return RunnerConfig->MatchFlow.MaxWaitForPlayersSeconds;
 	}
 	return Super::GetMaxWaitForPlayersSeconds();
+}
+
+void AExRunnerGameMode::OnBeatTick_Handler(int32 BeatIndex, float ElapsedTime)
+{
+	if (AExRunnerGameState* GS = GetGameState<AExRunnerGameState>())
+	{
+		if (GS->ObstacleManager)
+		{
+			GS->ObstacleManager->RequestBeatSpawn();
+		}
+	}
+}
+
+void AExRunnerGameMode::OnBeatSyncStateChanged_Handler(bool bEnabled)
+{
+	if (AExRunnerGameState* GS = GetGameState<AExRunnerGameState>())
+	{
+		if (GS->ObstacleManager)
+		{
+			GS->ObstacleManager->bSuppressDefaultChunkSpawn = bEnabled;
+		}
+	}
 }

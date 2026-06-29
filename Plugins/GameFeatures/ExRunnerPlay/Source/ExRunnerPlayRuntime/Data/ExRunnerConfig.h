@@ -10,7 +10,7 @@
 #include "Struct/FExGameplaySettings.h"
 #include "Struct/FExMovementSettings.h"
 #include "Struct/FExChunkSpawnSettings.h"
-#include "Struct/FExBeatSyncSettings.h"
+#include "ExBeatSyncSettings.h"
 #include "Struct/FExMatchFlowSettings.h"
 #include "ExRunnerConfig.generated.h"
 
